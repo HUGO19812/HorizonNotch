@@ -52,8 +52,11 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
           # A Developer ID if there is one, otherwise the self-signed
           # certificate (not "valid" to macOS, so no -v here).
-          IDENTITY=$(security find-identity -p codesigning "$KEYCHAIN" | grep -m1 "Developer ID Application" | sed -E 's/.*"(.*)"/\1/')
-          [ -n "$IDENTITY" ] || IDENTITY=$(security find-identity -p codesigning "$KEYCHAIN" | grep -m1 '"' | sed -E 's/.*"(.*)"/\1/')
+          # Lines look like: 1) <hash> "Name" (CSSMERR_TP_NOT_TRUSTED) – keep only Name.
+          NAMES=$(security find-identity -p codesigning "$KEYCHAIN" | sed -nE 's/^[^"]*"([^"]+)".*$/\1/p')
+          IDENTITY=$(echo "$NAMES" | grep -m1 "Developer ID Application" || true)
+          [ -n "$IDENTITY" ] || IDENTITY=$(echo "$NAMES" | head -1)
+          echo "Signing identity: $IDENTITY"
           if ! echo "$IDENTITY" | grep -q "Developer ID"; then
             # Self-signed: trust it for code signing so Xcode accepts it.
             /usr/bin/openssl pkcs12 -in "$RUNNER_TEMP/cert.p12" -nokeys -passin pass:"$CERT_PASSWORD" -out "$RUNNER_TEMP/cert.pem"
