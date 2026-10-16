@@ -174,6 +174,8 @@ extension Notification.Name {
     static let islandWantsKeyboard = Notification.Name("horizon.islandWantsKeyboard")
 }
 
+/// Three columns: the history on the left, the calculation in the middle,
+/// the keypad on the right.
 private struct CalculatorView: View {
     @ObservedObject var engine: CalculatorEngine
     @ObservedObject private var settings = AppSettings.shared
@@ -182,35 +184,36 @@ private struct CalculatorView: View {
     @State private var copied = false
 
     var body: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .trailing, spacing: 2) {
-                HistoryTape(entries: settings.calculatorHistory, accent: theme.accent,
-                            onPick: { engine.recall($0) }, onClear: { engine.clearHistory() })
-                    .frame(maxHeight: .infinity)
-                Rectangle()
-                    .fill(Color.white.opacity(0.1))
-                    .frame(height: 1)
-                    .padding(.vertical, 2)
+        HStack(spacing: 0) {
+            HistoryList(entries: settings.calculatorHistory, accent: theme.accent,
+                        onPick: { engine.recall($0) }, onClear: { engine.clearHistory() })
+                .frame(width: 140)
+            Rectangle()
+                .fill(Color.white.opacity(0.12))
+                .frame(width: 1)
+                .padding(.leading, 12)
+            VStack(alignment: .trailing, spacing: 0) {
                 Text(copied ? L("Kopiert", "Copied") : engine.expression)
-                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    .font(.system(size: 20, weight: .regular).monospacedDigit())
                     .foregroundStyle(copied ? theme.accent : .white.opacity(0.45))
                     .lineLimit(1)
-                    .frame(height: 14)
+                    .minimumScaleFactor(0.5)
+                    .frame(height: 24)
                 Text(engine.display)
-                    .font(.system(size: 34, weight: .light, design: .rounded).monospacedDigit())
+                    .font(.system(size: 40, weight: .semibold).monospacedDigit())
                     .lineLimit(1)
-                    .minimumScaleFactor(0.4)
+                    .minimumScaleFactor(0.35)
                     .contentTransition(.numericText())
                     .animation(.snappy(duration: 0.15), value: engine.display)
                     .onTapGesture { copy() }
                     .help(L("Klicken zum Kopieren", "Click to copy"))
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.horizontal, 14)
 
             Keypad(engine: engine)
-                .frame(width: 236)
+                .frame(width: 200)
         }
-        .padding(.bottom, 2)
         .focusable()
         .focusEffectDisabled()
         .focused($focused)
@@ -257,9 +260,9 @@ private struct CalculatorView: View {
     }
 }
 
-/// Past calculations like a paper tape: oldest at the top, newest just
-/// above the display. A click takes the result into the calculator.
-private struct HistoryTape: View {
+/// Past calculations, newest at the top, separated by thin lines. A click
+/// takes the result into the calculator.
+private struct HistoryList: View {
     let entries: [String]
     let accent: Color
     let onPick: (String) -> Void
@@ -267,31 +270,35 @@ private struct HistoryTape: View {
     @State private var hovering = false
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .trailing, spacing: 1) {
-                    ForEach(Array(entries.reversed().enumerated()), id: \.offset) { index, entry in
-                        HistoryRow(entry: entry, accent: accent) { onPick(entry) }
-                            .id(index)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
+                    if index > 0 {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.12))
+                            .frame(height: 1)
                     }
+                    HistoryRow(entry: entry, accent: accent) { onPick(entry) }
                 }
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.top, 10)
             }
-            .mask {
-                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.35)],
-                               startPoint: .top, endPoint: .bottom)
-            }
-            .onAppear { proxy.scrollTo(entries.count - 1, anchor: .bottom) }
-            .onChange(of: entries) { _, new in
-                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(new.count - 1, anchor: .bottom) }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .mask {
+            LinearGradient(stops: [.init(color: .black, location: 0.8), .init(color: .clear, location: 1)],
+                           startPoint: .top, endPoint: .bottom)
+        }
+        .overlay {
+            if entries.isEmpty {
+                Text(L("Noch keine Rechnungen", "No calculations yet"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.3))
             }
         }
-        .overlay(alignment: .topLeading) {
+        .overlay(alignment: .bottomLeading) {
             if !entries.isEmpty && hovering {
                 Button(action: onClear) {
-                    Label(L("Verlauf löschen", "Clear history"), systemImage: "trash")
-                        .labelStyle(.iconOnly)
+                    Image(systemName: "trash")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.5))
                         .frame(width: 20, height: 18)
@@ -316,18 +323,19 @@ private struct HistoryRow: View {
         let result = CalculatorEngine.result(of: entry)
         let calculation = String(entry.dropLast(result.count)).trimmingCharacters(in: .whitespaces)
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 Text(calculation)
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .lineLimit(1)
+                    .truncationMode(.head)
                 Text(result)
-                    .foregroundStyle(hovering ? accent : .white.opacity(0.75))
+                    .foregroundStyle(hovering ? accent : .white)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                Spacer(minLength: 0)
             }
-            .font(.system(size: 11, weight: .medium).monospacedDigit())
-            .lineLimit(1)
-            .truncationMode(.head)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(hovering ? 0.08 : 0)))
+            .font(.system(size: 14, weight: .regular).monospacedDigit())
+            .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -336,15 +344,17 @@ private struct HistoryRow: View {
     }
 }
 
+/// Four columns: grey keys for digits and functions, operators and "="
+/// filled with the island's accent colour. 0 and = are two keys wide.
 private struct Keypad: View {
     @ObservedObject var engine: CalculatorEngine
 
     var body: some View {
         Grid(horizontalSpacing: 5, verticalSpacing: 4) {
             GridRow {
-                Key(engine.clearTitle, kind: .function) { engine.clear() }
-                Key("±", kind: .function) { engine.toggleSign() }
-                Key("%", kind: .function) { engine.percent() }
+                Key(engine.clearTitle) { engine.clear() }
+                Key("±") { engine.toggleSign() }
+                Key("%") { engine.percent() }
                 Key("÷", kind: .operation, active: engine.pending == .divide) { engine.operation(.divide) }
             }
             GridRow {
@@ -362,17 +372,15 @@ private struct Keypad: View {
             GridRow {
                 Key("0") { engine.digit("0") }
                     .gridCellColumns(2)
-                Key(",") { engine.decimal() }
-                Key("=", kind: .equals) { engine.equals() }
+                Key("=", kind: .operation) { engine.equals() }
+                    .gridCellColumns(2)
             }
         }
     }
 }
 
-/// One key: digits dark glass, functions a step lighter, operators in
-/// the island's accent colour (white while chosen), "=" solid accent.
 private struct Key: View {
-    enum Kind { case digit, function, operation, equals }
+    enum Kind { case plain, operation }
 
     let title: String
     let kind: Kind
@@ -381,7 +389,7 @@ private struct Key: View {
     @State private var hovering = false
     @Environment(\.islandTheme) private var theme
 
-    init(_ title: String, kind: Kind = .digit, active: Bool = false, action: @escaping () -> Void) {
+    init(_ title: String, kind: Kind = .plain, active: Bool = false, action: @escaping () -> Void) {
         self.title = title
         self.kind = kind
         self.active = active
@@ -389,42 +397,24 @@ private struct Key: View {
     }
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
         Button(action: action) {
             Text(title)
-                .font(.system(size: kind == .digit ? 13 : 14, weight: kind == .digit ? .medium : .semibold, design: .rounded))
-                .foregroundStyle(foreground)
+                .font(.system(size: kind == .operation ? 15 : 13, weight: .medium))
+                .foregroundStyle(kind == .operation && active ? theme.accent : .white)
                 .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
-                .background {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(fill)
-                        .brightness(hovering ? 0.08 : 0)
-                }
-                .overlay {
-                    if kind == .operation && !active {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .stroke(theme.accent.opacity(0.5), lineWidth: 1)
-                    }
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .background(shape.fill(fill).brightness(hovering ? 0.08 : 0))
+                .contentShape(shape)
                 .animation(.easeOut(duration: 0.15), value: active)
         }
         .buttonStyle(PressScaleStyle())
         .onHover { hovering = $0 }
     }
 
-    private var foreground: Color {
-        switch kind {
-        case .digit, .function, .equals: return .white
-        case .operation: return theme.accent
-        }
-    }
-
     private var fill: Color {
         switch kind {
-        case .digit: return Color.white.opacity(0.1)
-        case .function: return Color.white.opacity(0.2)
-        case .operation: return active ? .white : theme.accent.opacity(0.16)
-        case .equals: return theme.accent
+        case .plain: return Color.white.opacity(0.16)
+        case .operation: return active ? .white : theme.accent.opacity(0.85)
         }
     }
 }
