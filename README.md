@@ -49,7 +49,8 @@ Das App-Symbol wird mit `swift scripts/make-icon.swift` neu gezeichnet.
 - **Zeiger auf die Notch** öffnet die Island; die Verzögerung ist einstellbar. Ein Klick öffnet sie sofort.
 - **Reiter oben links** wechseln zwischen den Seiten (Musik, Timer, Ablage, Kalender, Wetter, Rechner). Wischen auf dem Trackpad wechselt bewusst keine Seiten, damit z. B. die Datumsleiste im Kalender frei scrollen kann.
 - **Dateien auf die Notch ziehen** öffnet zwei Felder: *AirDrop* oder *Ablegen*. Abgelegte Dateien zieht man wieder heraus, mit Doppelklick öffnet man sie.
-- Einstellungen über das Menüleisten-Symbol oder das Zahnrad in der Island.
+- Einstellungen über das Menüleisten-Symbol oder das Zahnrad in der Island. Das Suchfeld oben in der Seitenleiste findet die passende Seite (z. B. „Akzent“, „Vollbild“, „AirPods“).
+- **Vollbild:** Schaust du einen Film oder nutzt eine App im Vollbild, blendet sich die Island aus (abschaltbar unter Verhalten). Lautstärke- und Helligkeitsanzeigen erscheinen trotzdem kurz.
 
 ## Module
 

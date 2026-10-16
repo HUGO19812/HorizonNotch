@@ -28,6 +28,8 @@ final class NotchWindowController {
     var debugPinned = false
     #endif
     private var subscriptions = Set<AnyCancellable>()
+    /// Hidden because another app fills the screen (setting).
+    private var hiddenForFullscreen = false
 
     init(coordinator: NotchCoordinator, shelf: ShelfModule?) {
         self.coordinator = coordinator
@@ -77,6 +79,34 @@ final class NotchWindowController {
         coordinator.objectWillChange
             .sink { [weak self] in DispatchQueue.main.async { self?.updateMouseHandling(at: NSEvent.mouseLocation) } }
             .store(in: &subscriptions)
+        // Full screen: hide, except for a moment while a HUD or notification shows.
+        FullscreenMonitor.shared.$isFullscreen
+            .combineLatest(settings.$hideInFullscreen, coordinator.$transientModule.map { $0 != nil })
+            .map { fullscreen, hide, transient in fullscreen && hide && !transient }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] hidden in self?.setHiddenForFullscreen(hidden) }
+            .store(in: &subscriptions)
+        settings.$displayID
+            .dropFirst()
+            .sink { _ in DispatchQueue.main.async { FullscreenMonitor.shared.check() } }
+            .store(in: &subscriptions)
+    }
+
+    private func setHiddenForFullscreen(_ hidden: Bool) {
+        guard hidden != hiddenForFullscreen, let panel else { return }
+        hiddenForFullscreen = hidden
+        if hidden {
+            cancelTimers()
+            model.setExpanded(false)
+            model.setHovering(false)
+            panel.ignoresMouseEvents = true
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.25
+            panel.animator().alphaValue = hidden ? 0 : 1
+        }
+        if !hidden { updateMouseHandling(at: NSEvent.mouseLocation) }
     }
 
     /// Opens the island programmatically (e.g. from the menu bar).
@@ -150,7 +180,7 @@ final class NotchWindowController {
     }
 
     private func pointerMoved() {
-        guard !model.isFileDragActive else { return }
+        guard !model.isFileDragActive, !hiddenForFullscreen else { return }
         #if DEBUG
         if debugPinned { return }
         #endif
@@ -196,7 +226,7 @@ final class NotchWindowController {
             dragCarriesFiles = pasteboard.canReadObject(forClasses: [NSURL.self],
                                                         options: [.urlReadingFileURLsOnly: true])
         }
-        guard dragCarriesFiles, model.shelf != nil, settings.isEnabled("shelf") else { return }
+        guard dragCarriesFiles, !hiddenForFullscreen, model.shelf != nil, settings.isEnabled("shelf") else { return }
         let zone = islandRect(for: .expanded).insetBy(dx: -30, dy: -40)
         if zone.contains(NSEvent.mouseLocation) {
             if !model.isFileDragActive {
@@ -232,6 +262,10 @@ final class NotchWindowController {
     /// Accepts mouse events only while the pointer is over the island.
     @discardableResult
     private func updateMouseHandling(at location: CGPoint) -> Bool {
+        if hiddenForFullscreen {
+            panel?.ignoresMouseEvents = true
+            return false
+        }
         var rect = islandRect(for: model.state)
         // A little slack around an open island so it does not snap shut
         // when the pointer grazes its edge.
