@@ -31,6 +31,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             menu.addItem(entry(L("Bedienungshilfen erlauben …", "Allow Accessibility …"), #selector(openPermissions), key: ""))
         }
         menu.addItem(entry(L("Einstellungen …", "Settings …"), #selector(openSettings), key: ","))
+        menu.addItem(entry(L("Nach Updates suchen …", "Check for Updates …"), #selector(checkForUpdates), key: ""))
         menu.addItem(.separator())
         menu.addItem(entry(L("Horizon Notch beenden", "Quit Horizon Notch"), #selector(quit), key: "q"))
     }
@@ -45,5 +46,6 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     @objc private func openSettings() { appDelegate?.showSettings() }
     @objc private func openPermissions() { appDelegate?.showSettings(tab: .permissions) }
     @objc private func toggleAwake() { KeepAwake.shared.toggle() }
+    @objc private func checkForUpdates() { Updater.shared.check(userInitiated: true) }
     @objc private func quit() { NSApp.terminate(nil) }
 }

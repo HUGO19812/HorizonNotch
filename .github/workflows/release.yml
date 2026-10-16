@@ -26,9 +26,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Optional: with a Developer ID certificate and an app-specific
-      # password stored as secrets, the DMG is signed and notarized and
-      # opens without a Gatekeeper warning. Without them it is ad hoc signed.
+      # Optional signing certificate from the secrets MACOS_CERT_P12 (base64)
+      # and MACOS_CERT_PASSWORD:
+      # - a self-signed one keeps every build signed the same way, so macOS
+      #   keeps granted permissions (Accessibility …) across updates,
+      # - a Developer ID plus APPLE_ID, APPLE_TEAM_ID and APPLE_APP_PASSWORD
+      #   also notarizes, so the DMG opens without a Gatekeeper warning.
+      # Without a certificate the build is ad hoc signed.
       - name: Import signing certificate
         if: env.HAS_CERT == 'true'
         env:
@@ -43,10 +47,18 @@ jobs:
           security set-keychain-settings -lut 3600 "$KEYCHAIN"
           security unlock-keychain -p ci "$KEYCHAIN"
           echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple: -s -k ci "$KEYCHAIN"
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')
+          # A Developer ID if there is one, otherwise the self-signed
+          # certificate (not "valid" to macOS, so no -v here).
+          IDENTITY=$(security find-identity -p codesigning "$KEYCHAIN" | grep -m1 "Developer ID Application" | sed -E 's/.*"(.*)"/\1/')
+          [ -n "$IDENTITY" ] || IDENTITY=$(security find-identity -p codesigning "$KEYCHAIN" | grep -m1 '"' | sed -E 's/.*"(.*)"/\1/')
+          if ! echo "$IDENTITY" | grep -q "Developer ID"; then
+            # Self-signed: trust it for code signing so Xcode accepts it.
+            /usr/bin/openssl pkcs12 -in "$RUNNER_TEMP/cert.p12" -nokeys -passin pass:"$CERT_PASSWORD" -out "$RUNNER_TEMP/cert.pem"
+            sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$RUNNER_TEMP/cert.pem"
+          fi
           echo "SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
           if [ -n "$APPLE_ID" ]; then
             xcrun notarytool store-credentials ci --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
@@ -54,6 +66,8 @@ jobs:
             echo "NOTARY_PROFILE=ci" >> "$GITHUB_ENV"
           fi
       - name: Build DMG
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
         run: ./scripts/make-dmg.sh
 
       - uses: actions/upload-artifact@v4
@@ -73,9 +87,12 @@ jobs:
               | awk '/ MARKETING_VERSION = / { print $3; exit }')
             TAG="v$VERSION"
           fi
+          # What the app's updater reads: ".../releases/latest/download/latest.json".
+          printf '{"version": "%s", "build": %s, "dmg": "https://github.com/%s/releases/download/%s/HorizonNotch.dmg"}\n' \
+            "${TAG#v}" "$GITHUB_RUN_NUMBER" "$GITHUB_REPOSITORY" "$TAG" > build/latest.json
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" build/HorizonNotch.dmg --clobber
+            gh release upload "$TAG" build/HorizonNotch.dmg build/latest.json --clobber
           else
-            gh release create "$TAG" build/HorizonNotch.dmg --target "$GITHUB_SHA" \
+            gh release create "$TAG" build/HorizonNotch.dmg build/latest.json --target "$GITHUB_SHA" \
               --title "Horizon Notch ${TAG#v}" --generate-notes --latest
           fi

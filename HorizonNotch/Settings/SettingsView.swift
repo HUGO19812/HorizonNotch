@@ -34,7 +34,7 @@ private struct SettingsGroup: Identifiable {
 private let settingsGroups: [SettingsGroup] = [
     SettingsGroup(de: "App", en: "App", entries: [
         SettingsEntry(tab: .general, de: "Allgemein", en: "General", symbol: "gearshape",
-                      keywords: "Anmeldung starten Autostart login Sprache language Bildschirm display screen Monitor"),
+                      keywords: "Anmeldung starten Autostart login Sprache language Bildschirm display screen Monitor Update Aktualisierung Version"),
         SettingsEntry(tab: .appearance, de: "Darstellung", en: "Appearance", symbol: "paintbrush",
                       keywords: "Stil style Glas glass Hintergrundfarbe background colour color Rand border Akzentfarbe accent Farbig coloured Visualizer Größe size Breite width Höhe height Eckenradius corner radius Schatten shadow Schrift font Schriftart fett bold Reiter-Symbole tab icons Form shape"),
         SettingsEntry(tab: .behavior, de: "Verhalten", en: "Behaviour", symbol: "cursorarrow.motionlines",
@@ -237,6 +237,7 @@ private struct GeneralSettings: View {
                 note("Automatisch nimmt den Bildschirm mit Notch, sonst den Hauptbildschirm. Ohne Notch erscheint eine schwebende Kapsel.",
                      "Automatic picks the display with a notch, otherwise the main display. Without a notch a floating capsule appears.")
             }
+            UpdateSection()
         }
         .formStyle(.grouped)
     }
@@ -963,6 +964,44 @@ private struct PermissionRow: View {
 
 // MARK: - About
 
+/// Automatic updates from GitHub, and a button to look right now.
+private struct UpdateSection: View {
+    @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var updater = Updater.shared
+
+    var body: some View {
+        Section {
+            Toggle(L("Automatisch nach Updates suchen", "Check for updates automatically"), isOn: $settings.autoUpdateCheck)
+            LabeledContent(L("Version \(Updater.currentVersion) (Build \(Updater.currentBuild))",
+                             "Version \(Updater.currentVersion) (build \(Updater.currentBuild))")) {
+                HStack {
+                    statusText
+                    Button(L("Jetzt suchen", "Check now")) { updater.check(userInitiated: true) }
+                        .disabled(updater.status == .checking || updater.status == .downloading || updater.status == .installing)
+                }
+            }
+        } header: {
+            Text(L("Updates", "Updates"))
+        } footer: {
+            note("Neue Versionen kommen direkt von GitHub. Ein Klick auf „Installieren“ lädt sie, ersetzt die App und startet sie neu – kein DMG nötig.",
+                 "New versions come straight from GitHub. “Install” downloads one, replaces the app and restarts it – no DMG needed.")
+        }
+    }
+
+    @ViewBuilder
+    private var statusText: some View {
+        switch updater.status {
+        case .checking: ProgressView().controlSize(.small)
+        case .upToDate: Text(L("Aktuell", "Up to date")).foregroundStyle(.secondary)
+        case .available(let release): Text(L("Build \(release.build) verfügbar", "Build \(release.build) available")).foregroundStyle(.orange)
+        case .downloading: Text(L("Lädt …", "Downloading …")).foregroundStyle(.secondary)
+        case .installing: Text(L("Installiert …", "Installing …")).foregroundStyle(.secondary)
+        case .failed: Text(L("Fehlgeschlagen", "Failed")).foregroundStyle(.red)
+        case .idle: EmptyView()
+        }
+    }
+}
+
 private struct AboutSettings: View {
     var body: some View {
         VStack(spacing: 10) {
@@ -970,8 +1009,9 @@ private struct AboutSettings: View {
                 .resizable()
                 .frame(width: 96, height: 96)
             Text("Horizon Notch").font(.title2.weight(.semibold))
-            Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
+            Text("Version \(Updater.currentVersion) (Build \(Updater.currentBuild))")
                 .foregroundStyle(.secondary)
+            Button(L("Nach Updates suchen", "Check for Updates")) { Updater.shared.check(userInitiated: true) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

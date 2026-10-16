@@ -15,6 +15,8 @@ Auf Macs und Bildschirmen ohne Notch erscheint oben in der Mitte eine schwebende
 
 Es läuft immer nur eine Horizon Notch: Wird eine zweite Kopie gestartet, beendet sie die erste.
 
+**Updates kommen danach von selbst:** Horizon Notch schaut nach dem Start und alle sechs Stunden auf GitHub nach einer neueren Version und fragt, ob sie installiert werden soll. Ein Klick auf „Installieren“ lädt sie, ersetzt die App und startet sie neu. Von Hand: Menüleisten-Symbol → „Nach Updates suchen …“ oder Einstellungen → Allgemein. Abschalten lässt es sich dort auch.
+
 ### DMG selbst bauen
 
 ```bash
@@ -24,6 +26,8 @@ Es läuft immer nur eine Horizon Notch: Wird eine zweite Kopie gestartet, beende
 Legt `build/HorizonNotch.dmg` an (Apple Silicon und Intel). Die Version in der App kommt aus `MARKETING_VERSION` im Xcode-Projekt.
 
 Automatisch geht es über GitHub Actions: Bei jedem Push auf `main` baut der Workflow **DMG** (`.github/workflows/release.yml`) die DMG und veröffentlicht sie als Release `v<MARKETING_VERSION>`; gibt es die Version schon, wird ihre DMG ersetzt. Für eine neue Version `MARKETING_VERSION` im Xcode-Projekt erhöhen. Der Download-Link oben zeigt immer auf das neueste Release.
+
+Damit macOS erteilte Berechtigungen (Bedienungshilfen, Kalender …) nach einem Update behält, muss jede Version gleich signiert sein. Dafür ein eigenes Signatur-Zertifikat als Secrets `MACOS_CERT_P12` (Base64 der .p12-Datei) und `MACOS_CERT_PASSWORD` hinterlegen; ein selbst signiertes reicht. Ohne Zertifikat wird ad hoc signiert, dann fragt macOS nach jedem Update neu.
 
 Ohne Warnung beim Öffnen geht es nur mit einem kostenpflichtigen Apple-Developer-Konto. Dafür im Repo unter *Settings → Secrets → Actions* hinterlegen: `MACOS_CERT_P12` (Developer-ID-Zertifikat als Base64), `MACOS_CERT_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID` und `APPLE_APP_PASSWORD` (app-spezifisches Passwort). Dann wird die DMG signiert und notarisiert. Lokal geht das mit `SIGN_IDENTITY="Developer ID Application: …" NOTARY_PROFILE=<Profil> ./scripts/make-dmg.sh`.
 

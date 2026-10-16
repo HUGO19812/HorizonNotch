@@ -8,6 +8,8 @@
 # Optional environment:
 #   SIGN_IDENTITY   Code signing identity, e.g. "Developer ID Application: Name (TEAMID)".
 #                   Default: "FlowTools Local Signing" if present, otherwise ad hoc.
+#   BUILD_NUMBER    Build number (CFBundleVersion); the app updates itself
+#                   when GitHub has a higher one. CI passes the run number.
 #   NOTARY_PROFILE  notarytool keychain profile (xcrun notarytool store-credentials).
 #                   When set, the DMG is notarized and stapled, so it opens
 #                   without any Gatekeeper warning. Needs a Developer ID identity.
@@ -27,6 +29,9 @@ SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 echo "→ Signatur: $SIGN_IDENTITY"
 
 SIGN_ARGS=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGN_STYLE=Manual)
+if [ -n "${BUILD_NUMBER:-}" ]; then
+  SIGN_ARGS+=(CURRENT_PROJECT_VERSION="$BUILD_NUMBER")
+fi
 if [ -n "${NOTARY_PROFILE:-}" ]; then
   # Notarization requires the hardened runtime and a secure timestamp; the
   # entitlements keep calendar, location and AppleScript working under it.
@@ -78,7 +83,7 @@ else
   hdiutil create -volname "Horizon Notch" -srcfolder "$STAGE" -fs HFS+ -format UDZO \
     -imagekey zlib-level=9 -ov "$DMG" > /dev/null
 fi
-if [ "$SIGN_IDENTITY" != "-" ]; then
+if [ -n "${NOTARY_PROFILE:-}" ]; then
   codesign --force --sign "$SIGN_IDENTITY" --timestamp "$DMG"
 fi
 echo "✓ DMG: $DMG"
