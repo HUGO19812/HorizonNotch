@@ -38,7 +38,7 @@ struct LockScreenView: View {
                         large(info: info, size: size)
                     } else {
                         compact(info: info)
-                            .position(x: size.width / 2, y: size.height * 0.68)
+                            .position(x: size.width / 2, y: size.height * 0.67)
                     }
                 }
             }
@@ -58,26 +58,26 @@ struct LockScreenView: View {
             state.lyrics = true
         }) {
             HStack(spacing: 10) {
-                CoverArt(image: nowPlaying.artwork, cornerRadius: 6)
+                CoverArt(image: nowPlaying.artwork, cornerRadius: 8)
                     .matchedGeometryEffect(id: "cover", in: player)
-                    .frame(width: 38, height: 38)
+                    .frame(width: 52, height: 52)
                     .onTapGesture { state.large = true }
                     .help(L("Groß anzeigen", "Show large"))
                 Titles(info: info, alignment: .leading)
                 Spacer(minLength: 0)
             }
         }
-        .frame(width: 300)
+        .frame(width: 390)
         .transition(.opacity)
     }
 
     /// Large cover under the clock with the card below; with lyrics the
     /// pair moves left and the lyrics appear on the right.
     private func large(info: NowPlayingInfo, size: CGSize) -> some View {
-        let cover = min(300, size.height * 0.3)
-        return HStack(alignment: .center, spacing: 64) {
-            VStack(spacing: 16) {
-                CoverArt(image: nowPlaying.artwork, cornerRadius: 14)
+        let cover = min(380, size.height * 0.36)
+        return HStack(alignment: .center, spacing: 72) {
+            VStack(spacing: 18) {
+                CoverArt(image: nowPlaying.artwork, cornerRadius: 18)
                     .matchedGeometryEffect(id: "cover", in: player)
                     .frame(width: cover, height: cover)
                     .shadow(color: .black.opacity(0.5), radius: 26, y: 12)
@@ -88,17 +88,17 @@ struct LockScreenView: View {
                     Titles(info: info, alignment: .center)
                         .frame(maxWidth: .infinity)
                 }
-                .frame(width: max(260, cover * 0.85))
+                .frame(width: max(340, cover * 0.9))
                 .transition(.opacity)
             }
             if state.lyrics {
-                LyricsPanel(lyrics: lyrics, info: info, large: true, fontSize: 24) { nowPlaying.seek(to: $0) }
-                    .frame(width: 440, height: cover + 150)
+                LyricsPanel(lyrics: lyrics, info: info, large: true, fontSize: 30) { nowPlaying.seek(to: $0) }
+                    .frame(width: 540, height: cover + 180)
                     .transition(.opacity.combined(with: .offset(x: 40)))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, size.height * 0.29)
+        .padding(.top, size.height * 0.27)
     }
 }
 
@@ -158,12 +158,12 @@ private struct Titles: View {
     let alignment: HorizontalAlignment
 
     var body: some View {
-        VStack(alignment: alignment, spacing: 1) {
+        VStack(alignment: alignment, spacing: 2) {
             Text(info.title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 17, weight: .semibold))
                 .lineLimit(1)
             Text(info.artist.isEmpty ? (info.appName ?? "") : info.artist)
-                .font(.system(size: 11))
+                .font(.system(size: 14))
                 .foregroundStyle(.white.opacity(0.6))
                 .lineLimit(1)
         }
@@ -182,12 +182,12 @@ private struct LockControls<Header: View>: View {
 
     var body: some View {
         GlassCard {
-            VStack(spacing: 10) {
+            VStack(spacing: 14) {
                 header
                     .overlay(alignment: .topTrailing) {
-                        LockButton(symbol: lyricsOn ? "quote.bubble.fill" : "quote.bubble", size: 11, action: onLyrics)
+                        LockButton(symbol: lyricsOn ? "quote.bubble.fill" : "quote.bubble", size: 15, action: onLyrics)
                             .foregroundStyle(lyricsOn ? .white : .white.opacity(0.55))
-                            .frame(width: 26, height: 22)
+                            .frame(width: 32, height: 28)
                             .offset(x: 8, y: -4)
                             .help(L("Songtext", "Lyrics"))
                     }
@@ -195,13 +195,13 @@ private struct LockControls<Header: View>: View {
                 HStack(spacing: 0) {
                     small("shuffle", active: info.isShuffling) { service.toggleShuffle() }
                     Spacer(minLength: 0)
-                    LockButton(symbol: "backward.fill", size: 17) { service.send(.previous) }
+                    LockButton(symbol: "backward.fill", size: 22) { service.send(.previous) }
                     Spacer(minLength: 0)
-                    LockButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 22) {
+                    LockButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 30) {
                         service.send(.togglePlayPause)
                     }
                     Spacer(minLength: 0)
-                    LockButton(symbol: "forward.fill", size: 17) { service.send(.next) }
+                    LockButton(symbol: "forward.fill", size: 22) { service.send(.next) }
                     Spacer(minLength: 0)
                     small(info.repeatMode == 2 ? "repeat.1" : "repeat", active: info.repeatMode > 1) { service.cycleRepeat() }
                 }
@@ -210,7 +210,7 @@ private struct LockControls<Header: View>: View {
     }
 
     private func small(_ symbol: String, active: Bool, action: @escaping () -> Void) -> some View {
-        LockButton(symbol: symbol, size: 11, action: action)
+        LockButton(symbol: symbol, size: 15, action: action)
             .foregroundStyle(active ? .white : .white.opacity(0.45))
             .opacity(service.usingFallback ? 0.3 : 1)
     }
@@ -221,10 +221,10 @@ private struct GlassCard<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
         let padded = content
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 22)
+            .padding(.vertical, 16)
         Group {
             if #available(macOS 26.0, *) {
                 padded.glassEffect(.regular.tint(.black.opacity(0.15)), in: shape)
@@ -250,14 +250,14 @@ private struct LockProgress: View {
             let fraction = info.duration > 0 ? min(max(position / info.duration, 0), 1) : 0
             HStack(spacing: 8) {
                 Text(time(position))
-                    .frame(width: 34, alignment: .leading)
+                    .frame(width: 42, alignment: .leading)
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.white.opacity(0.22))
                         Capsule().fill(Color.white.opacity(0.9))
                             .frame(width: proxy.size.width * CGFloat(fraction))
                     }
-                    .frame(height: dragValue == nil ? 4 : 6)
+                    .frame(height: dragValue == nil ? 6 : 9)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
                     .gesture(DragGesture(minimumDistance: 0)
@@ -270,11 +270,11 @@ private struct LockProgress: View {
                             dragValue = nil
                         })
                 }
-                .frame(height: 12)
+                .frame(height: 16)
                 Text("-" + time(max(0, info.duration - position)))
-                    .frame(width: 38, alignment: .trailing)
+                    .frame(width: 46, alignment: .trailing)
             }
-            .font(.system(size: 9, weight: .medium).monospacedDigit())
+            .font(.system(size: 12, weight: .medium).monospacedDigit())
             .foregroundStyle(.white.opacity(0.55))
         }
     }
@@ -296,7 +296,7 @@ private struct LockButton: View {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
                 .contentTransition(.symbolEffect(.replace))
-                .frame(width: 36, height: 30)
+                .frame(width: 48, height: 40)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressScaleStyle())
