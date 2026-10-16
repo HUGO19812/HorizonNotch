@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Horizon Notch</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Horizon Notch</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Horizon Notch steuert Musik und Spotify, falls die Systemschnittstelle für „Jetzt läuft“ nicht verfügbar ist.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Horizon Notch zeigt verbundene Bluetooth-Geräte und den Akkustand deiner AirPods.</string>
+	<key>NSFocusStatusUsageDescription</key>
+	<string>Horizon Notch zeigt kurz an, wenn ein Fokus ein- oder ausgeschaltet wird.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Horizon Notch zeigt deinen nächsten Termin und einen Countdown bis zum Meeting in der Notch.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Horizon Notch zeigt deinen nächsten Termin und einen Countdown bis zum Meeting in der Notch.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Horizon Notch zeigt das Wetter an deinem Standort.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Horizon Notch zeigt das Wetter an deinem Standort.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Hugo Mathis</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+</dict>
+</plist>
