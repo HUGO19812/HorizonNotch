@@ -10,14 +10,16 @@ import SwiftUI
 /// without that private API a window cannot appear there at all.
 final class LockScreenController {
     private let nowPlaying: NowPlayingService
+    private let lyrics: LyricsService
     private let settings = AppSettings.shared
     private var window: NSPanel?
     private var observers: [NSObjectProtocol] = []
     private(set) var isShowing = false
     var onLockChange: ((Bool) -> Void)?
 
-    init(nowPlaying: NowPlayingService) {
+    init(nowPlaying: NowPlayingService, lyrics: LyricsService) {
         self.nowPlaying = nowPlaying
+        self.lyrics = lyrics
         let center = DistributedNotificationCenter.default()
         observers.append(center.addObserver(forName: Notification.Name("com.apple.screenIsLocked"), object: nil,
                                             queue: .main) { [weak self] _ in self?.locked() })
@@ -73,7 +75,7 @@ final class LockScreenController {
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying))
+        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics))
         host.sizingOptions = []
         panel.contentView = host
         window = panel

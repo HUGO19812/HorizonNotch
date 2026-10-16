@@ -47,7 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.register(notifications)
         connectivityMonitor = ConnectivityMonitor { [weak self] in self?.connectivity.post($0) }
         downloadWatcher = DownloadWatcher { [weak self] in self?.notifications.post($0) }
-        lockScreen = LockScreenController(nowPlaying: nowPlaying)
+        lockScreen = LockScreenController(nowPlaying: nowPlaying, lyrics: media.lyrics)
         coordinator.register(battery)
         coordinator.register(privacy)
         nowPlaying.start()

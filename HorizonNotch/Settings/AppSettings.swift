@@ -50,6 +50,17 @@ enum HUDBarColor: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// How the lock screen player looks.
+enum LockScreenStyle: String, CaseIterable, Identifiable {
+    /// Small card with a small cover.
+    case compact
+    /// Big cover, the card below.
+    case artwork
+    /// Big cover and card on the left, lyrics on the right.
+    case lyrics
+    var id: String { rawValue }
+}
+
 /// Colour of the sung lyrics.
 enum LyricsColorMode: String, CaseIterable, Identifiable {
     /// White on grey, like Apple Music.
@@ -95,6 +106,7 @@ final class AppSettings: ObservableObject {
     @Published var connectivityFocus: Bool { didSet { defaults.set(connectivityFocus, forKey: "connectivityFocus") } }
     @Published var notifyDownloads: Bool { didSet { defaults.set(notifyDownloads, forKey: "notifyDownloads") } }
     @Published var lockScreenWidgets: Bool { didSet { defaults.set(lockScreenWidgets, forKey: "lockScreenWidgets") } }
+    @Published var lockScreenStyle: LockScreenStyle { didSet { defaults.set(lockScreenStyle.rawValue, forKey: "lockScreenStyle") } }
     @Published var sneakPeek: Bool { didSet { defaults.set(sneakPeek, forKey: "sneakPeek") } }
     @Published var sneakPeekOnSeek: Bool { didSet { defaults.set(sneakPeekOnSeek, forKey: "sneakPeekOnSeek") } }
     @Published var sneakPeekDuration: Double { didSet { defaults.set(sneakPeekDuration, forKey: "sneakPeekDuration") } }
@@ -165,6 +177,7 @@ final class AppSettings: ObservableObject {
         connectivityFocus = defaults.bool(forKey: "connectivityFocus")
         notifyDownloads = defaults.bool(forKey: "notifyDownloads")
         lockScreenWidgets = defaults.object(forKey: "lockScreenWidgets") as? Bool ?? true
+        lockScreenStyle = LockScreenStyle(rawValue: defaults.string(forKey: "lockScreenStyle") ?? "") ?? .lyrics
         sneakPeek = defaults.object(forKey: "sneakPeek") as? Bool ?? true
         sneakPeekOnSeek = defaults.object(forKey: "sneakPeekOnSeek") as? Bool ?? true
         sneakPeekDuration = defaults.object(forKey: "sneakPeekDuration") as? Double ?? 3

@@ -238,10 +238,12 @@ private struct MediaControls: View {
 
 /// Lyrics like Apple Music: every line in bold, the sung one bright and
 /// sharp, the others dimmed and slightly blurred, gliding upwards.
-private struct LyricsPanel: View {
+struct LyricsPanel: View {
     @ObservedObject var lyrics: LyricsService
     let info: NowPlayingInfo
     let large: Bool
+    /// Overrides the text size (the lock screen uses bigger lines).
+    var fontSize: CGFloat?
     /// Jumps playback to a position (a tapped line).
     let onSeek: (Double) -> Void
 
@@ -254,7 +256,7 @@ private struct LyricsPanel: View {
                     let current = lyrics.index(at: position)
                     LyricsScroller(lines: lyrics.lines, current: current,
                                    sung: current.map { lyrics.sungWords(in: $0, at: position) } ?? 0,
-                                   large: large, onSeek: onSeek)
+                                   large: large, fontSize: fontSize, onSeek: onSeek)
                 }
             case .loading:
                 status(L("Songtext wird geladen …", "Loading lyrics …"))
@@ -269,7 +271,7 @@ private struct LyricsPanel: View {
 
     private func status(_ message: String) -> some View {
         Text(message)
-            .font(.system(size: large ? 17 : 15, weight: .bold))
+            .font(.system(size: fontSize ?? (large ? 17 : 15), weight: .bold))
             .foregroundStyle(.white.opacity(0.3))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
@@ -281,6 +283,7 @@ private struct LyricsScroller: View {
     /// Words of the current line already sung (they turn fully white).
     let sung: Int
     let large: Bool
+    var fontSize: CGFloat?
     let onSeek: (Double) -> Void
     @State private var hovered: Int?
     @Environment(\.coverTint) private var tint
@@ -288,7 +291,7 @@ private struct LyricsScroller: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: large ? 10 : 8) {
+                VStack(alignment: .leading, spacing: fontSize.map { $0 * 0.55 } ?? (large ? 10 : 8)) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                         let isCurrent = index == current
                         let isPast = current.map { index < $0 } ?? false
@@ -301,7 +304,7 @@ private struct LyricsScroller: View {
                                     .foregroundStyle(.white.opacity(isCurrent ? 1 : (isHovered ? 0.65 : (isPast ? 0.22 : 0.34))))
                             }
                         }
-                            .font(.system(size: large ? 19 : 16, weight: .bold))
+                            .font(.system(size: fontSize ?? (large ? 19 : 16), weight: .bold))
                             .blur(radius: isCurrent || isHovered ? 0 : 1.1)
                             .scaleEffect(isCurrent ? 1 : 0.96, anchor: .leading)
                             .fixedSize(horizontal: false, vertical: true)

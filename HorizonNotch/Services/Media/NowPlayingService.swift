@@ -68,6 +68,13 @@ final class NowPlayingService: ObservableObject {
         if usingFallback { fallback.seek(to: seconds) } else { bridge.send("seek \(seconds)") }
     }
 
+    /// Off → all → one → off, like Music.
+    func cycleRepeat() {
+        guard let current = info, !usingFallback else { return }
+        let next = current.repeatMode == 3 ? 2 : (current.repeatMode == 2 ? 1 : 3)
+        bridge.send("repeat \(next)")
+    }
+
     func toggleShuffle() {
         guard let current = info, !usingFallback else { return }
         bridge.send("shuffle \(current.isShuffling ? 1 : 3)")
