@@ -462,8 +462,13 @@ private struct HUDSettings: View {
                 .pickerStyle(.radioGroup)
                 Toggle(L("Prozentzahl anzeigen", "Show percentage"), isOn: $settings.hudShowPercent)
                     .disabled(settings.hudStyle != .notch)
-                Toggle(L("Farbige Balken (Helligkeit gelb, Tastatur blau)", "Coloured bars (brightness yellow, keyboard blue)"),
-                       isOn: $settings.colorfulAccents)
+                Picker(L("Balkenfarbe", "Bar colour"), selection: $settings.hudBarColor) {
+                    Text(L("Weiß", "White")).tag(HUDBarColor.white)
+                    Text(L("Farbig", "Coloured")).tag(HUDBarColor.colorful)
+                }
+                .pickerStyle(.segmented)
+                note("Farbig: Lautstärke in der Akzentfarbe, Helligkeit gelb, Tastaturlicht blau.",
+                     "Coloured: volume in the accent colour, brightness yellow, keyboard light blue.")
             }
         }
         .formStyle(.grouped)

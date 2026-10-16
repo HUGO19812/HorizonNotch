@@ -42,6 +42,14 @@ enum HUDStyle: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Colour of the volume/brightness/keyboard bar.
+enum HUDBarColor: String, CaseIterable, Identifiable {
+    case white
+    /// Volume in the accent colour, brightness yellow, keyboard light blue.
+    case colorful
+    var id: String { rawValue }
+}
+
 /// Colour of the sung lyrics.
 enum LyricsColorMode: String, CaseIterable, Identifiable {
     /// White on grey, like Apple Music.
@@ -99,6 +107,7 @@ final class AppSettings: ObservableObject {
     @Published var hiddenTabs: Set<String> { didSet { defaults.set(Array(hiddenTabs), forKey: "hiddenTabs") } }
     @Published var hudShowPercent: Bool { didSet { defaults.set(hudShowPercent, forKey: "hudShowPercent") } }
     @Published var hudStyle: HUDStyle { didSet { defaults.set(hudStyle.rawValue, forKey: "hudStyle") } }
+    @Published var hudBarColor: HUDBarColor { didSet { defaults.set(hudBarColor.rawValue, forKey: "hudBarColor") } }
     @Published var musicGesture: MusicGesture { didSet { defaults.set(musicGesture.rawValue, forKey: "musicGesture") } }
     @Published var keepAwakeIcon: Bool { didSet { defaults.set(keepAwakeIcon, forKey: "keepAwakeIcon") } }
     @Published var batteryInHeader: Bool { didSet { defaults.set(batteryInHeader, forKey: "batteryInHeader") } }
@@ -165,6 +174,7 @@ final class AppSettings: ObservableObject {
         hiddenTabs = Set(defaults.stringArray(forKey: "hiddenTabs") ?? [])
         hudShowPercent = defaults.bool(forKey: "hudShowPercent")
         hudStyle = HUDStyle(rawValue: defaults.string(forKey: "hudStyle") ?? "") ?? .notch
+        hudBarColor = HUDBarColor(rawValue: defaults.string(forKey: "hudBarColor") ?? "") ?? .colorful
         musicGesture = MusicGesture(rawValue: defaults.string(forKey: "musicGesture") ?? "") ?? .track
         keepAwakeIcon = defaults.object(forKey: "keepAwakeIcon") as? Bool ?? true
         batteryInHeader = defaults.object(forKey: "batteryInHeader") as? Bool ?? true

@@ -122,18 +122,27 @@ final class HUDModule: NotchModule {
     func compactTrailing() -> AnyView { AnyView(HUDLevelBar(module: self)) }
 }
 
-private struct HUDIcon: View {
-    @ObservedObject var module: HUDModule
+extension HUDModule.Kind {
+    /// Bar colour for this kind, per Settings → Volume & Brightness.
+    func barColor(accent: Color) -> Color {
+        guard AppSettings.shared.hudBarColor == .colorful else { return .white }
+        switch self {
+        case .volume: return accent
+        case .brightness: return Color.yellow.opacity(0.95)
+        case .keyboard: return Color(red: 0.55, green: 0.8, blue: 1)
+        }
+    }
 
-    private var symbol: String {
-        switch module.kind {
+    /// SF Symbol for the kind at a level.
+    func symbol(level: Float, muted: Bool) -> String {
+        switch self {
         case .brightness:
-            return module.level < 0.5 ? "sun.min.fill" : "sun.max.fill"
+            return level < 0.5 ? "sun.min.fill" : "sun.max.fill"
         case .keyboard:
-            return module.level <= 0 ? "light.min" : "light.max"
+            return level <= 0 ? "light.min" : "light.max"
         case .volume:
-            if module.muted { return "speaker.slash.fill" }
-            switch module.level {
+            if muted { return "speaker.slash.fill" }
+            switch level {
             case ..<0.01: return "speaker.fill"
             case ..<0.34: return "speaker.wave.1.fill"
             case ..<0.67: return "speaker.wave.2.fill"
@@ -141,6 +150,12 @@ private struct HUDIcon: View {
             }
         }
     }
+}
+
+private struct HUDIcon: View {
+    @ObservedObject var module: HUDModule
+
+    private var symbol: String { module.kind.symbol(level: module.level, muted: module.muted) }
 
     var body: some View {
         Image(systemName: symbol)
@@ -158,13 +173,7 @@ private struct HUDLevelBar: View {
     @ObservedObject private var settings = AppSettings.shared
     @Environment(\.islandTheme) private var theme
 
-    private var barColor: Color {
-        switch module.kind {
-        case .brightness: return theme.tint(Color.yellow.opacity(0.95))
-        case .keyboard: return theme.tint(Color(red: 0.55, green: 0.8, blue: 1))
-        case .volume: return .white
-        }
-    }
+    private var barColor: Color { module.kind.barColor(accent: theme.accent) }
 
     var body: some View {
         let level = CGFloat(module.muted ? 0 : module.level)
