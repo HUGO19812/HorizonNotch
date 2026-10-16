@@ -82,10 +82,40 @@ final class CalculatorEngine: ObservableObject {
         guard let accumulator, let pending else { return }
         let operand = value
         expression = "\(format(accumulator)) \(pending.rawValue) \(format(operand)) ="
-        setResult(pending.apply(accumulator, operand))
+        let result = pending.apply(accumulator, operand)
+        setResult(result)
+        if result.isFinite { remember("\(expression) \(display)") }
         self.accumulator = nil
         self.pending = nil
         typing = false
+    }
+
+    // MARK: History
+
+    static let historyLimit = 30
+
+    /// Stored as "12 × 3 = 36", newest first, in the settings.
+    private func remember(_ entry: String) {
+        var history = AppSettings.shared.calculatorHistory
+        history.removeAll { $0 == entry }
+        history.insert(entry, at: 0)
+        AppSettings.shared.calculatorHistory = Array(history.prefix(Self.historyLimit))
+    }
+
+    /// The result part of a history entry ("36" from "12 × 3 = 36").
+    static func result(of entry: String) -> String {
+        entry.components(separatedBy: "= ").last ?? entry
+    }
+
+    /// Takes a result from the history as the number being typed, so it
+    /// can continue a calculation.
+    func recall(_ entry: String) {
+        display = Self.result(of: entry)
+        typing = true
+    }
+
+    func clearHistory() {
+        AppSettings.shared.calculatorHistory = []
     }
 
     func clear() {
@@ -144,30 +174,45 @@ extension Notification.Name {
     static let islandWantsKeyboard = Notification.Name("horizon.islandWantsKeyboard")
 }
 
+/// Three columns: the history on the left, the calculation in the middle,
+/// the keypad on the right.
 private struct CalculatorView: View {
     @ObservedObject var engine: CalculatorEngine
+    @ObservedObject private var settings = AppSettings.shared
+    @Environment(\.islandTheme) private var theme
     @FocusState private var focused: Bool
+    @State private var copied = false
 
     var body: some View {
-        HStack(spacing: 18) {
-            VStack(alignment: .trailing, spacing: 2) {
-                Spacer(minLength: 0)
-                Text(engine.expression)
-                    .font(.system(size: 13, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.45))
+        HStack(spacing: 0) {
+            HistoryList(entries: settings.calculatorHistory, accent: theme.accent,
+                        onPick: { engine.recall($0) }, onClear: { engine.clearHistory() })
+                .frame(width: 140)
+            Rectangle()
+                .fill(Color.white.opacity(0.12))
+                .frame(width: 1)
+                .padding(.leading, 12)
+            VStack(alignment: .trailing, spacing: 0) {
+                Text(copied ? L("Kopiert", "Copied") : engine.expression)
+                    .font(.system(size: 20, weight: .regular).monospacedDigit())
+                    .foregroundStyle(copied ? theme.accent : .white.opacity(0.45))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .frame(height: 24)
                 Text(engine.display)
-                    .font(.system(size: 42, weight: .light, design: .rounded).monospacedDigit())
+                    .font(.system(size: 40, weight: .semibold).monospacedDigit())
                     .lineLimit(1)
-                    .minimumScaleFactor(0.4)
+                    .minimumScaleFactor(0.35)
                     .contentTransition(.numericText())
                     .animation(.snappy(duration: 0.15), value: engine.display)
+                    .onTapGesture { copy() }
+                    .help(L("Klicken zum Kopieren", "Click to copy"))
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.bottom, 6)
+            .padding(.horizontal, 14)
 
             Keypad(engine: engine)
-                .frame(width: 252)
+                .frame(width: 200)
         }
         .focusable()
         .focusEffectDisabled()
@@ -179,12 +224,25 @@ private struct CalculatorView: View {
         }
     }
 
+    private func copy() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(engine.display, forType: .string)
+        withAnimation(.easeOut(duration: 0.15)) { copied = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation(.easeOut(duration: 0.2)) { copied = false }
+        }
+    }
+
     private func handle(_ press: KeyPress) -> KeyPress.Result {
         switch press.key {
         case .return: engine.equals(); return .handled
         case .escape: engine.clear(); return .handled
         case .delete, .deleteForward: engine.backspace(); return .handled
         default: break
+        }
+        if press.modifiers.contains(.command), press.characters == "c" {
+            copy()
+            return .handled
         }
         switch press.characters {
         case let c where c.count == 1 && "0123456789".contains(c): engine.digit(c)
@@ -202,15 +260,101 @@ private struct CalculatorView: View {
     }
 }
 
+/// Past calculations, newest at the top, separated by thin lines. A click
+/// takes the result into the calculator.
+private struct HistoryList: View {
+    let entries: [String]
+    let accent: Color
+    let onPick: (String) -> Void
+    let onClear: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
+                    if index > 0 {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.12))
+                            .frame(height: 1)
+                    }
+                    HistoryRow(entry: entry, accent: accent) { onPick(entry) }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .mask {
+            LinearGradient(stops: [.init(color: .black, location: 0.8), .init(color: .clear, location: 1)],
+                           startPoint: .top, endPoint: .bottom)
+        }
+        .overlay {
+            if entries.isEmpty {
+                Text(L("Noch keine Rechnungen", "No calculations yet"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.3))
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            if !entries.isEmpty && hovering {
+                Button(action: onClear) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .frame(width: 20, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(L("Verlauf löschen", "Clear history"))
+                .transition(.opacity)
+            }
+        }
+        .onHover { over in withAnimation(.easeOut(duration: 0.15)) { hovering = over } }
+    }
+}
+
+private struct HistoryRow: View {
+    let entry: String
+    let accent: Color
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        let result = CalculatorEngine.result(of: entry)
+        let calculation = String(entry.dropLast(result.count)).trimmingCharacters(in: .whitespaces)
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(calculation)
+                    .foregroundStyle(.white.opacity(0.45))
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                Text(result)
+                    .foregroundStyle(hovering ? accent : .white)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                Spacer(minLength: 0)
+            }
+            .font(.system(size: 14, weight: .regular).monospacedDigit())
+            .padding(.vertical, 9)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(L("Ergebnis übernehmen", "Use result"))
+    }
+}
+
+/// Four columns: grey keys for digits and functions, operators and "="
+/// filled with the island's accent colour. 0 and = are two keys wide.
 private struct Keypad: View {
     @ObservedObject var engine: CalculatorEngine
 
     var body: some View {
         Grid(horizontalSpacing: 5, verticalSpacing: 4) {
             GridRow {
-                Key(engine.clearTitle, kind: .function) { engine.clear() }
-                Key("±", kind: .function) { engine.toggleSign() }
-                Key("%", kind: .function) { engine.percent() }
+                Key(engine.clearTitle) { engine.clear() }
+                Key("±") { engine.toggleSign() }
+                Key("%") { engine.percent() }
                 Key("÷", kind: .operation, active: engine.pending == .divide) { engine.operation(.divide) }
             }
             GridRow {
@@ -228,23 +372,24 @@ private struct Keypad: View {
             GridRow {
                 Key("0") { engine.digit("0") }
                     .gridCellColumns(2)
-                Key(",") { engine.decimal() }
                 Key("=", kind: .operation) { engine.equals() }
+                    .gridCellColumns(2)
             }
         }
     }
 }
 
 private struct Key: View {
-    enum Kind { case digit, function, operation }
+    enum Kind { case plain, operation }
 
     let title: String
     let kind: Kind
     let active: Bool
     let action: () -> Void
     @State private var hovering = false
+    @Environment(\.islandTheme) private var theme
 
-    init(_ title: String, kind: Kind = .digit, active: Bool = false, action: @escaping () -> Void) {
+    init(_ title: String, kind: Kind = .plain, active: Bool = false, action: @escaping () -> Void) {
         self.title = title
         self.kind = kind
         self.active = active
@@ -252,13 +397,15 @@ private struct Key: View {
     }
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
         Button(action: action) {
             Text(title)
-                .font(.system(size: kind == .operation ? 15 : 13, weight: kind == .digit ? .medium : .semibold))
-                .foregroundStyle(active ? Color.orange : (kind == .function ? .black : .white))
+                .font(.system(size: kind == .operation ? 15 : 13, weight: .medium))
+                .foregroundStyle(kind == .operation && active ? theme.accent : .white)
                 .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
-                .background(Capsule().fill(fill).brightness(hovering ? 0.08 : 0))
-                .contentShape(Capsule())
+                .background(shape.fill(fill).brightness(hovering ? 0.08 : 0))
+                .contentShape(shape)
+                .animation(.easeOut(duration: 0.15), value: active)
         }
         .buttonStyle(PressScaleStyle())
         .onHover { hovering = $0 }
@@ -266,9 +413,8 @@ private struct Key: View {
 
     private var fill: Color {
         switch kind {
-        case .digit: return Color.white.opacity(0.13)
-        case .function: return Color(white: 0.65)
-        case .operation: return active ? .white : .orange
+        case .plain: return Color.white.opacity(0.16)
+        case .operation: return active ? .white : theme.accent.opacity(0.85)
         }
     }
 }

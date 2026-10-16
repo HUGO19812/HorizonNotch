@@ -40,22 +40,31 @@ struct MediaCompactVisualizer: View {
 
 // MARK: - Expanded
 
-/// Fades out with a light blur and a slight shrink – a calm swap between
-/// two layouts.
-private struct BlurFade: ViewModifier {
-    let amount: CGFloat
+/// The lyrics field opening: it unrolls from the player towards the
+/// right, sliding in and coming into focus. Closing reverses it quickly.
+private struct LyricsReveal: ViewModifier {
+    /// 0 = hidden, 1 = fully shown.
+    let progress: CGFloat
 
     func body(content: Content) -> some View {
         content
-            .opacity(1 - amount)
-            .blur(radius: 10 * amount)
-            .scaleEffect(1 - 0.03 * amount)
+            .mask(alignment: .leading) {
+                Rectangle().scaleEffect(x: max(0.001, progress), anchor: .leading)
+            }
+            .offset(x: 28 * (1 - progress))
+            .blur(radius: 6 * (1 - progress))
+            .opacity(Double(0.2 + 0.8 * progress))
     }
 }
 
 extension AnyTransition {
-    static var blurFade: AnyTransition {
-        .modifier(active: BlurFade(amount: 1), identity: BlurFade(amount: 0))
+    static var lyricsReveal: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(active: LyricsReveal(progress: 0), identity: LyricsReveal(progress: 1))
+                .animation(.spring(response: 0.5, dampingFraction: 0.9).delay(0.06)),
+            removal: .modifier(active: LyricsReveal(progress: 0), identity: LyricsReveal(progress: 1))
+                .combined(with: .opacity)
+                .animation(.easeIn(duration: 0.18)))
     }
 }
 
@@ -76,58 +85,68 @@ struct MediaExpandedView: View {
     @ObservedObject var lyrics: LyricsService
     @ObservedObject private var settings = AppSettings.shared
     @Environment(\.islandTheme) private var theme
+    /// Cover, title, progress bar and controls glide between the two
+    /// layouts instead of fading; only the lyrics field is new.
+    @Namespace private var player
 
     var body: some View {
         content
             .environment(\.coverTint, service.artwork != nil ? service.accent : .white)
-            // Switching lyrics on/off cross-fades the two layouts instead of
-            // morphing one into the other.
-            .animation(.easeInOut(duration: 0.28), value: settings.showLyrics)
+            .animation(.spring(response: 0.46, dampingFraction: 0.86), value: settings.showLyrics)
     }
 
     @ViewBuilder
     private var content: some View {
         if let info = service.info {
-            if settings.showLyrics {
-                // Smaller player on the left, lyrics in their own field.
-                HStack(spacing: 14) {
+            HStack(spacing: 14) {
+                if settings.showLyrics {
+                    // Smaller player on the left, lyrics in their own field.
                     VStack(alignment: .leading, spacing: 7) {
                         HStack(spacing: 10) {
                             cover(info, size: 50, radius: 10)
                             VStack(alignment: .leading, spacing: 3) {
                                 TitleBlock(info: info, titleSize: 13)
-                                if settings.showSource { SourceLabel(info: info) }
+                                    .matchedGeometryEffect(id: "title", in: player, properties: .position, anchor: .topLeading)
+                                if settings.showSource { SourceLabel(info: info).transition(.opacity) }
                             }
                         }
                         ProgressScrubber(service: service, info: info)
+                            .matchedGeometryEffect(id: "progress", in: player)
                         MediaControls(service: service, info: info, compact: true)
+                            .matchedGeometryEffect(id: "controls", in: player)
                     }
                     .frame(width: 232)
+                    .transition(.opacity)
+                } else {
+                    HStack(alignment: .center, spacing: 16) {
+                        VStack(spacing: 6) {
+                            cover(info, size: settings.showSource ? 80 : 92, radius: 14)
+                            if settings.showSource {
+                                SourceLabel(info: info)
+                                    .frame(width: 80)
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(alignment: .top) {
+                                TitleBlock(info: info, titleSize: 14)
+                                    .matchedGeometryEffect(id: "title", in: player, properties: .position, anchor: .topLeading)
+                                Spacer(minLength: 8)
+                                AudioVisualizerView(color: NSColor(visualizerColor(cover: service.accent, theme: theme)), isPlaying: info.isPlaying, barCount: 5)
+                                    .frame(width: 26, height: 16)
+                                    .padding(.top, 2)
+                            }
+                            ProgressScrubber(service: service, info: info)
+                                .matchedGeometryEffect(id: "progress", in: player)
+                            MediaControls(service: service, info: info, compact: false)
+                                .matchedGeometryEffect(id: "controls", in: player)
+                        }
+                    }
+                    .transition(.opacity)
+                }
+                if settings.showLyrics {
                     LyricsPanel(lyrics: lyrics, info: info, large: settings.lyricsLarge) { service.seek(to: $0) }
+                        .transition(.lyricsReveal)
                 }
-                .transition(.blurFade)
-            } else {
-                HStack(alignment: .center, spacing: 16) {
-                    VStack(spacing: 6) {
-                        cover(info, size: settings.showSource ? 80 : 92, radius: 14)
-                        if settings.showSource {
-                            SourceLabel(info: info)
-                                .frame(width: 80)
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(alignment: .top) {
-                            TitleBlock(info: info, titleSize: 14)
-                            Spacer(minLength: 8)
-                            AudioVisualizerView(color: NSColor(visualizerColor(cover: service.accent, theme: theme)), isPlaying: info.isPlaying, barCount: 5)
-                                .frame(width: 26, height: 16)
-                                .padding(.top, 2)
-                        }
-                        ProgressScrubber(service: service, info: info)
-                        MediaControls(service: service, info: info, compact: false)
-                    }
-                }
-                .transition(.blurFade)
             }
         } else {
             NothingPlayingView()
@@ -136,6 +155,7 @@ struct MediaExpandedView: View {
 
     private func cover(_ info: NowPlayingInfo, size: CGFloat, radius: CGFloat) -> some View {
         CoverArt(image: service.artwork, cornerRadius: radius)
+            .matchedGeometryEffect(id: "cover", in: player)
             .frame(width: size, height: size)
             .background { if settings.albumTint { AlbumGlow(image: service.artwork, cornerRadius: radius) } }
             .onTapGesture { service.openPlayerApp() }
@@ -218,10 +238,12 @@ private struct MediaControls: View {
 
 /// Lyrics like Apple Music: every line in bold, the sung one bright and
 /// sharp, the others dimmed and slightly blurred, gliding upwards.
-private struct LyricsPanel: View {
+struct LyricsPanel: View {
     @ObservedObject var lyrics: LyricsService
     let info: NowPlayingInfo
     let large: Bool
+    /// Overrides the text size (the lock screen uses bigger lines).
+    var fontSize: CGFloat?
     /// Jumps playback to a position (a tapped line).
     let onSeek: (Double) -> Void
 
@@ -234,7 +256,7 @@ private struct LyricsPanel: View {
                     let current = lyrics.index(at: position)
                     LyricsScroller(lines: lyrics.lines, current: current,
                                    sung: current.map { lyrics.sungWords(in: $0, at: position) } ?? 0,
-                                   large: large, onSeek: onSeek)
+                                   large: large, fontSize: fontSize, onSeek: onSeek)
                 }
             case .loading:
                 status(L("Songtext wird geladen …", "Loading lyrics …"))
@@ -249,7 +271,7 @@ private struct LyricsPanel: View {
 
     private func status(_ message: String) -> some View {
         Text(message)
-            .font(.system(size: large ? 17 : 15, weight: .bold))
+            .font(.system(size: fontSize ?? (large ? 17 : 15), weight: .bold))
             .foregroundStyle(.white.opacity(0.3))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
@@ -261,6 +283,7 @@ private struct LyricsScroller: View {
     /// Words of the current line already sung (they turn fully white).
     let sung: Int
     let large: Bool
+    var fontSize: CGFloat?
     let onSeek: (Double) -> Void
     @State private var hovered: Int?
     @Environment(\.coverTint) private var tint
@@ -268,7 +291,7 @@ private struct LyricsScroller: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: large ? 10 : 8) {
+                VStack(alignment: .leading, spacing: fontSize.map { $0 * 0.55 } ?? (large ? 10 : 8)) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                         let isCurrent = index == current
                         let isPast = current.map { index < $0 } ?? false
@@ -281,7 +304,7 @@ private struct LyricsScroller: View {
                                     .foregroundStyle(.white.opacity(isCurrent ? 1 : (isHovered ? 0.65 : (isPast ? 0.22 : 0.34))))
                             }
                         }
-                            .font(.system(size: large ? 19 : 16, weight: .bold))
+                            .font(.system(size: fontSize ?? (large ? 19 : 16), weight: .bold))
                             .blur(radius: isCurrent || isHovered ? 0 : 1.1)
                             .scaleEffect(isCurrent ? 1 : 0.96, anchor: .leading)
                             .fixedSize(horizontal: false, vertical: true)
@@ -361,6 +384,9 @@ private struct ProgressScrubber: View {
     @State private var dragValue: Double?
 
     var body: some View {
+        // The service's latest state: right after a seek it already holds
+        // the new position, even before the parent view re-renders.
+        let info = service.info ?? self.info
         TimelineView(.periodic(from: .now, by: info.isPlaying && dragValue == nil ? 0.5 : 3600)) { context in
             let duration = max(info.duration, 0.01)
             let position = dragValue ?? info.elapsed(at: context.date)

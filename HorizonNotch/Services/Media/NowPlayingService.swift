@@ -11,6 +11,11 @@ final class NowPlayingService: ObservableObject {
     @Published private(set) var accent: Color = .white
     @Published private(set) var usingFallback = false
 
+    /// A seek from the island the player has not confirmed yet. Right after
+    /// seeking, players still report the old position once or twice; those
+    /// updates are corrected so the progress bar does not jump back.
+    private var pendingSeek: (target: Double, at: Date, title: String)?
+
     private let bridge = MediaBridgeClient()
     private let fallback = AppleScriptMediaSource()
 
@@ -58,8 +63,16 @@ final class NowPlayingService: ObservableObject {
             current.elapsed = seconds
             current.timestamp = Date()
             info = current
+            pendingSeek = (seconds, current.timestamp, current.title)
         }
         if usingFallback { fallback.seek(to: seconds) } else { bridge.send("seek \(seconds)") }
+    }
+
+    /// Off → all → one → off, like Music.
+    func cycleRepeat() {
+        guard let current = info, !usingFallback else { return }
+        let next = current.repeatMode == 3 ? 2 : (current.repeatMode == 2 ? 1 : 3)
+        bridge.send("repeat \(next)")
     }
 
     func toggleShuffle() {
@@ -97,6 +110,23 @@ final class NowPlayingService: ObservableObject {
             accent = .white
             CoverAccent.shared.color = nil
         }
-        if newInfo != info { info = newInfo }
+        var updated = newInfo
+        if let seek = pendingSeek, var incoming = newInfo {
+            let now = Date()
+            if incoming.title != seek.title || now.timeIntervalSince(seek.at) > 3 {
+                pendingSeek = nil
+            } else {
+                let expected = seek.target + (incoming.isPlaying ? now.timeIntervalSince(seek.at) : 0)
+                if abs(incoming.elapsed(at: now) - expected) > 1.5 {
+                    // Stale position from before the seek: keep ours.
+                    incoming.elapsed = incoming.duration > 0 ? min(expected, incoming.duration) : expected
+                    incoming.timestamp = now
+                    updated = incoming
+                } else {
+                    pendingSeek = nil
+                }
+            }
+        }
+        if updated != info { info = updated }
     }
 }

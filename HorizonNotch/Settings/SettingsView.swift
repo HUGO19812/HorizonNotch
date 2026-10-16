@@ -462,8 +462,13 @@ private struct HUDSettings: View {
                 .pickerStyle(.radioGroup)
                 Toggle(L("Prozentzahl anzeigen", "Show percentage"), isOn: $settings.hudShowPercent)
                     .disabled(settings.hudStyle != .notch)
-                Toggle(L("Farbige Balken (Helligkeit gelb, Tastatur blau)", "Coloured bars (brightness yellow, keyboard blue)"),
-                       isOn: $settings.colorfulAccents)
+                Picker(L("Balkenfarbe", "Bar colour"), selection: $settings.hudBarColor) {
+                    Text(L("Weiß", "White")).tag(HUDBarColor.white)
+                    Text(L("Farbig", "Coloured")).tag(HUDBarColor.colorful)
+                }
+                .pickerStyle(.segmented)
+                note("Farbig: Lautstärke in der Akzentfarbe, Helligkeit gelb, Tastaturlicht blau.",
+                     "Coloured: volume in the accent colour, brightness yellow, keyboard light blue.")
             }
         }
         .formStyle(.grouped)
@@ -495,6 +500,87 @@ private struct CalendarSettings: View {
     }
 }
 
+/// Search field for a place; the hits are listed below it and a click
+/// picks one. Shown when the current location is switched off.
+private struct PlaceSearch: View {
+    @ObservedObject private var settings = AppSettings.shared
+    @State private var query = ""
+    @State private var results: [WeatherService.Place] = []
+    @State private var searching = false
+    /// The query the current results belong to.
+    @State private var searched = ""
+
+    var body: some View {
+        if !settings.weatherCity.isEmpty {
+            LabeledContent(L("Ort", "Place")) {
+                Label(settings.weatherCity, systemImage: "mappin.and.ellipse")
+            }
+        }
+        HStack {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField(L("Ort suchen", "Search place"), text: $query, prompt: Text(L("z. B. Innsbruck", "e.g. Innsbruck")))
+                .textFieldStyle(.plain)
+            if searching {
+                ProgressView().controlSize(.small)
+            } else if !query.isEmpty {
+                Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    .buttonStyle(.plain)
+            }
+        }
+        .task(id: query) {
+            // Debounce: a new keystroke cancels this task during the sleep.
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+            let text = query.trimmingCharacters(in: .whitespaces)
+            guard text.count >= 2 else {
+                results = []
+                searched = ""
+                searching = false
+                return
+            }
+            searching = true
+            let found = await WeatherService.searchPlaces(text, german: settings.isGerman)
+            guard !Task.isCancelled else { return }
+            results = found
+            searched = text
+            searching = false
+        }
+        if !searched.isEmpty && !searching && results.isEmpty {
+            Text(L("Kein Ort gefunden", "No place found")).foregroundStyle(.secondary)
+        }
+        ForEach(results) { place in
+            Button { pick(place) } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(place.name)
+                        if !place.region.isEmpty {
+                            Text(place.region).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    if isPicked(place) {
+                        Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func isPicked(_ place: WeatherService.Place) -> Bool {
+        settings.weatherCoordinate == [place.latitude, place.longitude]
+    }
+
+    private func pick(_ place: WeatherService.Place) {
+        settings.weatherCoordinate = [place.latitude, place.longitude]
+        settings.weatherCity = place.name
+        query = ""
+        results = []
+        searched = ""
+    }
+}
+
 private struct WeatherSettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
@@ -503,7 +589,7 @@ private struct WeatherSettings: View {
             Section {
                 Toggle(L("Aktuellen Standort verwenden", "Use current location"), isOn: $settings.weatherUsesLocation)
                 if !settings.weatherUsesLocation {
-                    TextField(L("Stadt", "City"), text: $settings.weatherCity, prompt: Text("Innsbruck"))
+                    PlaceSearch()
                 }
             } footer: {
                 note("Wetterdaten von Open-Meteo, ohne Konto.", "Weather data from Open-Meteo, no account needed.")
@@ -590,15 +676,24 @@ private struct BatterySettings: View {
             Section {
                 Toggle(L("Wach bleiben, auch zugeklappt", "Stay awake, also with the lid closed"), isOn: Binding(
                     get: { awake.isOn }, set: { awake.set($0) }))
-                Toggle(L("Kaffeetasse in der Island, solange an", "Coffee cup in the island while on"), isOn: $settings.keepAwakeIcon)
+                Toggle(L("Knopf (Kaffeetasse) oben in der Island", "Button (coffee cup) at the top of the island"), isOn: $settings.keepAwakeIcon)
+                if awake.isSetUp {
+                    HStack {
+                        Label(L("Schalten ohne Passwort ist eingerichtet", "Switching without a password is set up"),
+                              systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Spacer()
+                        Button(L("Entfernen", "Remove")) { awake.removeSetup() }
+                    }
+                }
                 if let error = awake.lastError {
                     Text(error).font(.callout).foregroundStyle(.red)
                 }
             } header: {
                 Text(L("Wach bleiben", "Stay awake"))
             } footer: {
-                note("Bleibt an, bis du es ausschaltest – auch nach einem Neustart. Dafür nutzt macOS „pmset disablesleep“ und fragt beim Ein- und Ausschalten nach deinem Passwort. Achtung: Zugeklappt in der Tasche kann der Mac warm werden.",
-                     "Stays on until you switch it off – also after a restart. macOS uses “pmset disablesleep” for this and asks for your password when switching. Careful: closed in a bag the Mac can get warm.")
+                note("Bleibt an, bis du es ausschaltest – auch nach einem Neustart. Dafür nutzt macOS „pmset disablesleep“. Nur beim allerersten Mal fragt macOS nach deinem Passwort; danach darf Horizon Notch genau diesen einen Befehl ohne Passwort ausführen (wie Amphetamine Enhancer). Achtung: Zugeklappt in der Tasche kann der Mac warm werden.",
+                     "Stays on until you switch it off – also after a restart. macOS uses “pmset disablesleep” for this. Only the very first time macOS asks for your password; after that Horizon Notch may run exactly this one command without a password (like Amphetamine Enhancer). Careful: closed in a bag the Mac can get warm.")
             }
         }
         .formStyle(.grouped)
@@ -668,10 +763,10 @@ private struct LockScreenSettings: View {
     var body: some View {
         Form {
             Section {
-                Toggle(L("Widgets auf dem Sperrbildschirm", "Widgets on the lock screen"), isOn: $settings.lockScreenWidgets)
+                Toggle(L("Musik-Player auf dem Sperrbildschirm", "Music player on the lock screen"), isOn: $settings.lockScreenWidgets)
             } footer: {
-                note("Uhr, Wetter, Musik und Songtext beim Sperren. Nutzt eine nicht dokumentierte Systemschnittstelle und kann nach macOS-Updates ausfallen.",
-                     "Clock, weather, music and lyrics while locked. Uses an undocumented system interface and may break after macOS updates.")
+                note("Nur solange etwas läuft. Startet als kleiner Player; ein Klick aufs Cover zeigt es groß, der Songtext-Knopf blendet die Lyrics dazu ein. Nutzt eine nicht dokumentierte Systemschnittstelle und kann nach macOS-Updates ausfallen.",
+                     "Only while something plays. Starts as a small player; clicking the cover shows it large, the lyrics button adds the lyrics. Uses an undocumented system interface and may break after macOS updates.")
             }
         }
         .formStyle(.grouped)
@@ -723,8 +818,8 @@ private struct PermissionSettings: View {
                     })
                 PermissionRow(
                     title: L("Standort", "Location"),
-                    detail: L("Für das Wetter vor Ort. Alternativ trägst du unter Wetter eine Stadt ein.",
-                              "For local weather. Alternatively enter a city under Weather."),
+                    detail: L("Für das Wetter vor Ort. Alternativ suchst du unter Wetter einen Ort.",
+                              "For local weather. Alternatively search for a place under Weather."),
                     granted: locationGranted,
                     action: {
                         if CLLocationManager().authorizationStatus == .notDetermined {

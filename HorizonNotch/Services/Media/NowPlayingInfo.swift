@@ -16,6 +16,8 @@ struct NowPlayingInfo: Equatable {
     var bundleID: String?
     var appName: String?
     var artworkID: Int
+    /// MediaRemote repeat mode: 1 = off, 2 = one, 3 = all.
+    var repeatMode: Int = 1
 
     var isShuffling: Bool { shuffleMode > 1 }
 

@@ -47,12 +47,9 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
         var days: [Day]
         var fetched: Date
 
-        /// A few hours spread over the given day (morning to evening).
+        /// Every hour of the given day, for the scrollable hour row.
         func hours(on day: Date) -> [Hour] {
-            let calendar = Calendar.current
-            return allHours.filter {
-                calendar.isDate($0.time, inSameDayAs: day) && [8, 12, 16, 20].contains(calendar.component(.hour, from: $0.time))
-            }
+            allHours.filter { Calendar.current.isDate($0.time, inSameDayAs: day) }
         }
 
         static func == (a: Report, b: Report) -> Bool {
@@ -83,7 +80,10 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)
             .sink { [weak self] _ in self?.refreshIfStale() }
             .store(in: &subscriptions)
-        settings.$weatherCity.dropFirst().debounce(for: .seconds(0.8), scheduler: RunLoop.main)
+        // Picking a place sets both; one lookup is enough.
+        settings.$weatherCity.dropFirst().map { _ in () }
+            .merge(with: settings.$weatherCoordinate.dropFirst().map { _ in () })
+            .debounce(for: .seconds(0.3), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.resolveLocation() }
             .store(in: &subscriptions)
         settings.$weatherUsesLocation.dropFirst()
@@ -106,15 +106,6 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
         }
     }
 
-    /// For the lock screen: refresh, but never trigger a permission prompt.
-    func refreshIfPermitted() {
-        let status = locationManager.authorizationStatus
-        let allowed = settings.weatherUsesLocation
-            ? (status == .authorized || status == .authorizedAlways)
-            : !settings.weatherCity.trimmingCharacters(in: .whitespaces).isEmpty
-        if allowed { activate() }
-    }
-
     private func refreshIfStale() {
         guard activated else { return }
         if let report, Date().timeIntervalSince(report.fetched) < 15 * 60 { return }
@@ -135,6 +126,10 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
             default:
                 locationManager.requestLocation()
             }
+        } else if let picked = settings.weatherCoordinate {
+            placeName = settings.weatherCity
+            coordinate = CLLocationCoordinate2D(latitude: picked[0], longitude: picked[1])
+            fetch()
         } else {
             geocode(city: settings.weatherCity)
         }
@@ -163,6 +158,37 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         NSLog("[HorizonNotch] location: \(error.localizedDescription)")
         if coordinate == nil { problem = .network }
+    }
+
+    /// One hit of the place search in the settings.
+    struct Place: Decodable, Identifiable, Hashable {
+        let id: Int
+        let name: String
+        let latitude: Double
+        let longitude: Double
+        let admin1: String?
+        let country: String?
+
+        /// "Tyrol, Austria" – tells apart places with the same name.
+        var region: String {
+            [admin1, country].compactMap { $0 }.filter { !$0.isEmpty && $0 != name }.joined(separator: ", ")
+        }
+    }
+
+    /// Places matching a name, from Open-Meteo's geocoding (no account).
+    static func searchPlaces(_ query: String, german: Bool) async -> [Place] {
+        let name = query.trimmingCharacters(in: .whitespaces)
+        guard name.count >= 2 else { return [] }
+        var components = URLComponents(string: "https://geocoding-api.open-meteo.com/v1/search")!
+        components.queryItems = [
+            URLQueryItem(name: "name", value: name),
+            URLQueryItem(name: "count", value: "8"),
+            URLQueryItem(name: "language", value: german ? "de" : "en"),
+        ]
+        struct Result: Decodable { let results: [Place]? }
+        guard let response = try? await URLSession.shared.data(from: components.url!),
+              let result = try? JSONDecoder().decode(Result.self, from: response.0) else { return [] }
+        return result.results ?? []
     }
 
     private func geocode(city: String) {
@@ -267,7 +293,8 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
             .map { Hour(time: Date(timeIntervalSince1970: hourly.time[$0]), temperature: hourly.temperature_2m[$0],
                         code: hourly.weather_code[$0], isDay: hourly.is_day[$0] == 1,
                         rainChance: (hourly.precipitation_probability?[$0] ?? 0) ?? 0) }
-        let hours = allHours.filter { $0.time > now }.prefix(4)
+        // The next day's worth; the row scrolls sideways.
+        let hours = allHours.filter { $0.time > now }.prefix(24)
         let daily = response.daily
         let days = daily.time.indices.map { i in
             Day(date: Date(timeIntervalSince1970: daily.time[i]),

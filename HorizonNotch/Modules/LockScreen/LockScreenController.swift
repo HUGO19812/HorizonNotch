@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// Shows clock, weather and the music player on the lock screen.
+/// Shows the music player on the lock screen.
 ///
 /// Locking is detected through the distributed notifications
 /// "com.apple.screenIsLocked"/"com.apple.screenIsUnlocked". The widget window
@@ -11,17 +11,17 @@ import SwiftUI
 final class LockScreenController {
     private let nowPlaying: NowPlayingService
     private let lyrics: LyricsService
-    private let weather: WeatherService
+    /// Large cover / lyrics; back to the small player on every lock.
+    private let state = LockScreenState()
     private let settings = AppSettings.shared
     private var window: NSPanel?
     private var observers: [NSObjectProtocol] = []
     private(set) var isShowing = false
     var onLockChange: ((Bool) -> Void)?
 
-    init(nowPlaying: NowPlayingService, lyrics: LyricsService, weather: WeatherService) {
+    init(nowPlaying: NowPlayingService, lyrics: LyricsService) {
         self.nowPlaying = nowPlaying
         self.lyrics = lyrics
-        self.weather = weather
         let center = DistributedNotificationCenter.default()
         observers.append(center.addObserver(forName: Notification.Name("com.apple.screenIsLocked"), object: nil,
                                             queue: .main) { [weak self] _ in self?.locked() })
@@ -42,7 +42,7 @@ final class LockScreenController {
 
     func show() {
         guard !isShowing, let screen = NSScreen.islandScreen(preferred: settings.displayID) else { return }
-        weather.refreshIfPermitted()
+        state.reset()
         let panel = window ?? makeWindow()
         panel.setFrame(screen.frame, display: true)
         panel.alphaValue = 0
@@ -78,7 +78,7 @@ final class LockScreenController {
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics, weather: weather))
+        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics, state: state))
         host.sizingOptions = []
         panel.contentView = host
         window = panel

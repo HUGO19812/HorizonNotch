@@ -133,7 +133,8 @@ final class MediaBridgeClient {
                 shuffleMode: (json["shuffle"] as? NSNumber)?.intValue ?? 1,
                 bundleID: nil,
                 appName: nil,
-                artworkID: (json["artworkId"] as? NSNumber)?.intValue ?? 0)
+                artworkID: (json["artworkId"] as? NSNumber)?.intValue ?? 0,
+                repeatMode: (json["repeat"] as? NSNumber)?.intValue ?? 1)
             state.info = info
             if let base64 = json["artwork"] as? String { state.artwork = Data(base64Encoded: base64) }
             DispatchQueue.main.async { [weak self] in

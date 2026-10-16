@@ -77,6 +77,59 @@ final class EventModule: NotchModule {
 
     func compactLeading() -> AnyView { AnyView(EventLeading(module: self)) }
     func compactTrailing() -> AnyView { AnyView(EventTrailing(module: self)) }
+    func transientView() -> AnyView { AnyView(EventPill(module: self)) }
+}
+
+/// The event as one compact line, for the open island: icon, title, detail.
+private struct EventPill: View {
+    @ObservedObject var module: EventModule
+    @Environment(\.islandTheme) private var theme
+
+    var body: some View {
+        ZStack {
+            if let event = module.current {
+                pill(event)
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: module.current?.id)
+    }
+
+    private func pill(_ event: IslandEvent) -> some View {
+        HStack(spacing: 7) {
+            Group {
+                if let image = event.image {
+                    Image(nsImage: image).resizable().frame(width: 16, height: 16)
+                } else {
+                    Image(systemName: event.symbol)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(theme.tint(event.tint))
+                        .symbolEffect(.bounce, value: event.id)
+                }
+            }
+            .frame(width: 16)
+            Text(event.title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            if !event.detail.isEmpty {
+                Text(event.detail)
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                    .foregroundStyle(theme.tint(event.tint).opacity(0.9))
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: 300)
+        .fixedSize(horizontal: true, vertical: false)
+        .id(event.id)
+        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if let action = event.action {
+                action()
+                module.dismiss()
+            }
+        }
+    }
 }
 
 private struct EventLeading: View {
