@@ -43,7 +43,7 @@ Das App-Symbol wird mit `swift scripts/make-icon.swift` neu gezeichnet.
 | Rechner | Verlauf links (Klick übernimmt ein Ergebnis), Rechnung in der Mitte, Tastenfeld mit Rechenzeichen in der Akzentfarbe rechts; bei offenem Reiter auch per Tastatur bedienbar, ⌘C oder Klick auf die Anzeige kopiert | – |
 | Verbindungen | Kopfhörer verbunden/getrennt, WLAN, optional alle Bluetooth-Geräte mit AirPods-Akku und Fokus | CoreAudio, Network, CoreWLAN, IOBluetooth, Intents |
 | Benachrichtigungen | Fertige Downloads (optional) | kqueue auf ~/Downloads |
-| Sperrbildschirm | Musik-Player in drei Stilen: kompakte Glas-Karte, großes Cover, Cover mit synchronisiertem Songtext (Klick aufs Cover wechselt) | SkyLight (siehe unten), LRCLIB |
+| Sperrbildschirm | Kleiner Musik-Player; Klick aufs Cover zeigt es groß auf dunklem, vom Cover getöntem Hintergrund, der Songtext-Knopf blendet die Lyrics dazu ein | SkyLight (siehe unten), LRCLIB |
 
 Die Island zeigt immer das wichtigste aktive Modul: **HUD > Benachrichtigung/Akku > Kamera & Mikrofon > Kalender > Timer > Musik**. Jedes Modul lässt sich in den Einstellungen abschalten, die Seitenreihenfolge per Ziehen ändern.
 

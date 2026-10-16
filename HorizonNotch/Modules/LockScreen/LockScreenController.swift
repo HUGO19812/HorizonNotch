@@ -11,6 +11,8 @@ import SwiftUI
 final class LockScreenController {
     private let nowPlaying: NowPlayingService
     private let lyrics: LyricsService
+    /// Large cover / lyrics; back to the small player on every lock.
+    private let state = LockScreenState()
     private let settings = AppSettings.shared
     private var window: NSPanel?
     private var observers: [NSObjectProtocol] = []
@@ -40,6 +42,7 @@ final class LockScreenController {
 
     func show() {
         guard !isShowing, let screen = NSScreen.islandScreen(preferred: settings.displayID) else { return }
+        state.reset()
         let panel = window ?? makeWindow()
         panel.setFrame(screen.frame, display: true)
         panel.alphaValue = 0
@@ -75,7 +78,7 @@ final class LockScreenController {
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics))
+        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics, state: state))
         host.sizingOptions = []
         panel.contentView = host
         window = panel

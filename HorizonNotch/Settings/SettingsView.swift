@@ -764,15 +764,9 @@ private struct LockScreenSettings: View {
         Form {
             Section {
                 Toggle(L("Musik-Player auf dem Sperrbildschirm", "Music player on the lock screen"), isOn: $settings.lockScreenWidgets)
-                Picker(L("Stil", "Style"), selection: $settings.lockScreenStyle) {
-                    Text(L("Kompakt", "Compact")).tag(LockScreenStyle.compact)
-                    Text(L("Großes Cover", "Large cover")).tag(LockScreenStyle.artwork)
-                    Text(L("Cover und Songtext", "Cover and lyrics")).tag(LockScreenStyle.lyrics)
-                }
-                .disabled(!settings.lockScreenWidgets)
             } footer: {
-                note("Nur solange etwas läuft. Ein Klick aufs Cover wechselt den Stil. Ohne synchronisierten Songtext zeigt „Cover und Songtext“ nur das große Cover. Nutzt eine nicht dokumentierte Systemschnittstelle und kann nach macOS-Updates ausfallen.",
-                     "Only while something plays. Clicking the cover switches the style. Without synced lyrics, “Cover and lyrics” shows just the large cover. Uses an undocumented system interface and may break after macOS updates.")
+                note("Nur solange etwas läuft. Startet als kleiner Player; ein Klick aufs Cover zeigt es groß, der Songtext-Knopf blendet die Lyrics dazu ein. Nutzt eine nicht dokumentierte Systemschnittstelle und kann nach macOS-Updates ausfallen.",
+                     "Only while something plays. Starts as a small player; clicking the cover shows it large, the lyrics button adds the lyrics. Uses an undocumented system interface and may break after macOS updates.")
             }
         }
         .formStyle(.grouped)
