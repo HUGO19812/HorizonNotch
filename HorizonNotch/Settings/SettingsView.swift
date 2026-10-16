@@ -4,43 +4,123 @@ import CoreLocation
 import EventKit
 import SwiftUI
 
+/// One page in the settings sidebar, with words the search finds it by
+/// (the settings on that page, in German and English).
+private struct SettingsEntry: Identifiable {
+    let tab: SettingsTab
+    let de: String
+    let en: String
+    let symbol: String
+    let keywords: String
+    var id: SettingsTab { tab }
+    var title: String { L(de, en) }
+
+    func matches(_ query: String) -> Bool {
+        let haystack = [de, en, keywords].joined(separator: " ")
+        // Every word of the query must appear somewhere.
+        return query.split(separator: " ").allSatisfy {
+            haystack.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+        }
+    }
+}
+
+private struct SettingsGroup: Identifiable {
+    let de: String
+    let en: String
+    let entries: [SettingsEntry]
+    var id: String { en }
+}
+
+private let settingsGroups: [SettingsGroup] = [
+    SettingsGroup(de: "App", en: "App", entries: [
+        SettingsEntry(tab: .general, de: "Allgemein", en: "General", symbol: "gearshape",
+                      keywords: "Anmeldung starten Autostart login Sprache language Bildschirm display screen Monitor"),
+        SettingsEntry(tab: .appearance, de: "Darstellung", en: "Appearance", symbol: "paintbrush",
+                      keywords: "Stil style Glas glass Hintergrundfarbe background colour color Rand border Akzentfarbe accent Farbig coloured Visualizer Größe size Breite width Höhe height Eckenradius corner radius Schatten shadow Schrift font Schriftart fett bold Reiter-Symbole tab icons Form shape"),
+        SettingsEntry(tab: .behavior, de: "Verhalten", en: "Behaviour", symbol: "cursorarrow.motionlines",
+                      keywords: "Verzögerung hover delay Öffnen open erster letzter Reiter first last tab Vollbild full screen fullscreen Film movie video ausblenden hide Trackpad Klick haptic Haptik Klickstärke"),
+    ]),
+    SettingsGroup(de: "Island", en: "Island", entries: [
+        SettingsEntry(tab: .tabs, de: "Reiter", en: "Tabs", symbol: "rectangle.split.3x1",
+                      keywords: "Reihenfolge order ausblenden hide Seiten pages"),
+        SettingsEntry(tab: .modules, de: "Module", en: "Modules", symbol: "square.grid.2x2",
+                      keywords: "einschalten ausschalten enable disable Funktionen features"),
+    ]),
+    SettingsGroup(de: "Funktionen", en: "Features", entries: [
+        SettingsEntry(tab: .music, de: "Musik", en: "Music", symbol: "music.note",
+                      keywords: "Player Spotify Wischen swipe Geste gesture Quelle source Cover Albumfarbe album colour Visualizer Sneak Peek Titelwechsel Spulen seek"),
+        SettingsEntry(tab: .lyrics, de: "Songtext", en: "Lyrics", symbol: "quote.bubble",
+                      keywords: "Lyrics Text große Schrift large font Farbe colour color gesungen sung"),
+        SettingsEntry(tab: .hud, de: "Lautstärke & Helligkeit", en: "Volume & Brightness", symbol: "speaker.wave.2",
+                      keywords: "HUD Ton sound volume Helligkeit brightness Tastaturlicht keyboard backlight System-Anzeige Balken bar Farbe colour weiß white Prozent percent linker Rand left edge"),
+        SettingsEntry(tab: .battery, de: "Akku & Energie", en: "Battery & Power", symbol: "battery.75percent",
+                      keywords: "Batterie battery laden charging Prozent percent wach bleiben stay awake Amphetamine Koffein caffeine Kaffeetasse coffee zugeklappt lid sleep Ruhezustand"),
+        SettingsEntry(tab: .calendar, de: "Kalender", en: "Calendar", symbol: "calendar",
+                      keywords: "Termine events ganztägig all-day Meeting Countdown Zoom Teams Meet Ansicht view"),
+        SettingsEntry(tab: .weather, de: "Wetter", en: "Weather", symbol: "cloud.sun",
+                      keywords: "Standort location Ort place Stadt city suchen search Einheiten units Celsius Fahrenheit Temperatur temperature"),
+        SettingsEntry(tab: .shelf, de: "Ablage", en: "Shelf", symbol: "tray.full",
+                      keywords: "Dateien files AirDrop ziehen drag Versandart"),
+        SettingsEntry(tab: .connectivity, de: "Verbindungen", en: "Connectivity", symbol: "dot.radiowaves.left.and.right",
+                      keywords: "Bluetooth AirPods Kopfhörer headphones WLAN WiFi Fokus focus"),
+        SettingsEntry(tab: .notifications, de: "Benachrichtigungen", en: "Notifications", symbol: "bell.badge",
+                      keywords: "Mitteilungen Downloads fertig finished"),
+        SettingsEntry(tab: .downloads, de: "Downloads", en: "Downloads", symbol: "arrow.down.circle",
+                      keywords: "Fortschritt progress Safari Chrome herunterladen"),
+        SettingsEntry(tab: .claude, de: "Claude Code", en: "Claude Code", symbol: "sparkle",
+                      keywords: "Hooks Token Verbrauch usage KI AI"),
+        SettingsEntry(tab: .lockScreen, de: "Sperrbildschirm", en: "Lock Screen", symbol: "lock.display",
+                      keywords: "gesperrt locked Player Musik music Cover Lyrics Songtext"),
+    ]),
+    SettingsGroup(de: "System", en: "System", entries: [
+        SettingsEntry(tab: .permissions, de: "Berechtigungen", en: "Permissions", symbol: "lock.shield",
+                      keywords: "Bedienungshilfen accessibility Kalender calendar Standort location Bluetooth Fokus focus Zugriff access Datenschutz privacy"),
+        SettingsEntry(tab: .about, de: "Über", en: "About", symbol: "info.circle",
+                      keywords: "Version Info Update"),
+    ]),
+]
+
 struct SettingsView: View {
     let appDelegate: AppDelegate
     @ObservedObject var selection: SettingsSelection
     @ObservedObject private var settings = AppSettings.shared
+    @State private var query = ""
+
+    private var trimmedQuery: String { query.trimmingCharacters(in: .whitespaces) }
+
+    /// The groups with only the pages matching the search.
+    private var visibleGroups: [SettingsGroup] {
+        guard !trimmedQuery.isEmpty else { return settingsGroups }
+        return settingsGroups.compactMap { group in
+            let entries = group.entries.filter { $0.matches(trimmedQuery) }
+            return entries.isEmpty ? nil : SettingsGroup(de: group.de, en: group.en, entries: entries)
+        }
+    }
 
     var body: some View {
         NavigationSplitView {
             List(selection: $selection.tab) {
-                Section(L("App", "App")) {
-                    item(.general, L("Allgemein", "General"), "gearshape")
-                    item(.appearance, L("Darstellung", "Appearance"), "paintbrush")
-                    item(.behavior, L("Verhalten", "Behaviour"), "cursorarrow.motionlines")
-                }
-                Section(L("Island", "Island")) {
-                    item(.tabs, L("Reiter", "Tabs"), "rectangle.split.3x1")
-                    item(.modules, L("Module", "Modules"), "square.grid.2x2")
-                }
-                Section(L("Funktionen", "Features")) {
-                    item(.music, L("Musik", "Music"), "music.note")
-                    item(.lyrics, L("Songtext", "Lyrics"), "quote.bubble")
-                    item(.hud, L("Lautstärke & Helligkeit", "Volume & Brightness"), "speaker.wave.2")
-                    item(.battery, L("Akku & Energie", "Battery & Power"), "battery.75percent")
-                    item(.calendar, L("Kalender", "Calendar"), "calendar")
-                    item(.weather, L("Wetter", "Weather"), "cloud.sun")
-                    item(.shelf, L("Ablage", "Shelf"), "tray.full")
-                    item(.connectivity, L("Verbindungen", "Connectivity"), "dot.radiowaves.left.and.right")
-                    item(.notifications, L("Benachrichtigungen", "Notifications"), "bell.badge")
-                    item(.downloads, L("Downloads", "Downloads"), "arrow.down.circle")
-                    item(.claude, "Claude Code", "sparkle")
-                    item(.lockScreen, L("Sperrbildschirm", "Lock Screen"), "lock.display")
-                }
-                Section(L("System", "System")) {
-                    item(.permissions, L("Berechtigungen", "Permissions"), "lock.shield")
-                    item(.about, L("Über", "About"), "info.circle")
+                ForEach(visibleGroups) { group in
+                    Section(L(group.de, group.en)) {
+                        ForEach(group.entries) { entry in
+                            Label(entry.title, systemImage: entry.symbol).tag(entry.tab)
+                        }
+                    }
                 }
             }
-            .navigationSplitViewColumnWidth(210)
+            .overlay {
+                if visibleGroups.isEmpty {
+                    Text(L("Keine Treffer", "No results"))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .searchable(text: $query, placement: .sidebar, prompt: L("Einstellungen suchen", "Search settings"))
+            .onChange(of: trimmedQuery) { _, _ in
+                // Show the first hit when the open page no longer matches.
+                let hits = visibleGroups.flatMap(\.entries).map(\.tab)
+                if let first = hits.first, !hits.contains(selection.tab) { selection.tab = first }
+            }
+            .navigationSplitViewColumnWidth(220)
         } detail: {
             Group {
                 switch selection.tab {
@@ -68,10 +148,6 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(minWidth: 680, minHeight: 480)
-    }
-
-    private func item(_ tab: SettingsTab, _ title: String, _ symbol: String) -> some View {
-        Label(title, systemImage: symbol).tag(tab)
     }
 }
 
@@ -270,6 +346,12 @@ private struct BehaviorSettings: View {
             } footer: {
                 note("Der erste Reiter ist standardmäßig Musik. Die Reihenfolge stellst du unter „Reiter“ ein.",
                      "The first tab is Music by default. Change the order under “Tabs”.")
+            }
+            Section {
+                Toggle(L("Im Vollbild ausblenden", "Hide in full screen"), isOn: $settings.hideInFullscreen)
+            } footer: {
+                note("Schaust du einen Film oder nutzt eine App im Vollbild, verschwindet die Island. Lautstärke- und Helligkeitsanzeigen erscheinen trotzdem kurz.",
+                     "While you watch a film or use an app in full screen, the island disappears. Volume and brightness overlays still show briefly.")
             }
             HapticSection()
         }
