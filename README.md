@@ -39,7 +39,7 @@ Das App-Symbol wird mit `swift scripts/make-icon.swift` neu gezeichnet.
 | Timer | Countdown und Stoppuhr, Live-Anzeige neben der Notch | – |
 | Ablage | Datei-Ablage und AirDrop | NSSharingService |
 | Kalender | Nächste Termine, Countdown 10 Min. vor Meetings, „Beitreten" für Zoom/Teams/Meet | EventKit |
-| Wetter | Aktuell, Höchst- und Tiefstwert, nächste 6 Stunden | Open-Meteo, CoreLocation oder Stadtname |
+| Wetter | Aktuell, Höchst- und Tiefstwert, nächste 6 Stunden | Open-Meteo, CoreLocation oder gesuchter Ort |
 | Rechner | Taschenrechner; bei offenem Reiter auch per Tastatur bedienbar | – |
 | Verbindungen | Kopfhörer verbunden/getrennt, WLAN, optional alle Bluetooth-Geräte mit AirPods-Akku und Fokus | CoreAudio, Network, CoreWLAN, IOBluetooth, Intents |
 | Benachrichtigungen | Fertige Downloads (optional) | kqueue auf ~/Downloads |
@@ -55,7 +55,7 @@ Die App fragt nur nach, wenn eine Funktion es braucht:
 |---|---|---|
 | Bedienungshilfen | Lautstärke-, Helligkeits- und Tastaturlicht-Tasten abfangen | Beim ersten Start (Einführung) oder über das Menüleisten-Symbol |
 | Kalender | Kalender-Modul | Beim Klick auf „Zugriff erlauben" |
-| Standort | Wetter vor Ort und WLAN-Namen (macOS gibt SSIDs nur mit Standortfreigabe heraus) | Beim ersten Öffnen der Wetter-Seite. Alternativ eine Stadt eintragen |
+| Standort | Wetter vor Ort und WLAN-Namen (macOS gibt SSIDs nur mit Standortfreigabe heraus) | Beim ersten Öffnen der Wetter-Seite. Alternativ unter Wetter einen Ort suchen und anklicken |
 | Bluetooth | Alle Bluetooth-Geräte, AirPods-Akku | Beim Einschalten der Option |
 | Fokus-Status | Fokus ein/aus | Beim Einschalten der Option |
 | Downloads-Ordner | Fertige Downloads | Beim Einschalten der Option |

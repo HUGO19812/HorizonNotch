@@ -172,43 +172,98 @@ private struct ExpandedContent: View {
     }
 
     private var header: some View {
-        HStack {
-            HStack(spacing: 5) {
+        let geometry = model.geometry
+        // The header spans the open island minus its 20 pt padding; the
+        // hardware notch covers the middle, so tabs must stay in the wings.
+        let gap = geometry.hasNotch ? geometry.notchSize.width + 16 : 16
+        let wing = max(0, (NotchViewModel.expandedWidth - 40 - gap) / 2)
+        let split = TabSplit(count: coordinator.pages.count, wing: wing,
+                             trailingReserve: statusReserve, style: settings.headerIconStyle)
+
+        return HStack(spacing: 0) {
+            HStack(spacing: TabSplit.spacing) {
                 if coordinator.pages.count > 1 {
-                    ForEach(Array(coordinator.pages.enumerated()), id: \.offset) { index, page in
-                        Button {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                coordinator.pageIndex = index
-                            }
-                        } label: {
-                            TabIcon(symbol: page.symbol, active: index == coordinator.pageIndex,
-                                    style: settings.headerIconStyle, accent: theme.accent, namespace: tabNamespace)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    ForEach(0..<split.leading, id: \.self) { tab($0, width: split.tabWidth) }
                 } else if let page = coordinator.currentPage {
                     Text(page.title)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.55))
                 }
             }
-            Spacer(minLength: model.geometry.hasNotch ? model.geometry.notchSize.width + 16 : 16)
-            HeaderStatus()
-            Button {
-                // NSApp.delegate is SwiftUI's adaptor, not AppDelegate, so
-                // ask through a notification.
-                NotificationCenter.default.post(name: .openSettings, object: nil)
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .frame(width: 22, height: 20)
-                    .contentShape(Rectangle())
+            .frame(width: wing, alignment: .leading)
+            Spacer(minLength: gap)
+            HStack(spacing: 8) {
+                if coordinator.pages.count > 1 && split.leading < coordinator.pages.count {
+                    HStack(spacing: TabSplit.spacing) {
+                        ForEach(split.leading..<coordinator.pages.count, id: \.self) { tab($0, width: split.tabWidth) }
+                    }
+                }
+                Spacer(minLength: 0)
+                HeaderStatus()
+                Button {
+                    // NSApp.delegate is SwiftUI's adaptor, not AppDelegate, so
+                    // ask through a notification.
+                    NotificationCenter.default.post(name: .openSettings, object: nil)
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .frame(width: 22, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(L("Einstellungen", "Settings"))
             }
-            .buttonStyle(.plain)
-            .help(L("Einstellungen", "Settings"))
+            .frame(width: wing, alignment: .trailing)
         }
         .padding(.horizontal, 20)
+    }
+
+    /// Room the status icons and the gear take on the right wing.
+    private var statusReserve: CGFloat {
+        var width: CGFloat = 22 + 8 // gear
+        if settings.keepAwakeIcon { width += 16 + 8 }
+        if settings.batteryInHeader && PowerSource.shared.state.hasBattery {
+            width += 22 + 8 + (settings.batteryShowPercent ? 34 : 0)
+        }
+        return width
+    }
+
+    private func tab(_ index: Int, width: CGFloat) -> some View {
+        let page = coordinator.pages[index]
+        return Button {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                coordinator.pageIndex = index
+            }
+        } label: {
+            TabIcon(symbol: page.symbol, active: index == coordinator.pageIndex,
+                    style: settings.headerIconStyle, accent: theme.accent, namespace: tabNamespace,
+                    width: width)
+        }
+        .buttonStyle(.plain)
+        .help(page.title)
+    }
+}
+
+/// How many tabs fit left of the notch; the rest continue right of it.
+/// If even both wings are too narrow, the tabs get narrower.
+private struct TabSplit {
+    static let spacing: CGFloat = 5
+    let leading: Int
+    let tabWidth: CGFloat
+
+    init(count: Int, wing: CGFloat, trailingReserve: CGFloat, style: HeaderIconStyle) {
+        let preferred: CGFloat = style == .pill ? 26 : 22
+        let trailing = max(0, wing - trailingReserve)
+        func fits(_ width: CGFloat, _ room: CGFloat) -> Int {
+            max(0, Int((room + Self.spacing) / (width + Self.spacing)))
+        }
+        var width = preferred
+        while width > 16 && fits(width, wing) + fits(width, trailing) < count {
+            width -= 1
+        }
+        tabWidth = width
+        leading = min(count, max(1, fits(width, wing)))
     }
 }
 
@@ -219,12 +274,13 @@ private struct TabIcon: View {
     let style: HeaderIconStyle
     let accent: Color
     let namespace: Namespace.ID
+    var width: CGFloat = 22
 
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(active ? .white : .white.opacity(0.4))
-            .frame(width: style == .pill ? 26 : 22, height: 20)
+            .frame(width: width, height: 20)
             .background {
                 if active && style == .pill {
                     Capsule().fill(accent.opacity(0.35))
@@ -266,16 +322,18 @@ private struct HeaderStatus: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if awake.isOn && settings.keepAwakeIcon {
+            if settings.keepAwakeIcon {
                 Button { awake.toggle() } label: {
-                    Image(systemName: "cup.and.heat.waves.fill")
+                    Image(systemName: awake.isOn ? "cup.and.heat.waves.fill" : "cup.and.saucer")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(theme.tint(.orange))
+                        .foregroundStyle(awake.isOn ? theme.tint(.orange) : .white.opacity(0.4))
                         .frame(height: 20)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(L("Wach bleiben ist an – klicken zum Ausschalten", "Stay awake is on – click to turn off"))
+                .help(awake.isOn
+                      ? L("Wach bleiben ist an – klicken zum Ausschalten", "Stay awake is on – click to turn off")
+                      : L("Wach bleiben (auch zugeklappt) – klicken zum Einschalten", "Stay awake (also with lid closed) – click to turn on"))
             }
             HeaderBattery()
         }

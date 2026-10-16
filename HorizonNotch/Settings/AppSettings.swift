@@ -79,6 +79,8 @@ final class AppSettings: ObservableObject {
     @Published var onboardingDone: Bool { didSet { defaults.set(onboardingDone, forKey: "onboardingDone") } }
     @Published var weatherUsesLocation: Bool { didSet { defaults.set(weatherUsesLocation, forKey: "weatherUsesLocation") } }
     @Published var weatherCity: String { didSet { defaults.set(weatherCity, forKey: "weatherCity") } }
+    /// Coordinates of the place picked from the search; nil = look up weatherCity by name.
+    @Published var weatherCoordinate: [Double]? { didSet { defaults.set(weatherCoordinate, forKey: "weatherCoordinate") } }
     @Published var useFahrenheit: Bool { didSet { defaults.set(useFahrenheit, forKey: "useFahrenheit") } }
     @Published var showLyrics: Bool { didSet { defaults.set(showLyrics, forKey: "showLyrics") } }
     @Published var connectivityAllBluetooth: Bool { didSet { defaults.set(connectivityAllBluetooth, forKey: "connectivityAllBluetooth") } }
@@ -147,6 +149,7 @@ final class AppSettings: ObservableObject {
         onboardingDone = defaults.bool(forKey: "onboardingDone")
         weatherUsesLocation = defaults.object(forKey: "weatherUsesLocation") as? Bool ?? true
         weatherCity = defaults.string(forKey: "weatherCity") ?? ""
+        weatherCoordinate = (defaults.array(forKey: "weatherCoordinate") as? [Double]).flatMap { $0.count == 2 ? $0 : nil }
         useFahrenheit = defaults.bool(forKey: "useFahrenheit")
         showLyrics = defaults.bool(forKey: "showLyrics")
         connectivityAllBluetooth = defaults.bool(forKey: "connectivityAllBluetooth")

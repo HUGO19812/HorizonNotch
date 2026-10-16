@@ -57,11 +57,11 @@ private struct WeatherPage: View {
     private func text(for problem: WeatherService.Problem) -> String {
         switch problem {
         case .locationDenied:
-            return L("Kein Standortzugriff. Erlaube ihn in den Systemeinstellungen oder trag in den Einstellungen eine Stadt ein.",
-                     "No location access. Allow it in System Settings or enter a city in the settings.")
+            return L("Kein Standortzugriff. Erlaube ihn in den Systemeinstellungen oder such in den Einstellungen einen Ort.",
+                     "No location access. Allow it in System Settings or search for a place in the settings.")
         case .cityNotFound:
-            return L("Stadt nicht gefunden. Prüfe die Eingabe in den Einstellungen.",
-                     "City not found. Check the name in the settings.")
+            return L("Ort nicht gefunden. Such ihn in den Einstellungen und klick ihn an.",
+                     "Place not found. Search for it in the settings and click it.")
         case .network:
             return L("Wetter gerade nicht erreichbar.", "Weather is unavailable right now.")
         }
