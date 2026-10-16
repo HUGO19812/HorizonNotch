@@ -31,8 +31,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBar: StatusBarController?
     private var settingsWindow: SettingsWindowController?
 
+    /// Only one Horizon Notch at a time: two would draw two islands and
+    /// fight over the keys. The copy started last wins (e.g. a fresh build).
+    private func quitOtherCopies() {
+        guard let id = Bundle.main.bundleIdentifier else { return }
+        for other in NSRunningApplication.runningApplications(withBundleIdentifier: id)
+        where other != NSRunningApplication.current {
+            other.terminate()
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        quitOtherCopies()
 
         coordinator.register(hud)
         coordinator.register(media)

@@ -6,11 +6,14 @@ Auf Macs und Bildschirmen ohne Notch erscheint oben in der Mitte eine schwebende
 
 ## Installieren (DMG)
 
-1. Unter **Releases** auf GitHub die neueste `HorizonNotch-<Version>.dmg` herunterladen.
-2. Öffnen und **Horizon Notch** auf den Ordner **Programme** ziehen.
-3. Beim ersten Start meldet macOS, dass die App nicht geprüft werden kann (sie ist nicht von Apple notarisiert). Dann **Systemeinstellungen → Datenschutz & Sicherheit** öffnen, ganz unten **„Dennoch öffnen“** klicken und bestätigen. Das ist nur einmal nötig.
+**[⬇︎ HorizonNotch.dmg herunterladen](https://github.com/HUGO19812/HorizonNotch/releases/latest/download/HorizonNotch.dmg)** – immer die neueste Version.
+
+1. DMG öffnen und **Horizon Notch** auf den Ordner **Programme** ziehen.
+2. Beim allerersten Start meldet macOS, dass die App nicht geprüft werden kann (sie ist nicht von Apple notarisiert). Dann **Systemeinstellungen → Datenschutz & Sicherheit** öffnen, ganz unten **„Dennoch öffnen“** klicken und bestätigen. Das ist nur einmal nötig.
 
    Alternativ im Terminal: `xattr -dr com.apple.quarantine /Applications/HorizonNotch.app`
+
+Es läuft immer nur eine Horizon Notch: Wird eine zweite Kopie gestartet, beendet sie die erste.
 
 ### DMG selbst bauen
 
@@ -18,9 +21,9 @@ Auf Macs und Bildschirmen ohne Notch erscheint oben in der Mitte eine schwebende
 ./scripts/make-dmg.sh
 ```
 
-Legt `build/HorizonNotch-<Version>.dmg` an (Apple Silicon und Intel). Die Version kommt aus `MARKETING_VERSION` im Xcode-Projekt.
+Legt `build/HorizonNotch.dmg` an (Apple Silicon und Intel). Die Version in der App kommt aus `MARKETING_VERSION` im Xcode-Projekt.
 
-Automatisch geht es über GitHub Actions: Ein Tag wie `v0.2.0` pushen, dann baut der Workflow **DMG** (`.github/workflows/release.yml`) die DMG und hängt sie an ein neues Release. Von Hand gestartet (Actions → DMG → Run workflow) liegt sie als Artefakt beim Lauf.
+Automatisch geht es über GitHub Actions: Ein Tag wie `v0.2.0` pushen, dann baut der Workflow **DMG** (`.github/workflows/release.yml`) die DMG und hängt sie an ein neues Release; der Download-Link oben zeigt dann darauf. Von Hand gestartet (Actions → DMG → Run workflow) liegt sie als Artefakt beim Lauf.
 
 Ohne Warnung beim Öffnen geht es nur mit einem kostenpflichtigen Apple-Developer-Konto. Dafür im Repo unter *Settings → Secrets → Actions* hinterlegen: `MACOS_CERT_P12` (Developer-ID-Zertifikat als Base64), `MACOS_CERT_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID` und `APPLE_APP_PASSWORD` (app-spezifisches Passwort). Dann wird die DMG signiert und notarisiert. Lokal geht das mit `SIGN_IDENTITY="Developer ID Application: …" NOTARY_PROFILE=<Profil> ./scripts/make-dmg.sh`.
 
@@ -36,7 +39,7 @@ Voraussetzungen:
 Zum Entwickeln `HorizonNotch.xcodeproj` in Xcode öffnen und mit ⌘R starten. Oder im Terminal:
 
 ```bash
-xcodebuild -project HorizonNotch.xcodeproj -scheme HorizonNotch -configuration Debug -derivedDataPath build/dd build
+xcodebuild -project HorizonNotch.xcodeproj -scheme HorizonNotch -configuration Debug -derivedDataPath build/dd.noindex build
 ```
 
 Das App-Symbol wird mit `swift scripts/make-icon.swift` neu gezeichnet.

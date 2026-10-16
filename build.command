@@ -29,9 +29,15 @@ else
   SIGN_ARGS=()
 fi
 
+# Old copies from earlier builds (Debug, Release folder) would show up as
+# extra "Horizon Notch" apps in Spotlight and Launchpad.
+./scripts/forget-builds.sh
+rm -rf build/release build/dd
+
+# ".noindex" keeps Spotlight out of the build folder.
 mkdir -p build
 if ! xcodebuild -project HorizonNotch.xcodeproj -scheme HorizonNotch -configuration Release \
-     -derivedDataPath build/release ${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"} build > build/release.log 2>&1; then
+     -derivedDataPath build/release.noindex ${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"} build > build/release.log 2>&1; then
   echo "  ✗ Bau fehlgeschlagen – Details in build/release.log"
   grep -E "error:" build/release.log | head -10
   exit 1
@@ -41,7 +47,9 @@ echo "  ✓ Gebaut"
 pkill -x HorizonNotch 2>/dev/null
 sleep 0.5
 rm -rf "$TARGET"
-cp -R "build/release/Build/Products/Release/$APP_NAME" "$TARGET"
+cp -R "build/release.noindex/Build/Products/Release/$APP_NAME" "$TARGET"
+# Only the installed copy should exist.
+./scripts/forget-builds.sh
 echo "  ✓ Installiert: $TARGET"
 
 open "$TARGET"

@@ -1,7 +1,9 @@
 #!/bin/bash
 #
 # Builds Horizon Notch (Release, Apple Silicon + Intel) and packs it into a
-# disk image with a link to /Applications: build/HorizonNotch-<version>.dmg
+# disk image with a link to /Applications: build/HorizonNotch.dmg. The name
+# has no version so ".../releases/latest/download/HorizonNotch.dmg" always
+# points at the newest release.
 #
 # Optional environment:
 #   SIGN_IDENTITY   Code signing identity, e.g. "Developer ID Application: Name (TEAMID)".
@@ -13,7 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP_NAME="HorizonNotch"
-BUILD_DIR="build/dmg"
+BUILD_DIR="build/dmg.noindex"
 PRODUCTS="$BUILD_DIR/dd/Build/Products/Release"
 
 command -v xcodebuild >/dev/null || { echo "✗ Xcode fehlt"; exit 1; }
@@ -45,7 +47,7 @@ fi
 
 APP="$PRODUCTS/$APP_NAME.app"
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP/Contents/Info.plist")
-DMG="build/$APP_NAME-$VERSION.dmg"
+DMG="build/$APP_NAME.dmg"
 echo "✓ Gebaut: Version $VERSION"
 
 # Disk image contents: the app and a shortcut to drag it onto.
@@ -61,6 +63,8 @@ if [ "$SIGN_IDENTITY" != "-" ]; then
   codesign --force --sign "$SIGN_IDENTITY" --timestamp "$DMG"
 fi
 echo "✓ DMG: $DMG"
+# The built app is inside the DMG now; drop the loose copies.
+./scripts/forget-builds.sh
 
 if [ -n "${NOTARY_PROFILE:-}" ]; then
   echo "→ Notarisiere (dauert ein paar Minuten) …"
