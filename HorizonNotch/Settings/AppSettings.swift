@@ -97,6 +97,8 @@ final class AppSettings: ObservableObject {
     @Published var lockScreenWidgets: Bool { didSet { defaults.set(lockScreenWidgets, forKey: "lockScreenWidgets") } }
     /// Hide the island while another app or a video fills the screen.
     @Published var hideInFullscreen: Bool { didSet { defaults.set(hideInFullscreen, forKey: "hideInFullscreen") } }
+    /// Look for a new release on GitHub after launch and every six hours.
+    @Published var autoUpdateCheck: Bool { didSet { defaults.set(autoUpdateCheck, forKey: "autoUpdateCheck") } }
     @Published var sneakPeek: Bool { didSet { defaults.set(sneakPeek, forKey: "sneakPeek") } }
     @Published var sneakPeekOnSeek: Bool { didSet { defaults.set(sneakPeekOnSeek, forKey: "sneakPeekOnSeek") } }
     @Published var sneakPeekDuration: Double { didSet { defaults.set(sneakPeekDuration, forKey: "sneakPeekDuration") } }
@@ -168,6 +170,7 @@ final class AppSettings: ObservableObject {
         notifyDownloads = defaults.bool(forKey: "notifyDownloads")
         lockScreenWidgets = defaults.object(forKey: "lockScreenWidgets") as? Bool ?? true
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true
+        autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true
         sneakPeek = defaults.object(forKey: "sneakPeek") as? Bool ?? true
         sneakPeekOnSeek = defaults.object(forKey: "sneakPeekOnSeek") as? Bool ?? true
         sneakPeekDuration = defaults.object(forKey: "sneakPeekDuration") as? Double ?? 3

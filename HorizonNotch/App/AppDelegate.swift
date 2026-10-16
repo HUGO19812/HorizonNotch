@@ -44,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         quitOtherCopies()
+        Updater.shared.start()
 
         coordinator.register(hud)
         coordinator.register(media)
