@@ -46,19 +46,38 @@ if ! xcodebuild -project HorizonNotch.xcodeproj -scheme HorizonNotch -configurat
 fi
 
 APP="$PRODUCTS/$APP_NAME.app"
+
+# Background picture, icon positions and volume icon via dmgbuild, which
+# writes the Finder layout without needing Finder (works on CI too).
+make_pretty_dmg() {
+  local venv="$BUILD_DIR/venv"
+  python3 -m venv "$venv" > /dev/null 2>&1 || return 1
+  "$venv/bin/pip" install --quiet dmgbuild > /dev/null 2>&1 || return 1
+  # One TIFF holding 1x and 2x, so the background is sharp on Retina.
+  tiffutil -cathidpicheck Support/dmg/background.png Support/dmg/background@2x.png \
+    -out "$BUILD_DIR/background.tiff" > /dev/null 2>&1 || return 1
+  local icon_args=()
+  [ -f "$APP/Contents/Resources/AppIcon.icns" ] && icon_args=(-D "icon=$APP/Contents/Resources/AppIcon.icns")
+  "$venv/bin/dmgbuild" -s Support/dmg/dmgbuild-settings.py -D "app=$APP" \
+    -D "background=$BUILD_DIR/background.tiff" ${icon_args[@]+"${icon_args[@]}"} "Horizon Notch" "$DMG"
+}
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP/Contents/Info.plist")
 DMG="build/$APP_NAME.dmg"
 echo "✓ Gebaut: Version $VERSION"
 
-# Disk image contents: the app and a shortcut to drag it onto.
-STAGE="$BUILD_DIR/stage"
-mkdir -p "$STAGE"
-cp -R "$APP" "$STAGE/"
-ln -s /Applications "$STAGE/Applications"
-
 rm -f "$DMG"
-hdiutil create -volname "Horizon Notch" -srcfolder "$STAGE" -fs HFS+ -format UDZO \
-  -imagekey zlib-level=9 -ov "$DMG" > /dev/null
+if make_pretty_dmg; then
+  echo "✓ Gestaltete DMG"
+else
+  # Fallback: plain window with the app and a shortcut to drag it onto.
+  echo "! dmgbuild nicht verfügbar – einfache DMG"
+  STAGE="$BUILD_DIR/stage"
+  mkdir -p "$STAGE"
+  cp -R "$APP" "$STAGE/"
+  ln -s /Applications "$STAGE/Applications"
+  hdiutil create -volname "Horizon Notch" -srcfolder "$STAGE" -fs HFS+ -format UDZO \
+    -imagekey zlib-level=9 -ov "$DMG" > /dev/null
+fi
 if [ "$SIGN_IDENTITY" != "-" ]; then
   codesign --force --sign "$SIGN_IDENTITY" --timestamp "$DMG"
 fi
