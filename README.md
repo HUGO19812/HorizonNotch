@@ -23,7 +23,7 @@ Es läuft immer nur eine Horizon Notch: Wird eine zweite Kopie gestartet, beende
 
 Legt `build/HorizonNotch.dmg` an (Apple Silicon und Intel). Die Version in der App kommt aus `MARKETING_VERSION` im Xcode-Projekt.
 
-Automatisch geht es über GitHub Actions: Ein Tag wie `v0.2.0` pushen, dann baut der Workflow **DMG** (`.github/workflows/release.yml`) die DMG und hängt sie an ein neues Release; der Download-Link oben zeigt dann darauf. Von Hand gestartet (Actions → DMG → Run workflow) liegt sie als Artefakt beim Lauf.
+Automatisch geht es über GitHub Actions: Bei jedem Push auf `main` baut der Workflow **DMG** (`.github/workflows/release.yml`) die DMG und veröffentlicht sie als Release `v<MARKETING_VERSION>`; gibt es die Version schon, wird ihre DMG ersetzt. Für eine neue Version `MARKETING_VERSION` im Xcode-Projekt erhöhen. Der Download-Link oben zeigt immer auf das neueste Release.
 
 Ohne Warnung beim Öffnen geht es nur mit einem kostenpflichtigen Apple-Developer-Konto. Dafür im Repo unter *Settings → Secrets → Actions* hinterlegen: `MACOS_CERT_P12` (Developer-ID-Zertifikat als Base64), `MACOS_CERT_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID` und `APPLE_APP_PASSWORD` (app-spezifisches Passwort). Dann wird die DMG signiert und notarisiert. Lokal geht das mit `SIGN_IDENTITY="Developer ID Application: …" NOTARY_PROFILE=<Profil> ./scripts/make-dmg.sh`.
 
