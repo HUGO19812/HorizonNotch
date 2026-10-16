@@ -4,7 +4,27 @@ Macht aus der MacBook-Notch eine **Dynamic Island**: Musik, System-Anzeigen, Akk
 
 Auf Macs und Bildschirmen ohne Notch erscheint oben in der Mitte eine schwebende Kapsel.
 
-## Einrichten
+## Installieren (DMG)
+
+1. Unter **Releases** auf GitHub die neueste `HorizonNotch-<Version>.dmg` herunterladen.
+2. Öffnen und **Horizon Notch** auf den Ordner **Programme** ziehen.
+3. Beim ersten Start meldet macOS, dass die App nicht geprüft werden kann (sie ist nicht von Apple notarisiert). Dann **Systemeinstellungen → Datenschutz & Sicherheit** öffnen, ganz unten **„Dennoch öffnen“** klicken und bestätigen. Das ist nur einmal nötig.
+
+   Alternativ im Terminal: `xattr -dr com.apple.quarantine /Applications/HorizonNotch.app`
+
+### DMG selbst bauen
+
+```bash
+./scripts/make-dmg.sh
+```
+
+Legt `build/HorizonNotch-<Version>.dmg` an (Apple Silicon und Intel). Die Version kommt aus `MARKETING_VERSION` im Xcode-Projekt.
+
+Automatisch geht es über GitHub Actions: Ein Tag wie `v0.2.0` pushen, dann baut der Workflow **DMG** (`.github/workflows/release.yml`) die DMG und hängt sie an ein neues Release. Von Hand gestartet (Actions → DMG → Run workflow) liegt sie als Artefakt beim Lauf.
+
+Ohne Warnung beim Öffnen geht es nur mit einem kostenpflichtigen Apple-Developer-Konto. Dafür im Repo unter *Settings → Secrets → Actions* hinterlegen: `MACOS_CERT_P12` (Developer-ID-Zertifikat als Base64), `MACOS_CERT_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID` und `APPLE_APP_PASSWORD` (app-spezifisches Passwort). Dann wird die DMG signiert und notarisiert. Lokal geht das mit `SIGN_IDENTITY="Developer ID Application: …" NOTARY_PROFILE=<Profil> ./scripts/make-dmg.sh`.
+
+## Einrichten (aus dem Quellcode)
 
 Doppelklick auf **`build.command`**. Das Skript baut die Release-Version, legt sie nach `/Applications/HorizonNotch.app` und startet sie.
 
