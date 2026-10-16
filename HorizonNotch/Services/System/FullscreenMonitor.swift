@@ -1,11 +1,16 @@
 import AppKit
+import ApplicationServices
 import Combine
 
-/// Whether another app fills the island's screen completely: a full-screen
-/// app or video (own space) or a borderless full-screen window (games).
+/// Whether another app fills the island's screen: a full-screen app or
+/// video (own space) or a borderless full-screen window (games).
 ///
-/// Checked when the space or the active app changes – no polling. Window
-/// bounds of other apps are readable without Screen Recording permission.
+/// Full-screen windows on a Mac with a notch leave the strip beside the
+/// notch free, so their size says little. The reliable signal is the
+/// focused window's "AXFullScreen" attribute (the app already has the
+/// Accessibility permission for the media keys); a window covering the
+/// whole screen is the fallback for games and when that is missing.
+/// Checked when the space or the active app changes – no polling.
 final class FullscreenMonitor: ObservableObject {
     static let shared = FullscreenMonitor()
 
@@ -39,8 +44,39 @@ final class FullscreenMonitor: ObservableObject {
     }
 
     func check() {
-        let now = Self.screenIsCovered(NSScreen.islandScreen(preferred: AppSettings.shared.displayID))
+        let screen = NSScreen.islandScreen(preferred: AppSettings.shared.displayID)
+        let now = Self.focusedWindowIsFullscreen(on: screen) || Self.screenIsCovered(screen)
         if now != isFullscreen { isFullscreen = now }
+    }
+
+    /// The frontmost app's focused window is in macOS full screen and on
+    /// the island's screen.
+    private static func focusedWindowIsFullscreen(on screen: NSScreen?) -> Bool {
+        guard let screen, AXIsProcessTrusted(),
+              let app = NSWorkspace.shared.frontmostApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return false }
+        let element = AXUIElementCreateApplication(app.processIdentifier)
+        // A hanging app must not stall the main thread.
+        AXUIElementSetMessagingTimeout(element, 0.3)
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXFocusedWindowAttribute as CFString, &focused) == .success,
+              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return false }
+        let window = focused as! AXUIElement
+        var fullscreen: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, "AXFullScreen" as CFString, &fullscreen) == .success,
+              (fullscreen as? Bool) == true else { return false }
+        // With several displays: only when it is the island's screen.
+        var positionValue: CFTypeRef?
+        var position = CGPoint.zero
+        if AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionValue) == .success,
+           let positionValue, CFGetTypeID(positionValue) == AXValueGetTypeID(),
+           AXValueGetValue(positionValue as! AXValue, .cgPoint, &position),
+           let primary = NSScreen.screens.first {
+            // AX uses a top-left origin on the primary screen.
+            let point = CGPoint(x: position.x + 1, y: primary.frame.maxY - position.y - 1)
+            return screen.frame.contains(point)
+        }
+        return true
     }
 
     private static func screenIsCovered(_ screen: NSScreen?) -> Bool {
