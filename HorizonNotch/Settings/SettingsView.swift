@@ -763,10 +763,10 @@ private struct LockScreenSettings: View {
     var body: some View {
         Form {
             Section {
-                Toggle(L("Widgets auf dem Sperrbildschirm", "Widgets on the lock screen"), isOn: $settings.lockScreenWidgets)
+                Toggle(L("Musik-Player auf dem Sperrbildschirm", "Music player on the lock screen"), isOn: $settings.lockScreenWidgets)
             } footer: {
-                note("Uhr, Wetter, Musik und Songtext beim Sperren. Nutzt eine nicht dokumentierte Systemschnittstelle und kann nach macOS-Updates ausfallen.",
-                     "Clock, weather, music and lyrics while locked. Uses an undocumented system interface and may break after macOS updates.")
+                note("Wie beim iPhone: Cover, Titel, Fortschritt, Wiedergabe-Tasten und Lautstärke – nur solange etwas läuft. Nutzt eine nicht dokumentierte Systemschnittstelle und kann nach macOS-Updates ausfallen.",
+                     "Like on the iPhone: cover, title, progress, playback buttons and volume – only while something plays. Uses an undocumented system interface and may break after macOS updates.")
             }
         }
         .formStyle(.grouped)

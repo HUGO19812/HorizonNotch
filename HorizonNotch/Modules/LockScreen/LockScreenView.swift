@@ -1,29 +1,25 @@
 import SwiftUI
 
-/// Widgets on the lock screen: a column on the left so it stays clear of
-/// the system clock (top) and the password field (bottom centre).
+/// The lock screen shows one thing: the music player, like on the iPhone.
+/// Centred between the system clock (top) and the password field (bottom);
+/// nothing at all while nothing plays.
 struct LockScreenView: View {
     @ObservedObject var nowPlaying: NowPlayingService
-    @ObservedObject var lyrics: LyricsService
-    @ObservedObject var weather: WeatherService
-    @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 14) {
-                ClockCard()
-                if let report = weather.report { WeatherCard(report: report, place: weather.placeName) }
+        GeometryReader { proxy in
+            ZStack {
                 if let info = nowPlaying.info {
-                    PlayerCard(service: nowPlaying, lyrics: lyrics, info: info, showLyrics: settings.showLyrics)
+                    LockPlayer(service: nowPlaying, info: info)
+                        .frame(width: 380)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 }
             }
-            .frame(width: 340)
-            .padding(.leading, 64)
-            Spacer()
+            // Slightly below the middle: the clock needs the top third.
+            .position(x: proxy.size.width / 2, y: proxy.size.height * 0.56)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environment(\.colorScheme, .dark)
-        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: nowPlaying.info?.title)
+        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: nowPlaying.info == nil)
     }
 }
 
@@ -32,9 +28,9 @@ private struct LockCard<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
         let padded = content
-            .padding(18)
+            .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         if #available(macOS 26.0, *) {
             padded.glassEffect(.regular.tint(.black.opacity(0.2)), in: shape)
@@ -45,111 +41,131 @@ private struct LockCard<Content: View>: View {
     }
 }
 
-private struct ClockCard: View {
-    var body: some View {
-        LockCard {
-            TimelineView(.everyMinute) { context in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(context.date.formatted(.dateTime.hour().minute()))
-                        .font(.system(size: 58, weight: .semibold, design: .rounded).monospacedDigit())
-                    Text(context.date.formatted(.dateTime.weekday(.wide).day().month(.wide)
-                        .locale(Locale(identifier: AppSettings.shared.isGerman ? "de_AT" : "en_US"))))
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.75))
-                }
-            }
-        }
-    }
-}
-
-private struct WeatherCard: View {
-    let report: WeatherService.Report
-    let place: String
-
-    var body: some View {
-        LockCard {
-            HStack(spacing: 14) {
-                Image(systemName: WeatherCode.symbol(report.code, isDay: report.isDay))
-                    .symbolRenderingMode(.multicolor)
-                    .font(.system(size: 34))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(Int(report.temperature.rounded()))°  \(WeatherCode.text(report.code))")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text("\(place.isEmpty ? "" : place + " · ")↑\(Int(report.high.rounded()))° ↓\(Int(report.low.rounded()))°")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.65))
-                }
-            }
-        }
-    }
-}
-
-private struct PlayerCard: View {
+/// Cover and title, progress with times, the three buttons and volume.
+private struct LockPlayer: View {
     @ObservedObject var service: NowPlayingService
-    @ObservedObject var lyrics: LyricsService
+    @ObservedObject private var output = AudioOutput.shared
     let info: NowPlayingInfo
-    let showLyrics: Bool
 
     var body: some View {
         LockCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 12) {
-                    CoverArt(image: service.artwork, cornerRadius: 12)
-                        .frame(width: 60, height: 60)
-                        .background { if AppSettings.shared.albumTint { AlbumGlow(image: service.artwork, cornerRadius: 12) } }
+            VStack(spacing: 16) {
+                HStack(spacing: 14) {
+                    CoverArt(image: service.artwork, cornerRadius: 10)
+                        .frame(width: 56, height: 56)
+                        .background { if AppSettings.shared.albumTint { AlbumGlow(image: service.artwork, cornerRadius: 10) } }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(info.title).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                        Text(info.artist).font(.system(size: 13)).foregroundStyle(.white.opacity(0.65)).lineLimit(1)
+                        Text(info.title)
+                            .font(.system(size: 16, weight: .semibold))
+                            .lineLimit(1)
+                        Text(info.artist.isEmpty ? (info.appName ?? "") : info.artist)
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
                     }
                     Spacer(minLength: 0)
+                    Image(systemName: output.symbol)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .help(output.deviceName)
                 }
-                TimelineView(.periodic(from: .now, by: info.isPlaying ? 0.5 : 3600)) { context in
-                    let position = info.elapsed(at: context.date)
-                    VStack(alignment: .leading, spacing: 8) {
-                        if showLyrics, lyrics.state == .loaded, let index = lyrics.index(at: position) {
-                            Text(lyrics.lines[index].text.isEmpty ? "♪" : lyrics.lines[index].text)
-                                .font(.system(size: 16, weight: .semibold))
-                                .lineLimit(2)
-                                .id(index)
-                                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                .animation(.easeInOut(duration: 0.3), value: index)
-                        }
-                        GeometryReader { proxy in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(Color.white.opacity(0.2))
-                                Capsule().fill(service.accent)
-                                    .frame(width: proxy.size.width * CGFloat(info.duration > 0 ? min(position / info.duration, 1) : 0))
-                            }
-                        }
-                        .frame(height: 4)
-                    }
-                }
+
+                LockProgress(info: info)
+
                 HStack {
                     Spacer()
-                    LockButton(symbol: "backward.fill") { service.send(.previous) }
+                    LockButton(symbol: "backward.fill", size: 24) { service.send(.previous) }
                     Spacer()
-                    LockButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 24) { service.send(.togglePlayPause) }
+                    LockButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 34) {
+                        service.send(.togglePlayPause)
+                    }
+                    .contentTransition(.symbolEffect(.replace))
                     Spacer()
-                    LockButton(symbol: "forward.fill") { service.send(.next) }
+                    LockButton(symbol: "forward.fill", size: 24) { service.send(.next) }
                     Spacer()
                 }
+
+                LockVolume()
             }
         }
-        .onAppear { if showLyrics { lyrics.load(for: info) } }
-        .onChange(of: info.title) { _, _ in if showLyrics { lyrics.load(for: info) } }
+    }
+}
+
+/// Thin progress bar with elapsed time left and remaining time right.
+private struct LockProgress: View {
+    let info: NowPlayingInfo
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: info.isPlaying ? 0.5 : 3600)) { context in
+            let position = info.elapsed(at: context.date)
+            let fraction = info.duration > 0 ? min(position / info.duration, 1) : 0
+            VStack(spacing: 5) {
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.22))
+                        Capsule().fill(Color.white.opacity(0.85))
+                            .frame(width: proxy.size.width * CGFloat(fraction))
+                    }
+                }
+                .frame(height: 5)
+                HStack {
+                    Text(time(position))
+                    Spacer()
+                    Text("-" + time(max(0, info.duration - position)))
+                }
+                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.5))
+            }
+        }
+    }
+
+    private func time(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded(.down))
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// Volume slider between a quiet and a loud speaker.
+private struct LockVolume: View {
+    private let output = AudioOutput.shared
+    @State private var level: Double = 0
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "speaker.fill")
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.22))
+                    Capsule().fill(Color.white.opacity(0.85))
+                        .frame(width: proxy.size.width * level)
+                }
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                    level = min(max(drag.location.x / proxy.size.width, 0), 1)
+                    output.volume = Float(level)
+                    if output.isMuted && level > 0 { output.isMuted = false }
+                })
+            }
+            .frame(height: 5)
+            Image(systemName: "speaker.wave.3.fill")
+        }
+        .font(.system(size: 10, weight: .semibold))
+        .foregroundStyle(.white.opacity(0.5))
+        .opacity(output.canSetVolume ? 1 : 0)
+        .onAppear { level = Double(output.isMuted ? 0 : output.volume) }
     }
 }
 
 private struct LockButton: View {
     let symbol: String
-    var size: CGFloat = 18
+    var size: CGFloat = 24
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
-                .frame(width: 44, height: 36)
+                .frame(width: 60, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressScaleStyle())

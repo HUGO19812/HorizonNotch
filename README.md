@@ -1,6 +1,6 @@
 # Horizon Notch
 
-Macht aus der MacBook-Notch eine **Dynamic Island**: Musik, System-Anzeigen, Akku, Timer, Ablage mit AirDrop, Kalender, Wetter, Verbindungen und Widgets auf dem Sperrbildschirm. Native macOS-App (Swift, SwiftUI und AppKit), läuft in der Menüleiste ohne Dock-Symbol.
+Macht aus der MacBook-Notch eine **Dynamic Island**: Musik, System-Anzeigen, Akku, Timer, Ablage mit AirDrop, Kalender, Wetter, Verbindungen und ein Musik-Player auf dem Sperrbildschirm. Native macOS-App (Swift, SwiftUI und AppKit), läuft in der Menüleiste ohne Dock-Symbol.
 
 Auf Macs und Bildschirmen ohne Notch erscheint oben in der Mitte eine schwebende Kapsel.
 
@@ -43,7 +43,7 @@ Das App-Symbol wird mit `swift scripts/make-icon.swift` neu gezeichnet.
 | Rechner | Taschenrechner mit Verlauf (Klick übernimmt ein Ergebnis), Tasten in der Akzentfarbe; bei offenem Reiter auch per Tastatur bedienbar, ⌘C oder Klick auf die Anzeige kopiert | – |
 | Verbindungen | Kopfhörer verbunden/getrennt, WLAN, optional alle Bluetooth-Geräte mit AirPods-Akku und Fokus | CoreAudio, Network, CoreWLAN, IOBluetooth, Intents |
 | Benachrichtigungen | Fertige Downloads (optional) | kqueue auf ~/Downloads |
-| Sperrbildschirm | Uhr, Wetter, Musik und Songtext beim Sperren | SkyLight (siehe unten) |
+| Sperrbildschirm | Musik-Player wie beim iPhone: Cover, Titel, Fortschritt, Tasten, Lautstärke | SkyLight (siehe unten) |
 
 Die Island zeigt immer das wichtigste aktive Modul: **HUD > Benachrichtigung/Akku > Kamera & Mikrofon > Kalender > Timer > Musik**. Jedes Modul lässt sich in den Einstellungen abschalten, die Seitenreihenfolge per Ziehen ändern.
 
@@ -69,7 +69,7 @@ Bildschirmaufnahme ist **nicht** nötig. Der Visualizer ist eine Animation, die 
 - **Form:** `NotchShape` zeichnet die Kontur mit konkaven „Ohren" oben. Breite, Höhe und alle Radien werden mit Spring-Animationen bewegt.
 - **Module:** Jedes Modul erfüllt das Protokoll `NotchModule` (`id`, `priority`, `isActive`, kompakte und geöffnete Ansicht). Der `NotchCoordinator` wählt das aktive Modul.
 - **Now Playing:** Seit macOS 15.4 antwortet das private MediaRemote-Framework nur noch Apple-signierten Prozessen. Horizon Notch lädt deshalb eine kleine Bibliothek (`MediaBridge/HNMediaBridge.m`) in Apples eigenes `/usr/bin/perl`. Dieser Helfer meldet Änderungen als JSON über stdout und nimmt Befehle über stdin. Er beendet sich, sobald die App weg ist. Fällt er dauerhaft aus, übernimmt AppleScript für Musik und Spotify.
-- **Sperrbildschirm:** Sperren und Entsperren kommen über `com.apple.screenIsLocked` bzw. `com.apple.screenIsUnlocked`. Das Widget-Fenster wird mit privaten SkyLight-Funktionen (`SLSSpaceCreate`, `SLSSpaceSetAbsoluteLevel`, `SLSSpaceAddWindowsAndRemoveFromSpaces`) in einen eigenen Space auf Ebene 400 gelegt, über dem Sperrbildschirm. Einen öffentlichen Weg gibt es nicht.
+- **Sperrbildschirm:** Sperren und Entsperren kommen über `com.apple.screenIsLocked` bzw. `com.apple.screenIsUnlocked`. Das Player-Fenster wird mit privaten SkyLight-Funktionen (`SLSSpaceCreate`, `SLSSpaceSetAbsoluteLevel`, `SLSSpaceAddWindowsAndRemoveFromSpaces`) in einen eigenen Space auf Ebene 400 gelegt, über dem Sperrbildschirm. Einen öffentlichen Weg gibt es nicht.
 - **Ressourcen:** Im Leerlauf ~0 % CPU. Alles hängt an System-Benachrichtigungen. Regelmäßig geprüft wird nur, wo macOS nichts meldet: das Wetter alle 30 Min. und der Fokus alle 20 s, und der Fokus nur, wenn eingeschaltet. Fortschrittsbalken ticken nur, solange die Island offen ist.
 
 ## Bekannte Einschränkungen
@@ -82,4 +82,4 @@ Bildschirmaufnahme ist **nicht** nötig. Der Visualizer ist eine Animation, die 
 - **Fokus** hat keine Änderungs-Benachrichtigung und wird deshalb alle 20 s abgefragt, nur bei aktivierter Option. Ohne passende Berechtigung bleibt die Option wirkungslos.
 - **WLAN-Namen** gibt es nur mit Standortfreigabe, sonst steht dort „WLAN".
 - **Songtexte** kommen von LRCLIB (Community-Datenbank). Nicht jeder Titel hat synchronisierte Texte.
-- **Sperrbildschirm:** Die Widgets sollen bedienbar sein (Wiedergabe-Tasten). Je nach macOS-Version nimmt der Sperrbildschirm Klicks aber selbst entgegen.
+- **Sperrbildschirm:** Der Player soll bedienbar sein (Tasten, Lautstärke). Je nach macOS-Version nimmt der Sperrbildschirm Klicks aber selbst entgegen.

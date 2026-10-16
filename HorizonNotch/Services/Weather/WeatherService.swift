@@ -106,15 +106,6 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
         }
     }
 
-    /// For the lock screen: refresh, but never trigger a permission prompt.
-    func refreshIfPermitted() {
-        let status = locationManager.authorizationStatus
-        let allowed = settings.weatherUsesLocation
-            ? (status == .authorized || status == .authorizedAlways)
-            : !settings.weatherCity.trimmingCharacters(in: .whitespaces).isEmpty
-        if allowed { activate() }
-    }
-
     private func refreshIfStale() {
         guard activated else { return }
         if let report, Date().timeIntervalSince(report.fetched) < 15 * 60 { return }
