@@ -5,11 +5,13 @@ import Combine
 /// Whether another app fills the island's screen: a full-screen app or
 /// video (own space) or a borderless full-screen window (games).
 ///
-/// Full-screen windows on a Mac with a notch leave the strip beside the
-/// notch free, so their size says little. The reliable signal is the
-/// focused window's "AXFullScreen" attribute (the app already has the
-/// Accessibility permission for the media keys); a window covering the
-/// whole screen is the fallback for games and when that is missing.
+/// Main signal, as in Boring Notch (MacroVisionKit): the window server's
+/// list of spaces per display. The display's current space is a
+/// full-screen space when it has a "TileLayoutManager". That needs no
+/// permission and does not depend on window sizes (full-screen windows
+/// leave the strip beside the notch free). If the private function is
+/// missing, the focused window's AXFullScreen attribute and a window
+/// covering the whole screen are used instead.
 /// Checked when the space or the active app changes – no polling.
 final class FullscreenMonitor: ObservableObject {
     static let shared = FullscreenMonitor()
@@ -45,8 +47,42 @@ final class FullscreenMonitor: ObservableObject {
 
     func check() {
         let screen = NSScreen.islandScreen(preferred: AppSettings.shared.displayID)
-        let now = Self.focusedWindowIsFullscreen(on: screen) || Self.screenIsCovered(screen)
+        let fullscreenSpace = Self.currentSpaceIsFullscreen(on: screen) ?? Self.focusedWindowIsFullscreen(on: screen)
+        // Borderless full-screen games do not get their own space.
+        let now = fullscreenSpace || Self.screenIsCovered(screen)
         if now != isFullscreen { isFullscreen = now }
+    }
+
+    // MARK: - Spaces (window server)
+
+    private typealias ConnectionFn = @convention(c) () -> Int32
+    private typealias CopySpacesFn = @convention(c) (Int32) -> Unmanaged<CFArray>?
+
+    private static let skyLight = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
+    private static let connection: ConnectionFn? = symbol("SLSMainConnectionID") ?? symbol("CGSMainConnectionID")
+    private static let copySpaces: CopySpacesFn? = symbol("SLSCopyManagedDisplaySpaces") ?? symbol("CGSCopyManagedDisplaySpaces")
+
+    private static func symbol<T>(_ name: String) -> T? {
+        guard let skyLight, let pointer = dlsym(skyLight, name) else { return nil }
+        return unsafeBitCast(pointer, to: T.self)
+    }
+
+    /// nil when the window server cannot be asked.
+    private static func currentSpaceIsFullscreen(on screen: NSScreen?) -> Bool? {
+        guard let screen, let connection, let copySpaces,
+              let displays = copySpaces(connection())?.takeRetainedValue() as? [[String: Any]] else { return nil }
+        let uuid = screen.displayUUID
+        for display in displays {
+            // "Main" when all displays share one set of spaces.
+            let identifier = display["Display Identifier"] as? String
+            guard identifier == "Main" || identifier == uuid || displays.count == 1,
+                  let current = display["Current Space"] as? [String: Any],
+                  let spaces = display["Spaces"] as? [[String: Any]] else { continue }
+            let currentID = current["ManagedSpaceID"] as? Int ?? current["id64"] as? Int ?? -1
+            let active = spaces.first { ($0["ManagedSpaceID"] as? Int) == currentID } ?? current
+            return active["TileLayoutManager"] != nil
+        }
+        return false
     }
 
     /// The frontmost app's focused window is in macOS full screen and on
@@ -97,5 +133,13 @@ final class FullscreenMonitor: ObservableObject {
             return abs(bounds.minX - target.minX) < 2 && abs(bounds.minY - target.minY) < 2
                 && abs(bounds.width - target.width) < 2 && abs(bounds.height - target.height) < 2
         }
+    }
+}
+
+extension NSScreen {
+    /// The display's UUID as the window server names it in its space list.
+    var displayUUID: String? {
+        guard let uuid = CGDisplayCreateUUIDFromDisplayID(displayID) else { return nil }
+        return CFUUIDCreateString(nil, uuid.takeRetainedValue()) as String?
     }
 }
