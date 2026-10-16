@@ -381,6 +381,9 @@ private struct ProgressScrubber: View {
     @State private var dragValue: Double?
 
     var body: some View {
+        // The service's latest state: right after a seek it already holds
+        // the new position, even before the parent view re-renders.
+        let info = service.info ?? self.info
         TimelineView(.periodic(from: .now, by: info.isPlaying && dragValue == nil ? 0.5 : 3600)) { context in
             let duration = max(info.duration, 0.01)
             let position = dragValue ?? info.elapsed(at: context.date)
