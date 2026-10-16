@@ -39,8 +39,8 @@ Das App-Symbol wird mit `swift scripts/make-icon.swift` neu gezeichnet.
 | Timer | Countdown und Stoppuhr, Live-Anzeige neben der Notch | – |
 | Ablage | Datei-Ablage und AirDrop | NSSharingService |
 | Kalender | Nächste Termine, Countdown 10 Min. vor Meetings, „Beitreten" für Zoom/Teams/Meet | EventKit |
-| Wetter | Aktuell, Höchst- und Tiefstwert, nächste 6 Stunden | Open-Meteo, CoreLocation oder gesuchter Ort |
-| Rechner | Taschenrechner; bei offenem Reiter auch per Tastatur bedienbar | – |
+| Wetter | Aktuell, Höchst- und Tiefstwert, scrollbare Stundenleiste (24 h) | Open-Meteo, CoreLocation oder gesuchter Ort |
+| Rechner | Taschenrechner mit Verlauf (Klick übernimmt ein Ergebnis), Tasten in der Akzentfarbe; bei offenem Reiter auch per Tastatur bedienbar, ⌘C oder Klick auf die Anzeige kopiert | – |
 | Verbindungen | Kopfhörer verbunden/getrennt, WLAN, optional alle Bluetooth-Geräte mit AirPods-Akku und Fokus | CoreAudio, Network, CoreWLAN, IOBluetooth, Intents |
 | Benachrichtigungen | Fertige Downloads (optional) | kqueue auf ~/Downloads |
 | Sperrbildschirm | Uhr, Wetter, Musik und Songtext beim Sperren | SkyLight (siehe unten) |

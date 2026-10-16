@@ -47,12 +47,9 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
         var days: [Day]
         var fetched: Date
 
-        /// A few hours spread over the given day (morning to evening).
+        /// Every hour of the given day, for the scrollable hour row.
         func hours(on day: Date) -> [Hour] {
-            let calendar = Calendar.current
-            return allHours.filter {
-                calendar.isDate($0.time, inSameDayAs: day) && [8, 12, 16, 20].contains(calendar.component(.hour, from: $0.time))
-            }
+            allHours.filter { Calendar.current.isDate($0.time, inSameDayAs: day) }
         }
 
         static func == (a: Report, b: Report) -> Bool {
@@ -305,7 +302,8 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
             .map { Hour(time: Date(timeIntervalSince1970: hourly.time[$0]), temperature: hourly.temperature_2m[$0],
                         code: hourly.weather_code[$0], isDay: hourly.is_day[$0] == 1,
                         rainChance: (hourly.precipitation_probability?[$0] ?? 0) ?? 0) }
-        let hours = allHours.filter { $0.time > now }.prefix(4)
+        // The next day's worth; the row scrolls sideways.
+        let hours = allHours.filter { $0.time > now }.prefix(24)
         let daily = response.daily
         let days = daily.time.indices.map { i in
             Day(date: Date(timeIntervalSince1970: daily.time[i]),

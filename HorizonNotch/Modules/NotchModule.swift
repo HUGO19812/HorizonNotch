@@ -40,6 +40,9 @@ protocol NotchModule: ObservableObject where ObjectWillChangePublisher == Observ
     func compactTrailing() -> AnyView
     func expandedView() -> AnyView
     func peekView() -> AnyView
+    /// Pill at the bottom of the open island while the module is transient
+    /// (HUD, notification). Must size itself; it is not given wing widths.
+    func transientView() -> AnyView
 }
 
 extension NotchModule {
@@ -49,4 +52,12 @@ extension NotchModule {
     var isPeeking: Bool { false }
     var peekHeight: CGFloat { 0 }
     func peekView() -> AnyView { AnyView(EmptyView()) }
+    /// Both wings side by side, each as wide as next to the notch – the
+    /// wing views stretch to fill, so they need a fixed width here.
+    func transientView() -> AnyView {
+        AnyView(HStack(spacing: 4) {
+            compactLeading().frame(width: compactWingWidth)
+            compactTrailing().frame(width: compactWingWidth)
+        })
+    }
 }

@@ -165,9 +165,11 @@ private struct ExpandedContent: View {
             .overlay(alignment: .bottom) {
                 if let transient = coordinator.transientModule {
                     TransientStrip(module: transient)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .id(transient.id)
+                        .transition(.offset(y: 12).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottom)))
                 }
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.82), value: coordinator.transientModule?.id)
         }
     }
 
@@ -299,18 +301,23 @@ private struct TabIcon: View {
     }
 }
 
+/// A HUD or notification that arrives while the island is open: a small
+/// pill floating above the bottom edge of the page.
 private struct TransientStrip: View {
     let module: any NotchModule
 
     var body: some View {
-        HStack(spacing: 10) {
-            module.compactLeading()
-            module.compactTrailing()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
-        .background(Capsule().fill(Color(white: 0.12)))
-        .padding(.bottom, 10)
+        module.transientView()
+            .padding(.horizontal, 12)
+            .frame(height: 28)
+            .background {
+                Capsule().fill(Color(white: 0.1))
+                    .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.5), radius: 8, y: 2)
+            }
+            .fixedSize()
+            .padding(.bottom, 10)
+            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: module.id)
     }
 }
 

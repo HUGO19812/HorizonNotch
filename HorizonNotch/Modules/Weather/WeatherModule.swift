@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import SwiftUI
 
@@ -125,24 +126,107 @@ private struct Detail: View {
     }
 }
 
+/// Hours side by side, scrollable with the trackpad or mouse wheel. Edges
+/// fade out so it is clear there is more. Other days start at 8 am.
 private struct HourRow: View {
     let hours: [WeatherService.Hour]
+    var startHour: Int?
 
     var body: some View {
-        HStack(spacing: 12) {
-            ForEach(hours) { hour in
-                VStack(spacing: 4) {
-                    Text(hour.time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted))))
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.5))
-                    Image(systemName: WeatherCode.symbol(hour.code, isDay: hour.isDay))
-                        .symbolRenderingMode(.multicolor)
-                        .font(.system(size: 14))
-                        .frame(height: 16)
-                    Text(temperature(hour.temperature))
-                        .font(.system(size: 11, weight: .semibold))
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(hours) { hour in
+                        HourCell(hour: hour)
+                            .id(hour.id)
+                    }
                 }
+                .padding(.horizontal, 8)
             }
+            .mask {
+                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.06),
+                                       .init(color: .black, location: 0.94), .init(color: .clear, location: 1)],
+                               startPoint: .leading, endPoint: .trailing)
+            }
+            .onAppear { scrollToStart(proxy) }
+            .onChange(of: hours.first?.id) { _, _ in scrollToStart(proxy) }
+        }
+        .frame(maxWidth: .infinity)
+        .background(HorizontalWheelScroll())
+    }
+
+    private func scrollToStart(_ proxy: ScrollViewProxy) {
+        guard let startHour,
+              let hour = hours.first(where: { Calendar.current.component(.hour, from: $0.time) == startHour })
+        else { return }
+        proxy.scrollTo(hour.id, anchor: .leading)
+    }
+}
+
+private struct HourCell: View {
+    let hour: WeatherService.Hour
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Text(hour.time.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted))))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.white.opacity(0.5))
+            Image(systemName: WeatherCode.symbol(hour.code, isDay: hour.isDay))
+                .symbolRenderingMode(.multicolor)
+                .font(.system(size: 14))
+                .frame(height: 16)
+            Text(temperature(hour.temperature))
+                .font(.system(size: 11, weight: .semibold))
+            Text(hour.rainChance >= 20 ? "\(hour.rainChance) %" : " ")
+                .font(.system(size: 8, weight: .semibold).monospacedDigit())
+                .foregroundStyle(Color.cyan.opacity(0.85))
+        }
+        .frame(width: 32)
+    }
+}
+
+/// A plain mouse wheel only scrolls vertically; this turns vertical wheel
+/// movement over the hour row into sideways scrolling. Trackpads already
+/// scroll sideways and are left alone.
+private struct HorizontalWheelScroll: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { WheelView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class WheelView: NSView {
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                guard let self, let window = self.window, event.window === window,
+                      !event.hasPreciseScrollingDeltas,
+                      event.scrollingDeltaX == 0, event.scrollingDeltaY != 0,
+                      self.bounds.contains(self.convert(event.locationInWindow, from: nil)),
+                      let cgEvent = event.cgEvent?.copy() else { return event }
+                // Move the vertical deltas to the horizontal axis, like
+                // holding Shift does.
+                let pairs: [(CGEventField, CGEventField)] = [
+                    (.scrollWheelEventDeltaAxis1, .scrollWheelEventDeltaAxis2),
+                    (.scrollWheelEventPointDeltaAxis1, .scrollWheelEventPointDeltaAxis2),
+                ]
+                for (vertical, horizontal) in pairs {
+                    cgEvent.setIntegerValueField(horizontal, value: cgEvent.getIntegerValueField(vertical))
+                    cgEvent.setIntegerValueField(vertical, value: 0)
+                }
+                cgEvent.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2,
+                                            value: cgEvent.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1))
+                cgEvent.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: 0)
+                return NSEvent(cgEvent: cgEvent) ?? event
+            }
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        deinit {
+            if let monitor { NSEvent.removeMonitor(monitor) }
         }
     }
 }
@@ -184,7 +268,6 @@ private struct TodayDetail: View {
                 }
             }
             .frame(width: 100, alignment: .leading)
-            Spacer(minLength: 0)
             HourRow(hours: report.hours)
         }
     }
@@ -227,8 +310,7 @@ private struct DayDetail: View {
                 }
             }
             .frame(width: 100, alignment: .leading)
-            Spacer(minLength: 0)
-            HourRow(hours: hours)
+            HourRow(hours: hours, startHour: 8)
         }
     }
 }
