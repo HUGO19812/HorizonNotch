@@ -70,7 +70,7 @@ private let settingsGroups: [SettingsGroup] = [
         SettingsEntry(tab: .claude, de: "Claude Code", en: "Claude Code", symbol: "sparkle",
                       keywords: "Hooks Token Verbrauch usage KI AI"),
         SettingsEntry(tab: .lockScreen, de: "Sperrbildschirm", en: "Lock Screen", symbol: "lock.display",
-                      keywords: "gesperrt locked Player Musik music Cover Lyrics Songtext"),
+                      keywords: "gesperrt locked Player Musik music Cover Lyrics Songtext Bildschirmschoner screen saver screensaver"),
     ]),
     SettingsGroup(de: "System", en: "System", entries: [
         SettingsEntry(tab: .permissions, de: "Berechtigungen", en: "Permissions", symbol: "lock.shield",
@@ -140,7 +140,7 @@ struct SettingsView: View {
                 case .shelf: ShelfSettings()
                 case .connectivity: ConnectivitySettings()
                 case .notifications: NotificationSettings()
-                case .lockScreen: LockScreenSettings()
+                case .lockScreen: LockScreenSettings(appDelegate: appDelegate)
                 case .permissions: PermissionSettings(appDelegate: appDelegate)
                 case .about: AboutSettings()
                 }
@@ -841,6 +841,7 @@ private struct ClaudeSettings: View {
 }
 
 private struct LockScreenSettings: View {
+    let appDelegate: AppDelegate
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
@@ -850,6 +851,23 @@ private struct LockScreenSettings: View {
             } footer: {
                 note("Nur solange etwas läuft. Startet als kleiner Player; ein Klick aufs Cover zeigt es groß, der Songtext-Knopf blendet die Lyrics dazu ein. Nutzt eine nicht dokumentierte Systemschnittstelle und kann nach macOS-Updates ausfallen.",
                      "Only while something plays. Starts as a small player; clicking the cover shows it large, the lyrics button adds the lyrics. Uses an undocumented system interface and may break after macOS updates.")
+            }
+            Section {
+                Toggle(L("Als Bildschirmschoner, wenn Musik läuft", "As screen saver while music plays"), isOn: $settings.screenSaverEnabled)
+                Picker(L("Starten nach", "Start after"), selection: $settings.screenSaverDelay) {
+                    ForEach([1.0, 2, 5, 10, 15, 30], id: \.self) { minutes in
+                        Text(L("\(Int(minutes)) Min.", "\(Int(minutes)) min")).tag(minutes)
+                    }
+                }
+                .disabled(!settings.screenSaverEnabled)
+                Toggle(L("Songtext zeigen", "Show lyrics"), isOn: $settings.screenSaverLyrics)
+                    .disabled(!settings.screenSaverEnabled)
+                Button(L("Vorschau", "Preview")) { appDelegate.screenSaver?.show() }
+            } header: {
+                Text(L("Bildschirmschoner", "Screen saver"))
+            } footer: {
+                note("Großes Cover, Uhr und Songtext auf dem vom Cover getönten Hintergrund, wenn du so lange nichts tust und Musik läuft. Eine Taste, ein Klick oder eine Mausbewegung beendet ihn. Bei Videos und im Vollbild bleibt er aus. Stell den macOS-Bildschirmschoner auf eine längere Zeit oder „Nie“, sonst kommt dieser zuerst.",
+                     "Large cover, clock and lyrics on the cover-tinted background when you have been idle that long and music plays. A key, click or mouse move ends it. It stays off for videos and in full screen. Set the macOS screen saver to a longer time or “Never”, otherwise that one starts first.")
             }
         }
         .formStyle(.grouped)

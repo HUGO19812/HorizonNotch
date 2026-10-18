@@ -97,6 +97,11 @@ final class AppSettings: ObservableObject {
     @Published var lockScreenWidgets: Bool { didSet { defaults.set(lockScreenWidgets, forKey: "lockScreenWidgets") } }
     /// Hide the island while another app or a video fills the screen.
     @Published var hideInFullscreen: Bool { didSet { defaults.set(hideInFullscreen, forKey: "hideInFullscreen") } }
+    /// The large lock screen player as a screen saver while music plays.
+    @Published var screenSaverEnabled: Bool { didSet { defaults.set(screenSaverEnabled, forKey: "screenSaverEnabled") } }
+    /// Idle minutes before it starts.
+    @Published var screenSaverDelay: Double { didSet { defaults.set(screenSaverDelay, forKey: "screenSaverDelay") } }
+    @Published var screenSaverLyrics: Bool { didSet { defaults.set(screenSaverLyrics, forKey: "screenSaverLyrics") } }
     /// Look for a new release on GitHub after launch and every six hours.
     @Published var autoUpdateCheck: Bool { didSet { defaults.set(autoUpdateCheck, forKey: "autoUpdateCheck") } }
     @Published var sneakPeek: Bool { didSet { defaults.set(sneakPeek, forKey: "sneakPeek") } }
@@ -171,6 +176,9 @@ final class AppSettings: ObservableObject {
         lockScreenWidgets = defaults.object(forKey: "lockScreenWidgets") as? Bool ?? true
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true
+        screenSaverEnabled = defaults.bool(forKey: "screenSaverEnabled")
+        screenSaverDelay = defaults.object(forKey: "screenSaverDelay") as? Double ?? 5
+        screenSaverLyrics = defaults.object(forKey: "screenSaverLyrics") as? Bool ?? true
         sneakPeek = defaults.object(forKey: "sneakPeek") as? Bool ?? true
         sneakPeekOnSeek = defaults.object(forKey: "sneakPeekOnSeek") as? Bool ?? true
         sneakPeekDuration = defaults.object(forKey: "sneakPeekDuration") as? Double ?? 3
