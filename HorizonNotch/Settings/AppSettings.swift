@@ -148,6 +148,9 @@ final class AppSettings: ObservableObject {
     @Published var accentMode: AccentMode { didSet { defaults.set(accentMode.rawValue, forKey: "accentMode") } }
     @Published var accentFixedColor: String { didSet { defaults.set(accentFixedColor, forKey: "accentFixedColor") } }
     @Published var islandTintColor: String { didSet { defaults.set(islandTintColor, forKey: "islandTintColor") } }
+    /// Points added to the measured notch height so the closed island
+    /// lines up with the camera housing (negative = shorter).
+    @Published var notchHeightAdjust: Double { didSet { defaults.set(notchHeightAdjust, forKey: "notchHeightAdjust") } }
     /// Width of the open island in points.
     @Published var islandWidth: Double { didSet { defaults.set(islandWidth, forKey: "islandWidth") } }
     /// Height of the open island below the notch.
@@ -221,6 +224,7 @@ final class AppSettings: ObservableObject {
         accentMode = AccentMode(rawValue: defaults.string(forKey: "accentMode") ?? "") ?? .cover
         accentFixedColor = defaults.string(forKey: "accentFixedColor") ?? "#FF9F0A"
         islandTintColor = defaults.string(forKey: "islandTintColor") ?? "#1C1C3A"
+        notchHeightAdjust = defaults.object(forKey: "notchHeightAdjust") as? Double ?? 0
         islandWidth = defaults.object(forKey: "islandWidth") as? Double ?? 540
         islandHeight = defaults.object(forKey: "islandHeight") as? Double ?? 150
         islandCornerRadius = defaults.object(forKey: "islandCornerRadius") as? Double ?? 34

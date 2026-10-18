@@ -25,11 +25,14 @@ struct NotchRootView: View {
                     .padding(.horizontal, layout.earRadius)
             }
             .frame(width: layout.outerSize.width, height: layout.outerSize.height, alignment: .top)
-            .background(IslandBackground(shape: shape, style: state == .collapsed ? .black : settings.appearance,
+            // Closed and with a live activity beside the notch it stays pure
+            // black so it blends with the hardware notch; the chosen style
+            // only applies to the open island.
+            .background(IslandBackground(shape: shape, style: state == .expanded ? settings.appearance : .black,
                                          tint: Color(hex: settings.islandTintColor) ?? .black))
             .clipShape(shape)
             .overlay {
-                if settings.islandBorder && state != .collapsed {
+                if settings.islandBorder && state == .expanded {
                     shape.stroke(Color.white.opacity(0.16), lineWidth: 1)
                 }
             }

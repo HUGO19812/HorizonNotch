@@ -36,7 +36,7 @@ private let settingsGroups: [SettingsGroup] = [
         SettingsEntry(tab: .general, de: "Allgemein", en: "General", symbol: "gearshape",
                       keywords: "Anmeldung starten Autostart login Sprache language Bildschirm display screen Monitor Update Aktualisierung Version"),
         SettingsEntry(tab: .appearance, de: "Darstellung", en: "Appearance", symbol: "paintbrush",
-                      keywords: "Stil style Glas glass Hintergrundfarbe background colour color Rand border Akzentfarbe accent Farbig coloured Visualizer Größe size Breite width Höhe height Eckenradius corner radius Schatten shadow Schrift font Schriftart fett bold Reiter-Symbole tab icons Form shape"),
+                      keywords: "Notch Höhe angleichen match height niedriger lower Stil style Glas glass Hintergrundfarbe background colour color Rand border Akzentfarbe accent Farbig coloured Visualizer Größe size Breite width Höhe height Eckenradius corner radius Schatten shadow Schrift font Schriftart fett bold Reiter-Symbole tab icons Form shape"),
         SettingsEntry(tab: .behavior, de: "Verhalten", en: "Behaviour", symbol: "cursorarrow.motionlines",
                       keywords: "Verzögerung hover delay Öffnen open erster letzter Reiter first last tab Vollbild full screen fullscreen Film movie video ausblenden hide Trackpad Klick haptic Haptik Klickstärke"),
     ]),
@@ -297,6 +297,8 @@ private struct AppearanceSettings: View {
                             range: 140...200, step: 5, format: "%.0f pt")
                 ValueSlider(title: L("Eckenradius", "Corner radius"), value: $settings.islandCornerRadius,
                             range: 16...48, step: 1, format: "%.0f pt")
+                ValueSlider(title: L("Höhe an Notch angleichen", "Match notch height"), value: $settings.notchHeightAdjust,
+                            range: -8...4, step: 0.5, format: "%+.1f pt")
             }
             Section(L("Schrift & Symbole", "Text & icons")) {
                 Picker(L("Schriftart", "Font"), selection: $settings.fontDesign) {
