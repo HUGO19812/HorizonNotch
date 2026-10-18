@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var connectivityMonitor: ConnectivityMonitor?
     private var downloadWatcher: DownloadWatcher?
     private var lockScreen: LockScreenController?
+    private(set) var screenSaver: ScreenSaverController?
 
     private var notchController: NotchWindowController?
     private var statusBar: StatusBarController?
@@ -60,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         connectivityMonitor = ConnectivityMonitor { [weak self] in self?.connectivity.post($0) }
         downloadWatcher = DownloadWatcher { [weak self] in self?.notifications.post($0) }
         lockScreen = LockScreenController(nowPlaying: nowPlaying, lyrics: media.lyrics)
+        screenSaver = ScreenSaverController(nowPlaying: nowPlaying, lyrics: media.lyrics)
         coordinator.register(battery)
         coordinator.register(privacy)
         nowPlaying.start()
@@ -83,7 +85,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(forName: .openSettings, object: nil, queue: .main) { [weak self] _ in
             self?.showSettings()
         }
-        lockScreen?.onLockChange = { [weak controller] _ in controller?.collapse() }
+        lockScreen?.onLockChange = { [weak controller, weak self] locked in
+            controller?.collapse()
+            self?.screenSaver?.screenLocked(locked)
+        }
 
         if !AppSettings.shared.onboardingDone {
             showSettings(tab: .permissions)
