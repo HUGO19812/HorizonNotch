@@ -74,6 +74,10 @@ final class NotchWindowController {
             .dropFirst()
             .sink { [weak self] _ in DispatchQueue.main.async { self?.screenConfigurationChanged() } }
             .store(in: &subscriptions)
+        settings.$notchHeightAdjust
+            .dropFirst()
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.screenConfigurationChanged() } }
+            .store(in: &subscriptions)
         // Keep the click-through region in sync when a live activity
         // appears or changes size while the pointer is elsewhere.
         coordinator.objectWillChange

@@ -16,7 +16,10 @@ struct NotchGeometry: Equatable {
            let left = screen.auxiliaryTopLeftArea,
            let right = screen.auxiliaryTopRightArea {
             let width = screen.frame.width - left.width - right.width
-            notchSize = CGSize(width: width, height: screen.safeAreaInsets.top)
+            // safeAreaInsets.top is the menu bar height; on some models it
+            // is a little taller than the camera housing (Appearance).
+            let height = screen.safeAreaInsets.top + CGFloat(AppSettings.shared.notchHeightAdjust)
+            notchSize = CGSize(width: width, height: max(20, height))
             hasNotch = true
             topInset = 0
         } else {
