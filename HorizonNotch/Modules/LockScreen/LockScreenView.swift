@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// What the lock screen player shows; reset to the small player on every lock.
+/// What the lock screen player shows; back to the chosen start view
+/// (Settings → Lock Screen) on every lock.
 final class LockScreenState: ObservableObject {
     /// Large cover below the clock instead of the small card.
     @Published var large = false
@@ -8,8 +9,9 @@ final class LockScreenState: ObservableObject {
     @Published var lyrics = false
 
     func reset() {
-        large = false
-        lyrics = false
+        let start = AppSettings.shared.lockScreenStart
+        large = start != .compact
+        lyrics = start == .lyrics
     }
 }
 

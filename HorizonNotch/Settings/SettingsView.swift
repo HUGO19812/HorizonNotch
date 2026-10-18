@@ -848,9 +848,15 @@ private struct LockScreenSettings: View {
         Form {
             Section {
                 Toggle(L("Musik-Player auf dem Sperrbildschirm", "Music player on the lock screen"), isOn: $settings.lockScreenWidgets)
+                Picker(L("Beim Sperren zeigen", "When locking, show"), selection: $settings.lockScreenStart) {
+                    Text(L("Kleiner Player", "Small player")).tag(LockScreenStart.compact)
+                    Text(L("Großes Cover", "Large cover")).tag(LockScreenStart.cover)
+                    Text(L("Cover und Songtext", "Cover and lyrics")).tag(LockScreenStart.lyrics)
+                }
+                .disabled(!settings.lockScreenWidgets)
             } footer: {
-                note("Nur solange etwas läuft. Startet als kleiner Player; ein Klick aufs Cover zeigt es groß, der Songtext-Knopf blendet die Lyrics dazu ein. Nutzt eine nicht dokumentierte Systemschnittstelle und kann nach macOS-Updates ausfallen.",
-                     "Only while something plays. Starts as a small player; clicking the cover shows it large, the lyrics button adds the lyrics. Uses an undocumented system interface and may break after macOS updates.")
+                note("Nur solange etwas läuft. Startet mit der gewählten Ansicht; ein Klick aufs Cover wechselt zwischen klein und groß, der Songtext-Knopf blendet die Lyrics ein und aus. Nutzt eine nicht dokumentierte Systemschnittstelle und kann nach macOS-Updates ausfallen.",
+                     "Only while something plays. Starts with the chosen view; clicking the cover switches between small and large, the lyrics button shows and hides the lyrics. Uses an undocumented system interface and may break after macOS updates.")
             }
             Section {
                 Toggle(L("Als Bildschirmschoner, wenn Musik läuft", "As screen saver while music plays"), isOn: $settings.screenSaverEnabled)
