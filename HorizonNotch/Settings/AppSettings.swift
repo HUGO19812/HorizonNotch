@@ -50,6 +50,17 @@ enum HUDBarColor: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// What the lock screen player shows first after locking.
+enum LockScreenStart: String, CaseIterable, Identifiable {
+    /// The small glass card.
+    case compact
+    /// Large cover under the clock.
+    case cover
+    /// Large cover and the lyrics beside it.
+    case lyrics
+    var id: String { rawValue }
+}
+
 /// Colour of the sung lyrics.
 enum LyricsColorMode: String, CaseIterable, Identifiable {
     /// White on grey, like Apple Music.
@@ -95,6 +106,7 @@ final class AppSettings: ObservableObject {
     @Published var connectivityFocus: Bool { didSet { defaults.set(connectivityFocus, forKey: "connectivityFocus") } }
     @Published var notifyDownloads: Bool { didSet { defaults.set(notifyDownloads, forKey: "notifyDownloads") } }
     @Published var lockScreenWidgets: Bool { didSet { defaults.set(lockScreenWidgets, forKey: "lockScreenWidgets") } }
+    @Published var lockScreenStart: LockScreenStart { didSet { defaults.set(lockScreenStart.rawValue, forKey: "lockScreenStart") } }
     /// Hide the island while another app or a video fills the screen.
     @Published var hideInFullscreen: Bool { didSet { defaults.set(hideInFullscreen, forKey: "hideInFullscreen") } }
     /// The large lock screen player as a screen saver while music plays.
@@ -174,6 +186,7 @@ final class AppSettings: ObservableObject {
         connectivityFocus = defaults.bool(forKey: "connectivityFocus")
         notifyDownloads = defaults.bool(forKey: "notifyDownloads")
         lockScreenWidgets = defaults.object(forKey: "lockScreenWidgets") as? Bool ?? true
+        lockScreenStart = LockScreenStart(rawValue: defaults.string(forKey: "lockScreenStart") ?? "") ?? .compact
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true
         screenSaverEnabled = defaults.bool(forKey: "screenSaverEnabled")
