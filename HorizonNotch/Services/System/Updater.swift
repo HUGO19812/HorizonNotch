@@ -36,8 +36,11 @@ final class Updater: ObservableObject {
 
     /// Checks shortly after launch and then every six hours.
     func start() {
-        #if DEBUG
-        return // Builds from Xcode are never replaced.
+        #if DEBUG || LOCAL_BUILD
+        // Builds from Xcode or build.command are never replaced on their
+        // own: their build number (1) is always below the released one, so
+        // the release – maybe older code – would look like an update.
+        return
         #else
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.checkIfEnabled() }
         timer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in self?.checkIfEnabled() }
