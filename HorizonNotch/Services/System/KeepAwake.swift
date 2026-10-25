@@ -10,7 +10,9 @@ import Combine
 /// these two commands without a password (like Amphetamine Enhancer's
 /// one-time setup). After that, switching runs `sudo -n pmset …`.
 /// The setting persists (also across restarts) until it is switched off
-/// again, so the app reads the real state from `pmset -g`.
+/// again, so the app reads the real state from `pmset -g`. With a time limit
+/// the end time is stored too, so it is switched off on time even if the app
+/// was quit in between (at the latest when it starts again).
 final class KeepAwake: ObservableObject {
     static let shared = KeepAwake()
 
@@ -18,12 +20,19 @@ final class KeepAwake: ObservableObject {
     @Published private(set) var lastError: String?
     /// The password-free rule is installed.
     @Published private(set) var isSetUp = false
+    /// When it switches itself off; nil = until switched off by hand.
+    @Published private(set) var endDate: Date? {
+        didSet { UserDefaults.standard.set(endDate, forKey: Self.endDateKey) }
+    }
+    private var offTimer: DispatchWorkItem?
+    private static let endDateKey = "keepAwakeUntil"
 
     private static let sudoersPath = "/etc/sudoers.d/horizonnotch"
     private static let pmset = "/usr/bin/pmset"
 
     private init() {
         isSetUp = FileManager.default.fileExists(atPath: Self.sudoersPath)
+        endDate = UserDefaults.standard.object(forKey: Self.endDateKey) as? Date
         refresh()
     }
 
@@ -38,8 +47,10 @@ final class KeepAwake: ObservableObject {
             }
             let setUp = FileManager.default.fileExists(atPath: Self.sudoersPath)
             DispatchQueue.main.async {
-                if on != self?.isOn { self?.isOn = on }
-                if setUp != self?.isSetUp { self?.isSetUp = setUp }
+                guard let self else { return }
+                if on != self.isOn { self.isOn = on }
+                if setUp != self.isSetUp { self.isSetUp = setUp }
+                self.applyLimit()
             }
         }
     }
@@ -50,6 +61,9 @@ final class KeepAwake: ObservableObject {
         let value = on ? "1" : "0"
         // Show the new state right away; refresh() corrects it on failure.
         isOn = on
+        let hours = AppSettings.shared.keepAwakeLimitHours
+        endDate = on && hours > 0 ? Date().addingTimeInterval(Double(hours) * 3600) : nil
+        applyLimit()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let (status, _) = Self.run("/usr/bin/sudo", ["-n", Self.pmset, "-a", "disablesleep", value])
             DispatchQueue.main.async {
@@ -61,6 +75,26 @@ final class KeepAwake: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Switches off when the end time has passed, otherwise waits for it.
+    /// Wall-clock deadline, so the timer stays right across sleep.
+    private func applyLimit() {
+        offTimer?.cancel()
+        offTimer = nil
+        guard isOn else {
+            if endDate != nil { endDate = nil }
+            return
+        }
+        guard let endDate else { return }
+        let remaining = endDate.timeIntervalSinceNow
+        if remaining <= 0 {
+            set(false)
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in self?.set(false) }
+        offTimer = work
+        DispatchQueue.main.asyncAfter(wallDeadline: .now() + remaining, execute: work)
     }
 
     /// Asks for the password once: switches and installs the sudoers rule.

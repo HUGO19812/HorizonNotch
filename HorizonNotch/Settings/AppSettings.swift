@@ -131,6 +131,8 @@ final class AppSettings: ObservableObject {
     @Published var hudBarColor: HUDBarColor { didSet { defaults.set(hudBarColor.rawValue, forKey: "hudBarColor") } }
     @Published var musicGesture: MusicGesture { didSet { defaults.set(musicGesture.rawValue, forKey: "musicGesture") } }
     @Published var keepAwakeIcon: Bool { didSet { defaults.set(keepAwakeIcon, forKey: "keepAwakeIcon") } }
+    /// Stay awake switches itself off after this many hours; 0 = no limit.
+    @Published var keepAwakeLimitHours: Int { didSet { defaults.set(keepAwakeLimitHours, forKey: "keepAwakeLimitHours") } }
     @Published var batteryInHeader: Bool { didSet { defaults.set(batteryInHeader, forKey: "batteryInHeader") } }
     @Published var batteryShowPercent: Bool { didSet { defaults.set(batteryShowPercent, forKey: "batteryShowPercent") } }
     @Published var showSource: Bool { didSet { defaults.set(showSource, forKey: "showSource") } }
@@ -207,6 +209,7 @@ final class AppSettings: ObservableObject {
         hudBarColor = HUDBarColor(rawValue: defaults.string(forKey: "hudBarColor") ?? "") ?? .colorful
         musicGesture = MusicGesture(rawValue: defaults.string(forKey: "musicGesture") ?? "") ?? .track
         keepAwakeIcon = defaults.object(forKey: "keepAwakeIcon") as? Bool ?? true
+        keepAwakeLimitHours = defaults.object(forKey: "keepAwakeLimitHours") as? Int ?? 0
         batteryInHeader = defaults.object(forKey: "batteryInHeader") as? Bool ?? true
         batteryShowPercent = defaults.object(forKey: "batteryShowPercent") as? Bool ?? true
         showSource = defaults.object(forKey: "showSource") as? Bool ?? true
