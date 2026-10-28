@@ -341,11 +341,20 @@ private struct HeaderStatus: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(awake.isOn
-                      ? L("Wach bleiben ist an – klicken zum Ausschalten", "Stay awake is on – click to turn off")
-                      : L("Wach bleiben (auch zugeklappt) – klicken zum Einschalten", "Stay awake (also with lid closed) – click to turn on"))
+                .help(awakeHelp)
             }
             HeaderBattery()
         }
+    }
+
+    private var awakeHelp: String {
+        guard awake.isOn else {
+            return L("Wach bleiben (auch zugeklappt) – klicken zum Einschalten", "Stay awake (also with lid closed) – click to turn on")
+        }
+        guard let end = awake.endDate else {
+            return L("Wach bleiben ist an – klicken zum Ausschalten", "Stay awake is on – click to turn off")
+        }
+        let time = end.formatted(date: .omitted, time: .shortened)
+        return L("Wach bleiben bis \(time) – klicken zum Ausschalten", "Stay awake until \(time) – click to turn off")
     }
 }

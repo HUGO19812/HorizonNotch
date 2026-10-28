@@ -73,6 +73,10 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
             lastOutputWasBluetooth = output.isBluetooth
         }
         if output.isBluetooth {
+            if settings.connectionStyle == .sideBar {
+                showInSideBar(symbol: output.symbol, name: name, connected: true)
+                return
+            }
             var event = IslandEvent(symbol: output.symbol, tint: .white, title: name,
                                     detail: L("Verbunden", "Connected"))
             if settings.connectivityAllBluetooth, let battery = Self.batteryText(forDeviceNamed: name) {
@@ -88,8 +92,24 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
                 }
             }
         } else if lastOutputWasBluetooth {
+            if settings.connectionStyle == .sideBar {
+                SideHUDController.shared.show(device: .init(symbol: "headphones", battery: nil, connected: false))
+                return
+            }
             post(IslandEvent(symbol: "headphones", tint: .white.opacity(0.6), title: lastOutputName,
                              detail: L("Getrennt", "Disconnected")))
+        }
+    }
+
+    /// The device as a bar at the left edge; AirPods report their battery
+    /// a moment after connecting, so the bar is shown again then.
+    private func showInSideBar(symbol: String, name: String, connected: Bool) {
+        let side = SideHUDController.shared
+        side.show(device: .init(symbol: symbol, battery: Self.batteryLevel(forDeviceNamed: name), connected: connected))
+        guard connected else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            guard let battery = Self.batteryLevel(forDeviceNamed: name) else { return }
+            side.show(device: .init(symbol: symbol, battery: battery, connected: true))
         }
     }
 
@@ -110,6 +130,10 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
     @objc private func bluetoothConnected(_ note: IOBluetoothUserNotification, device: IOBluetoothDevice) {
         device.register(forDisconnectNotification: self, selector: #selector(bluetoothDisconnected(_:device:)))
         guard !isQuiet, let name = device.name, name != output.deviceName else { return }
+        if settings.connectionStyle == .sideBar {
+            showInSideBar(symbol: Self.symbol(for: device), name: name, connected: true)
+            return
+        }
         post(IslandEvent(symbol: Self.symbol(for: device), title: name,
                          detail: Self.batteryText(for: device) ?? L("Verbunden", "Connected")))
     }
@@ -117,6 +141,10 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
     @objc private func bluetoothDisconnected(_ note: IOBluetoothUserNotification, device: IOBluetoothDevice) {
         note.unregister()
         guard !isQuiet, let name = device.name else { return }
+        if settings.connectionStyle == .sideBar {
+            SideHUDController.shared.show(device: .init(symbol: Self.symbol(for: device), battery: nil, connected: false))
+            return
+        }
         post(IslandEvent(symbol: Self.symbol(for: device), tint: .white.opacity(0.6), title: name,
                          detail: L("Getrennt", "Disconnected")))
     }
@@ -137,13 +165,16 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
         }
     }
 
+    /// A battery percentage via undocumented IOBluetoothDevice properties.
+    private static func percent(_ key: String, of device: IOBluetoothDevice) -> Int? {
+        guard device.responds(to: NSSelectorFromString(key)),
+              let value = device.value(forKey: key) as? NSNumber, value.intValue > 0 else { return nil }
+        return value.intValue
+    }
+
     /// AirPods/Beats battery via undocumented IOBluetoothDevice properties.
     private static func batteryText(for device: IOBluetoothDevice) -> String? {
-        func percent(_ key: String) -> Int? {
-            guard device.responds(to: NSSelectorFromString(key)),
-                  let value = device.value(forKey: key) as? NSNumber, value.intValue > 0 else { return nil }
-            return value.intValue
-        }
+        func percent(_ key: String) -> Int? { Self.percent(key, of: device) }
         if let left = percent("batteryPercentLeft"), let right = percent("batteryPercentRight") {
             var text = "L \(left) % · R \(right) %"
             if let box = percent("batteryPercentCase") { text += " · ▢ \(box) %" }
@@ -154,9 +185,20 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
     }
 
     private static func batteryText(forDeviceNamed name: String) -> String? {
+        connectedDevice(named: name).flatMap(batteryText(for:))
+    }
+
+    /// Battery 0…1 for the bar: the emptier earbud, else the single value.
+    private static func batteryLevel(forDeviceNamed name: String) -> Float? {
+        guard let device = connectedDevice(named: name) else { return nil }
+        let earbuds = ["batteryPercentLeft", "batteryPercentRight"].compactMap { percent($0, of: device) }
+        let value = earbuds.min() ?? percent("batteryPercentSingle", of: device) ?? percent("batteryPercentCombined", of: device)
+        return value.map { Float($0) / 100 }
+    }
+
+    private static func connectedDevice(named name: String) -> IOBluetoothDevice? {
         let devices = (IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice]) ?? []
-        guard let device = devices.first(where: { $0.isConnected() && $0.name == name }) else { return nil }
-        return batteryText(for: device)
+        return devices.first { $0.isConnected() && $0.name == name }
     }
 
     // MARK: - Wi-Fi

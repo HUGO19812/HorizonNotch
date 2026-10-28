@@ -725,6 +725,18 @@ private struct ConnectivitySettings: View {
                 note("Kopfhörer und WLAN-Wechsel erscheinen immer, ohne Berechtigung. Die beiden Optionen fragen beim Einschalten nach Bluetooth bzw. dem Fokus-Status.",
                      "Headphones and Wi-Fi changes always show, without a permission. The two options ask for Bluetooth or Focus status when switched on.")
             }
+            Section {
+                Picker(L("Bluetooth-Geräte anzeigen", "Show Bluetooth devices"), selection: $settings.connectionStyle) {
+                    Text(L("In der Notch", "In the notch")).tag(HUDStyle.notch)
+                    Text(L("Balken am linken Rand (wie Lautstärke)", "Bar at the left edge (like volume)")).tag(HUDStyle.sideBar)
+                }
+                .pickerStyle(.radioGroup)
+            } header: {
+                Text(L("Verbinden & Trennen", "Connect & disconnect"))
+            } footer: {
+                note("Der Balken zeigt das Gerät und – wenn bekannt – seinen Akkustand, z. B. bei AirPods. Leer heißt getrennt; ein heller, voller Balken heißt verbunden ohne Akku-Angabe.",
+                     "The bar shows the device and – if known – its battery, e.g. for AirPods. Empty means disconnected; a light, full bar means connected without a battery level.")
+            }
         }
         .formStyle(.grouped)
     }
@@ -761,6 +773,17 @@ private struct BatterySettings: View {
             Section {
                 Toggle(L("Wach bleiben, auch zugeklappt", "Stay awake, also with the lid closed"), isOn: Binding(
                     get: { awake.isOn }, set: { awake.set($0) }))
+                Picker(L("Höchstens", "At most"), selection: $settings.keepAwakeLimitHours) {
+                    Text(L("Unbegrenzt", "No limit")).tag(0)
+                    ForEach([1, 2, 3, 4, 6, 8, 12], id: \.self) { hours in
+                        Text(L("\(hours) Std.", "\(hours) h")).tag(hours)
+                    }
+                }
+                if awake.isOn, let end = awake.endDate {
+                    LabeledContent(L("Schaltet sich aus um", "Switches off at")) {
+                        Text(end, style: .time)
+                    }
+                }
                 Toggle(L("Knopf (Kaffeetasse) oben in der Island", "Button (coffee cup) at the top of the island"), isOn: $settings.keepAwakeIcon)
                 if awake.isSetUp {
                     HStack {
@@ -777,8 +800,8 @@ private struct BatterySettings: View {
             } header: {
                 Text(L("Wach bleiben", "Stay awake"))
             } footer: {
-                note("Bleibt an, bis du es ausschaltest – auch nach einem Neustart. Dafür nutzt macOS „pmset disablesleep“. Nur beim allerersten Mal fragt macOS nach deinem Passwort; danach darf Horizon Notch genau diesen einen Befehl ohne Passwort ausführen (wie Amphetamine Enhancer). Achtung: Zugeklappt in der Tasche kann der Mac warm werden.",
-                     "Stays on until you switch it off – also after a restart. macOS uses “pmset disablesleep” for this. Only the very first time macOS asks for your password; after that Horizon Notch may run exactly this one command without a password (like Amphetamine Enhancer). Careful: closed in a bag the Mac can get warm.")
+                note("Bleibt an, bis du es ausschaltest oder die eingestellte Höchstdauer um ist – auch nach einem Neustart. Die Höchstdauer gilt ab dem Einschalten; eine Änderung wirkt beim nächsten Einschalten. Dafür nutzt macOS „pmset disablesleep“. Nur beim allerersten Mal fragt macOS nach deinem Passwort; danach darf Horizon Notch genau diesen einen Befehl ohne Passwort ausführen (wie Amphetamine Enhancer). Achtung: Zugeklappt in der Tasche kann der Mac warm werden.",
+                     "Stays on until you switch it off or the time limit is up – also after a restart. The limit counts from switching on; a change applies the next time you switch it on. macOS uses “pmset disablesleep” for this. Only the very first time macOS asks for your password; after that Horizon Notch may run exactly this one command without a password (like Amphetamine Enhancer). Careful: closed in a bag the Mac can get warm.")
             }
         }
         .formStyle(.grouped)

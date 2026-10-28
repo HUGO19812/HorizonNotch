@@ -37,7 +37,8 @@ rm -rf build/release build/dd
 # ".noindex" keeps Spotlight out of the build folder.
 mkdir -p build
 if ! xcodebuild -project HorizonNotch.xcodeproj -scheme HorizonNotch -configuration Release \
-     -derivedDataPath build/release.noindex ${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"} build > build/release.log 2>&1; then
+     -derivedDataPath build/release.noindex ${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"} \
+     SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) LOCAL_BUILD' build > build/release.log 2>&1; then
   echo "  ✗ Bau fehlgeschlagen – Details in build/release.log"
   grep -E "error:" build/release.log | head -10
   exit 1
