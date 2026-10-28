@@ -725,6 +725,18 @@ private struct ConnectivitySettings: View {
                 note("Kopfhörer und WLAN-Wechsel erscheinen immer, ohne Berechtigung. Die beiden Optionen fragen beim Einschalten nach Bluetooth bzw. dem Fokus-Status.",
                      "Headphones and Wi-Fi changes always show, without a permission. The two options ask for Bluetooth or Focus status when switched on.")
             }
+            Section {
+                Picker(L("Bluetooth-Geräte anzeigen", "Show Bluetooth devices"), selection: $settings.connectionStyle) {
+                    Text(L("In der Notch", "In the notch")).tag(HUDStyle.notch)
+                    Text(L("Balken am linken Rand (wie Lautstärke)", "Bar at the left edge (like volume)")).tag(HUDStyle.sideBar)
+                }
+                .pickerStyle(.radioGroup)
+            } header: {
+                Text(L("Verbinden & Trennen", "Connect & disconnect"))
+            } footer: {
+                note("Der Balken zeigt das Gerät und – wenn bekannt – seinen Akkustand, z. B. bei AirPods. Leer heißt getrennt; ein heller, voller Balken heißt verbunden ohne Akku-Angabe.",
+                     "The bar shows the device and – if known – its battery, e.g. for AirPods. Empty means disconnected; a light, full bar means connected without a battery level.")
+            }
         }
         .formStyle(.grouped)
     }

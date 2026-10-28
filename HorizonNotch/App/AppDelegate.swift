@@ -101,7 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     #if DEBUG
     /// Lets scripts drive the island while developing:
     /// `notifyutil` is not enough here, so post a distributed notification
-    /// named "horizonnotch.debug" with object "expand", "collapse", "hud",
+    /// named "horizonnotch.debug" with object "expand", "collapse", "hud", "bluetooth",
     /// "plug", "low", "event", "download", "timer", "peek", "lock", "unlock" or
     /// "page:<module id>".
     private func installDebugHooks() {
@@ -111,6 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "expand": self?.notchController?.expand()
             case "collapse": self?.notchController?.collapse()
             case "hud": self?.hud.debugShow()
+            case "bluetooth": SideHUDController.shared.show(device: .init(symbol: "airpodspro", battery: 0.72, connected: true))
             case "plug": self?.battery.debugShow(.pluggedIn)
             case "low": self?.battery.debugShow(.low(9))
             case "peek": self?.media.debugPeek()
