@@ -856,6 +856,17 @@ private struct LockScreenSettings: View {
                     Text(L("Cover und Songtext", "Cover and lyrics")).tag(LockScreenStart.lyrics)
                 }
                 .disabled(!settings.lockScreenWidgets)
+                ValueSlider(title: L("Durchsichtigkeit", "Transparency"),
+                            value: Binding(get: { settings.lockScreenTransparency * 100 },
+                                           set: { settings.lockScreenTransparency = $0 / 100 }),
+                            range: 0...100, step: 5, format: "%.0f %%")
+                    .disabled(!settings.lockScreenWidgets)
+                Picker(L("Hintergrund beim großen Cover", "Background with large cover"), selection: $settings.lockScreenBackdrop) {
+                    Text(L("Dunkel, vom Cover getönt", "Dark, tinted by the cover")).tag(LockScreenBackdrop.tinted)
+                    Text(L("Cover, unscharf", "Cover, blurred")).tag(LockScreenBackdrop.coverBlurred)
+                    Text(L("Cover, scharf", "Cover, sharp")).tag(LockScreenBackdrop.cover)
+                }
+                .disabled(!settings.lockScreenWidgets)
             } footer: {
                 note("Nur solange etwas läuft. Startet mit der gewählten Ansicht; ein Klick aufs Cover wechselt zwischen klein und groß, der Songtext-Knopf blendet die Lyrics ein und aus. Nutzt eine nicht dokumentierte Systemschnittstelle und kann nach macOS-Updates ausfallen.",
                      "Only while something plays. Starts with the chosen view; clicking the cover switches between small and large, the lyrics button shows and hides the lyrics. Uses an undocumented system interface and may break after macOS updates.")
