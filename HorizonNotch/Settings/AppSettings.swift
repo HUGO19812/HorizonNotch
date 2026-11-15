@@ -181,6 +181,12 @@ final class AppSettings: ObservableObject {
     @Published var boldText: Bool { didSet { defaults.set(boldText, forKey: "boldText") } }
     @Published var visualizerColor: VisualizerColorMode { didSet { defaults.set(visualizerColor.rawValue, forKey: "visualizerColor") } }
     @Published var headerIconStyle: HeaderIconStyle { didSet { defaults.set(headerIconStyle.rawValue, forKey: "headerIconStyle") } }
+    /// The active tab shows its name beside the icon.
+    @Published var headerActiveLabel: Bool { didSet { defaults.set(headerActiveLabel, forKey: "headerActiveLabel") } }
+    /// Tabs show live info (timer, temperature, date, shelf count).
+    @Published var headerLiveInfo: Bool { didSet { defaults.set(headerLiveInfo, forKey: "headerLiveInfo") } }
+    /// Keep-awake and battery sit together in a glass capsule.
+    @Published var headerStatusGroup: Bool { didSet { defaults.set(headerStatusGroup, forKey: "headerStatusGroup") } }
     /// Recent calculator results, newest first.
     @Published var calculatorHistory: [String] { didSet { defaults.set(calculatorHistory, forKey: "calculatorHistory") } }
 
@@ -251,6 +257,9 @@ final class AppSettings: ObservableObject {
         boldText = defaults.bool(forKey: "boldText")
         visualizerColor = VisualizerColorMode(rawValue: defaults.string(forKey: "visualizerColor") ?? "") ?? .cover
         headerIconStyle = HeaderIconStyle(rawValue: defaults.string(forKey: "headerIconStyle") ?? "") ?? .plain
+        headerActiveLabel = defaults.object(forKey: "headerActiveLabel") as? Bool ?? true
+        headerLiveInfo = defaults.object(forKey: "headerLiveInfo") as? Bool ?? true
+        headerStatusGroup = defaults.object(forKey: "headerStatusGroup") as? Bool ?? true
         calculatorHistory = defaults.stringArray(forKey: "calculatorHistory") ?? []
     }
 

@@ -314,6 +314,11 @@ private struct AppearanceSettings: View {
                     Text(L("Punkt", "Dot")).tag(HeaderIconStyle.dot)
                 }
                 .pickerStyle(.segmented)
+                Toggle(L("Namen des aktiven Reiters zeigen", "Show the active tab's name"), isOn: $settings.headerActiveLabel)
+                Toggle(L("Live-Infos bei den Reitern (Timer, Temperatur, Datum, Ablage)",
+                         "Live info on the tabs (timer, temperature, date, shelf)"), isOn: $settings.headerLiveInfo)
+                Toggle(L("Koffein und Akku in einer Glas-Kapsel", "Keep-awake and battery in a glass capsule"),
+                       isOn: $settings.headerStatusGroup)
             }
             Section {
                 ValueSlider(title: L("Animationstempo", "Animation speed"), value: $settings.animationSpeed,

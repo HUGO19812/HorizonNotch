@@ -32,6 +32,9 @@ final class CalendarModule: NotchModule {
     private var nextUpdate: DispatchWorkItem?
 
     var isActive: Bool { imminent != nil }
+
+    /// Today's day of the month.
+    var headerInfo: HeaderInfo? { .text("\(Calendar.current.component(.day, from: Date()))") }
     var hasAccess: Bool { access == .fullAccess }
     private var leadTime: TimeInterval { TimeInterval(max(1, settings.calendarLeadMinutes) * 60) }
 

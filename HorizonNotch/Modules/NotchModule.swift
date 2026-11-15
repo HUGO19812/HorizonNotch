@@ -43,6 +43,21 @@ protocol NotchModule: ObservableObject where ObjectWillChangePublisher == Observ
     /// Pill at the bottom of the open island while the module is transient
     /// (HUD, notification). Must size itself; it is not given wing widths.
     func transientView() -> AnyView
+    /// Live info next to the tab icon in the open island's header (time
+    /// left, temperature, …). nil = just the icon.
+    var headerInfo: HeaderInfo? { get }
+}
+
+/// What a tab shows beside its icon in the header.
+enum HeaderInfo: Equatable {
+    /// Plain short text, e.g. "12°".
+    case text(String)
+    /// Counts down to the date (SwiftUI updates it itself).
+    case countdown(Date)
+    /// Counts up from the date.
+    case elapsed(Date)
+    /// Small number badge on the icon.
+    case badge(Int)
 }
 
 extension NotchModule {
@@ -52,6 +67,7 @@ extension NotchModule {
     var isPeeking: Bool { false }
     var peekHeight: CGFloat { 0 }
     func peekView() -> AnyView { AnyView(EmptyView()) }
+    var headerInfo: HeaderInfo? { nil }
     /// Both wings side by side, each as wide as next to the notch – the
     /// wing views stretch to fill, so they need a fixed width here.
     func transientView() -> AnyView {

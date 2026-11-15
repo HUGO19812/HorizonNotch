@@ -23,6 +23,8 @@ final class ShelfModule: NotchModule {
     // The shelf has no live activity; its contents live on its page.
     var isActive: Bool { false }
 
+    var headerInfo: HeaderInfo? { store.items.isEmpty ? nil : .badge(store.items.count) }
+
     func compactLeading() -> AnyView { AnyView(EmptyView()) }
     func compactTrailing() -> AnyView { AnyView(EmptyView()) }
     func expandedView() -> AnyView { AnyView(ShelfLayout(store: store, dragging: false, onDone: nil)) }
