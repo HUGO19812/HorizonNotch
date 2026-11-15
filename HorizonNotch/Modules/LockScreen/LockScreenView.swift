@@ -23,6 +23,7 @@ struct LockScreenView: View {
     @ObservedObject var nowPlaying: NowPlayingService
     @ObservedObject var lyrics: LyricsService
     @ObservedObject var state: LockScreenState
+    @ObservedObject private var settings = AppSettings.shared
     @Namespace private var player
 
     private var spring: Animation { .spring(response: 0.5, dampingFraction: 0.86) }
@@ -33,7 +34,8 @@ struct LockScreenView: View {
             ZStack {
                 if let info = nowPlaying.info {
                     if state.large {
-                        Backdrop(image: nowPlaying.artwork, tint: nowPlaying.accent, size: size)
+                        Backdrop(image: nowPlaying.artwork, tint: nowPlaying.accent, size: size,
+                                 style: settings.lockScreenBackdrop)
                             .transition(.opacity)
                         LockClock(screenHeight: size.height)
                             .transition(.opacity)
@@ -51,6 +53,7 @@ struct LockScreenView: View {
         .animation(spring, value: nowPlaying.info == nil)
         .animation(spring, value: state.large)
         .animation(spring, value: state.lyrics)
+        .animation(.easeInOut(duration: 0.4), value: settings.lockScreenBackdrop)
     }
 
     /// Small card above "Touch ID or Enter Password".
@@ -104,27 +107,42 @@ struct LockScreenView: View {
     }
 }
 
-/// Covers the wallpaper with a dark background tinted by the cover: the
-/// artwork hugely blurred, a glow of its colour from the lower right.
+/// Covers the wallpaper once the cover is large: either a dark background
+/// tinted by the cover (the artwork hugely blurred, a glow of its colour
+/// from the lower right) or the cover itself filling the screen.
 private struct Backdrop: View {
     let image: NSImage?
     let tint: Color
     let size: CGSize
+    let style: LockScreenBackdrop
 
     var body: some View {
         ZStack {
             Color(red: 0.05, green: 0.05, blue: 0.07)
-            if let image {
+            if style != .tinted, let image {
                 Image(nsImage: image)
                     .resizable()
+                    .interpolation(.high)
                     .aspectRatio(contentMode: .fill)
                     .frame(width: size.width, height: size.height)
-                    .blur(radius: 110)
-                    .opacity(0.4)
+                    .blur(radius: style == .coverBlurred ? 40 : 0, opaque: true)
+                    .clipped()
+                // Keep clock, titles and lyrics readable on bright covers.
+                LinearGradient(colors: [.black.opacity(0.5), .black.opacity(0.25), .black.opacity(0.55)],
+                               startPoint: .top, endPoint: .bottom)
+            } else {
+                if let image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: size.width, height: size.height)
+                        .blur(radius: 110)
+                        .opacity(0.4)
+                }
+                RadialGradient(colors: [tint.opacity(0.28), .clear], center: .bottomTrailing,
+                               startRadius: 0, endRadius: max(size.width, size.height) * 0.75)
+                LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .center)
             }
-            RadialGradient(colors: [tint.opacity(0.28), .clear], center: .bottomTrailing,
-                           startRadius: 0, endRadius: max(size.width, size.height) * 0.75)
-            LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .center)
         }
         .frame(width: size.width, height: size.height)
         .clipped()
@@ -218,24 +236,28 @@ private struct LockControls<Header: View>: View {
     }
 }
 
-/// Translucent, lightly outlined card: Liquid Glass on macOS 26+.
+/// Translucent, lightly outlined card: Liquid Glass on macOS 26+. How
+/// see-through it is comes from Settings → Lock Screen.
 private struct GlassCard<Content: View>: View {
+    @ObservedObject private var settings = AppSettings.shared
     @ViewBuilder var content: Content
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
+        let transparency = min(max(settings.lockScreenTransparency, 0), 1)
+        let tint = (1 - transparency) * 0.3
         let padded = content
             .padding(.horizontal, 22)
             .padding(.vertical, 16)
         Group {
             if #available(macOS 26.0, *) {
-                padded.glassEffect(.regular.tint(.black.opacity(0.15)), in: shape)
+                padded.glassEffect((transparency >= 0.5 ? Glass.clear : Glass.regular).tint(.black.opacity(tint)), in: shape)
             } else {
-                padded.background(shape.fill(.ultraThinMaterial))
-                    .background(shape.fill(Color.black.opacity(0.2)))
+                padded.background(shape.fill(.ultraThinMaterial).opacity(1 - transparency * 0.85))
+                    .background(shape.fill(Color.black.opacity(tint)))
             }
         }
-        .overlay(shape.strokeBorder(Color.white.opacity(0.22), lineWidth: 1))
+        .overlay(shape.strokeBorder(Color.white.opacity(0.22 * (1 - transparency * 0.6)), lineWidth: 1))
     }
 }
 

@@ -61,6 +61,17 @@ enum LockScreenStart: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Background behind the large lock screen player.
+enum LockScreenBackdrop: String, CaseIterable, Identifiable {
+    /// Dark, tinted by the cover colour.
+    case tinted
+    /// The cover itself fills the screen, blurred.
+    case coverBlurred
+    /// The cover itself fills the screen, sharp.
+    case cover
+    var id: String { rawValue }
+}
+
 /// Colour of the sung lyrics.
 enum LyricsColorMode: String, CaseIterable, Identifiable {
     /// White on grey, like Apple Music.
@@ -107,6 +118,10 @@ final class AppSettings: ObservableObject {
     @Published var notifyDownloads: Bool { didSet { defaults.set(notifyDownloads, forKey: "notifyDownloads") } }
     @Published var lockScreenWidgets: Bool { didSet { defaults.set(lockScreenWidgets, forKey: "lockScreenWidgets") } }
     @Published var lockScreenStart: LockScreenStart { didSet { defaults.set(lockScreenStart.rawValue, forKey: "lockScreenStart") } }
+    /// How see-through the lock screen player card is (0 = solid glass, 1 = almost invisible).
+    @Published var lockScreenTransparency: Double { didSet { defaults.set(lockScreenTransparency, forKey: "lockScreenTransparency") } }
+    /// Background once the cover is shown large.
+    @Published var lockScreenBackdrop: LockScreenBackdrop { didSet { defaults.set(lockScreenBackdrop.rawValue, forKey: "lockScreenBackdrop") } }
     /// Hide the island while another app or a video fills the screen.
     @Published var hideInFullscreen: Bool { didSet { defaults.set(hideInFullscreen, forKey: "hideInFullscreen") } }
     /// The large lock screen player as a screen saver while music plays.
@@ -166,6 +181,12 @@ final class AppSettings: ObservableObject {
     @Published var boldText: Bool { didSet { defaults.set(boldText, forKey: "boldText") } }
     @Published var visualizerColor: VisualizerColorMode { didSet { defaults.set(visualizerColor.rawValue, forKey: "visualizerColor") } }
     @Published var headerIconStyle: HeaderIconStyle { didSet { defaults.set(headerIconStyle.rawValue, forKey: "headerIconStyle") } }
+    /// The active tab shows its name beside the icon.
+    @Published var headerActiveLabel: Bool { didSet { defaults.set(headerActiveLabel, forKey: "headerActiveLabel") } }
+    /// Tabs show live info (timer, temperature, date, shelf count).
+    @Published var headerLiveInfo: Bool { didSet { defaults.set(headerLiveInfo, forKey: "headerLiveInfo") } }
+    /// Keep-awake and battery sit together in a glass capsule.
+    @Published var headerStatusGroup: Bool { didSet { defaults.set(headerStatusGroup, forKey: "headerStatusGroup") } }
     /// Recent calculator results, newest first.
     @Published var calculatorHistory: [String] { didSet { defaults.set(calculatorHistory, forKey: "calculatorHistory") } }
 
@@ -190,6 +211,8 @@ final class AppSettings: ObservableObject {
         notifyDownloads = defaults.bool(forKey: "notifyDownloads")
         lockScreenWidgets = defaults.object(forKey: "lockScreenWidgets") as? Bool ?? true
         lockScreenStart = LockScreenStart(rawValue: defaults.string(forKey: "lockScreenStart") ?? "") ?? .compact
+        lockScreenTransparency = defaults.object(forKey: "lockScreenTransparency") as? Double ?? 0.6
+        lockScreenBackdrop = LockScreenBackdrop(rawValue: defaults.string(forKey: "lockScreenBackdrop") ?? "") ?? .tinted
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true
         screenSaverEnabled = defaults.bool(forKey: "screenSaverEnabled")
@@ -234,6 +257,9 @@ final class AppSettings: ObservableObject {
         boldText = defaults.bool(forKey: "boldText")
         visualizerColor = VisualizerColorMode(rawValue: defaults.string(forKey: "visualizerColor") ?? "") ?? .cover
         headerIconStyle = HeaderIconStyle(rawValue: defaults.string(forKey: "headerIconStyle") ?? "") ?? .plain
+        headerActiveLabel = defaults.object(forKey: "headerActiveLabel") as? Bool ?? true
+        headerLiveInfo = defaults.object(forKey: "headerLiveInfo") as? Bool ?? true
+        headerStatusGroup = defaults.object(forKey: "headerStatusGroup") as? Bool ?? true
         calculatorHistory = defaults.stringArray(forKey: "calculatorHistory") ?? []
     }
 

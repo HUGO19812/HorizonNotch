@@ -314,6 +314,11 @@ private struct AppearanceSettings: View {
                     Text(L("Punkt", "Dot")).tag(HeaderIconStyle.dot)
                 }
                 .pickerStyle(.segmented)
+                Toggle(L("Namen des aktiven Reiters zeigen", "Show the active tab's name"), isOn: $settings.headerActiveLabel)
+                Toggle(L("Live-Infos bei den Reitern (Timer, Temperatur, Datum, Ablage)",
+                         "Live info on the tabs (timer, temperature, date, shelf)"), isOn: $settings.headerLiveInfo)
+                Toggle(L("Koffein und Akku in einer Glas-Kapsel", "Keep-awake and battery in a glass capsule"),
+                       isOn: $settings.headerStatusGroup)
             }
             Section {
                 ValueSlider(title: L("Animationstempo", "Animation speed"), value: $settings.animationSpeed,
@@ -854,6 +859,17 @@ private struct LockScreenSettings: View {
                     Text(L("Kleiner Player", "Small player")).tag(LockScreenStart.compact)
                     Text(L("Großes Cover", "Large cover")).tag(LockScreenStart.cover)
                     Text(L("Cover und Songtext", "Cover and lyrics")).tag(LockScreenStart.lyrics)
+                }
+                .disabled(!settings.lockScreenWidgets)
+                ValueSlider(title: L("Durchsichtigkeit", "Transparency"),
+                            value: Binding(get: { settings.lockScreenTransparency * 100 },
+                                           set: { settings.lockScreenTransparency = $0 / 100 }),
+                            range: 0...100, step: 5, format: "%.0f %%")
+                    .disabled(!settings.lockScreenWidgets)
+                Picker(L("Hintergrund beim großen Cover", "Background with large cover"), selection: $settings.lockScreenBackdrop) {
+                    Text(L("Dunkel, vom Cover getönt", "Dark, tinted by the cover")).tag(LockScreenBackdrop.tinted)
+                    Text(L("Cover, unscharf", "Cover, blurred")).tag(LockScreenBackdrop.coverBlurred)
+                    Text(L("Cover, scharf", "Cover, sharp")).tag(LockScreenBackdrop.cover)
                 }
                 .disabled(!settings.lockScreenWidgets)
             } footer: {
