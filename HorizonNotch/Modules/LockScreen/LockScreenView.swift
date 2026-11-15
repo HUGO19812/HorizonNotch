@@ -245,19 +245,24 @@ private struct GlassCard<Content: View>: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
         let transparency = min(max(settings.lockScreenTransparency, 0), 1)
-        let tint = (1 - transparency) * 0.3
-        let padded = content
+        content
             .padding(.horizontal, 22)
             .padding(.vertical, 16)
-        Group {
-            if #available(macOS 26.0, *) {
-                padded.glassEffect((transparency >= 0.5 ? Glass.clear : Glass.regular).tint(.black.opacity(tint)), in: shape)
-            } else {
-                padded.background(shape.fill(.ultraThinMaterial).opacity(1 - transparency * 0.85))
-                    .background(shape.fill(Color.black.opacity(tint)))
+            .background {
+                // The whole glass layer fades with the slider: 0 % = solid
+                // glass, 100 % = only the outline is left.
+                ZStack {
+                    if #available(macOS 26.0, *) {
+                        Color.clear.glassEffect(.regular, in: shape)
+                    } else {
+                        shape.fill(.ultraThinMaterial)
+                    }
+                    shape.fill(Color.black.opacity(0.25))
+                }
+                .opacity(1 - transparency)
+                .animation(.easeInOut(duration: 0.25), value: transparency)
             }
-        }
-        .overlay(shape.strokeBorder(Color.white.opacity(0.22 * (1 - transparency * 0.6)), lineWidth: 1))
+            .overlay(shape.strokeBorder(Color.white.opacity(0.12 + 0.12 * (1 - transparency)), lineWidth: 1))
     }
 }
 
