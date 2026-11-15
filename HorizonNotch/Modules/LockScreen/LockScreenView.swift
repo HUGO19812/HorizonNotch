@@ -236,33 +236,61 @@ private struct LockControls<Header: View>: View {
     }
 }
 
-/// Translucent, lightly outlined card: Liquid Glass on macOS 26+. How
-/// see-through it is comes from Settings → Lock Screen.
+/// Chrome-like Liquid Glass card: clear glass (macOS 26+, a thin material
+/// before), a specular rim that is bright at the top left and reflects at
+/// the bottom right, a soft sheen across the top and a faint cyan/magenta
+/// fringe like light breaking at the edge. The transparency slider
+/// (Settings → Lock Screen) only changes the frosting and tint below the
+/// glass, so the shine stays at every setting.
 private struct GlassCard<Content: View>: View {
     @ObservedObject private var settings = AppSettings.shared
     @ViewBuilder var content: Content
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
-        let transparency = min(max(settings.lockScreenTransparency, 0), 1)
+        let solid = 1 - min(max(settings.lockScreenTransparency, 0), 1)
         content
             .padding(.horizontal, 22)
             .padding(.vertical, 16)
             .background {
-                // The whole glass layer fades with the slider: 0 % = solid
-                // glass, 100 % = only the outline is left.
                 ZStack {
+                    // Frosting and tint: 0 % transparency = milky and dark,
+                    // 100 % = clear.
+                    shape.fill(.ultraThinMaterial).opacity(solid * 0.9)
+                    shape.fill(Color.black.opacity(solid * 0.3))
                     if #available(macOS 26.0, *) {
-                        Color.clear.glassEffect(.regular, in: shape)
+                        Color.clear.glassEffect(.clear, in: shape)
                     } else {
-                        shape.fill(.ultraThinMaterial)
+                        shape.fill(.ultraThinMaterial).opacity(0.35)
                     }
-                    shape.fill(Color.black.opacity(0.25))
+                    // Sheen across the top.
+                    shape.fill(LinearGradient(colors: [.white.opacity(0.16), .white.opacity(0.03), .clear],
+                                              startPoint: .top, endPoint: .center))
                 }
-                .opacity(1 - transparency)
-                .animation(.easeInOut(duration: 0.25), value: transparency)
+                .animation(.easeInOut(duration: 0.25), value: solid)
             }
-            .overlay(shape.strokeBorder(Color.white.opacity(0.12 + 0.12 * (1 - transparency)), lineWidth: 1))
+            .overlay {
+                ZStack {
+                    // Chromatic fringe.
+                    shape.strokeBorder(Color.cyan.opacity(0.35), lineWidth: 1)
+                        .offset(x: -0.6, y: -0.6)
+                        .blur(radius: 0.6)
+                    shape.strokeBorder(Color(red: 1, green: 0.3, blue: 0.8).opacity(0.3), lineWidth: 1)
+                        .offset(x: 0.6, y: 0.6)
+                        .blur(radius: 0.6)
+                    // Specular rim.
+                    shape.strokeBorder(
+                        LinearGradient(stops: [.init(color: .white.opacity(0.85), location: 0),
+                                               .init(color: .white.opacity(0.25), location: 0.25),
+                                               .init(color: .white.opacity(0.06), location: 0.55),
+                                               .init(color: .white.opacity(0.45), location: 1)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        lineWidth: 1.2)
+                }
+                .blendMode(.plusLighter)
+                .allowsHitTesting(false)
+            }
+            .shadow(color: .black.opacity(0.25), radius: 18, y: 8)
     }
 }
 
