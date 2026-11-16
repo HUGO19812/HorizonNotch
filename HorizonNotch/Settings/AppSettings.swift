@@ -72,35 +72,6 @@ enum LockScreenBackdrop: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-/// Look of the lock screen player card. All are see-through Liquid Glass
-/// without a border; they differ in tint and in the light inside the glass.
-enum LockScreenCardStyle: String, CaseIterable, Identifiable {
-    /// Clear glass, soft light from the upper left.
-    case clear
-    /// Clear glass with chrome-like reflections along its curved edge.
-    case chrome
-    /// Glass tinted ocean blue.
-    case blue
-    /// Dark smoked glass.
-    case smoke
-    /// Clear glass with faint rainbow caustics.
-    case prism
-    /// The earlier frosted glass with a shiny rim.
-    case classic
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .clear: return L("Klares Flüssigglas", "Clear liquid glass")
-        case .chrome: return L("Chrom-Glas", "Chrome glass")
-        case .blue: return L("Ozean-Glas", "Ocean glass")
-        case .smoke: return L("Rauchglas", "Smoked glass")
-        case .prism: return L("Prisma-Glas", "Prism glass")
-        case .classic: return L("Klassisch (mit Rand)", "Classic (with rim)")
-        }
-    }
-}
-
 /// Colour of the sung lyrics.
 enum LyricsColorMode: String, CaseIterable, Identifiable {
     /// White on grey, like Apple Music.
@@ -149,7 +120,6 @@ final class AppSettings: ObservableObject {
     @Published var lockScreenStart: LockScreenStart { didSet { defaults.set(lockScreenStart.rawValue, forKey: "lockScreenStart") } }
     /// How see-through the lock screen player card is (0 = solid glass, 1 = almost invisible).
     @Published var lockScreenTransparency: Double { didSet { defaults.set(lockScreenTransparency, forKey: "lockScreenTransparency") } }
-    @Published var lockScreenCardStyle: LockScreenCardStyle { didSet { defaults.set(lockScreenCardStyle.rawValue, forKey: "lockScreenCardStyle") } }
     /// Background once the cover is shown large.
     @Published var lockScreenBackdrop: LockScreenBackdrop { didSet { defaults.set(lockScreenBackdrop.rawValue, forKey: "lockScreenBackdrop") } }
     /// Hide the island while another app or a video fills the screen.
@@ -246,7 +216,6 @@ final class AppSettings: ObservableObject {
         lockScreenWidgets = defaults.object(forKey: "lockScreenWidgets") as? Bool ?? true
         lockScreenStart = LockScreenStart(rawValue: defaults.string(forKey: "lockScreenStart") ?? "") ?? .compact
         lockScreenTransparency = defaults.object(forKey: "lockScreenTransparency") as? Double ?? 0.6
-        lockScreenCardStyle = LockScreenCardStyle(rawValue: defaults.string(forKey: "lockScreenCardStyle") ?? "") ?? .chrome
         lockScreenBackdrop = LockScreenBackdrop(rawValue: defaults.string(forKey: "lockScreenBackdrop") ?? "") ?? .tinted
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true

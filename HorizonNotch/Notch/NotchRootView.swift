@@ -41,6 +41,9 @@ struct NotchRootView: View {
             .contentShape(shape)
             .shadow(color: .black.opacity(state == .expanded ? settings.islandShadow : 0),
                     radius: 8 + 14 * settings.islandShadow, y: 4 + 6 * settings.islandShadow)
+            // A module's glow while closed, e.g. orange when Claude needs you.
+            .shadow(color: state == .compact ? (coordinator.compactModule?.compactGlow ?? .clear) : .clear,
+                    radius: 17, y: 10)
             .opacity(layout.visible ? 1 : 0)
             .animation(spring, value: layout)
             .animation(spring, value: state)

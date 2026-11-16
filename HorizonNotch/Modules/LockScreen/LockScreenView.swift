@@ -236,147 +236,32 @@ private struct LockControls<Header: View>: View {
     }
 }
 
-/// The player card in the style chosen under Settings → Lock Screen. All
-/// styles are see-through Liquid Glass without a border; the chrome look
-/// comes from light inside the glass, not from a rim. The transparency
-/// slider adds frosting and shade for readability.
+/// Frosted glass like Pro Notch's lock screen player: a light white
+/// veil over a blurred, more saturated wallpaper and a hairline edge – no
+/// rim, no shine. The transparency slider sets how milky it is.
 private struct GlassCard<Content: View>: View {
     @ObservedObject private var settings = AppSettings.shared
+    var cornerRadius: CGFloat = 22
+    var insets = EdgeInsets(top: 16, leading: 22, bottom: 16, trailing: 22)
     @ViewBuilder var content: Content
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         let solid = 1 - min(max(settings.lockScreenTransparency, 0), 1)
-        let style = settings.lockScreenCardStyle
         content
-            .padding(.horizontal, 22)
-            .padding(.vertical, 16)
+            .padding(insets)
             .background {
-                Group {
-                    if style == .classic {
-                        ClassicGlassFill(shape: shape, solid: solid)
-                    } else {
-                        LiquidGlassFill(style: style, shape: shape, solid: solid)
+                ZStack {
+                    if #available(macOS 26.0, *) {
+                        Color.clear.glassEffect(.clear, in: shape)
                     }
+                    shape.fill(.ultraThinMaterial)
+                    shape.fill(Color.white.opacity(0.08 + solid * 0.16))
                 }
                 .animation(.easeInOut(duration: 0.25), value: solid)
             }
-            .overlay {
-                if style == .classic { ClassicRim(shape: shape) }
-            }
-            .shadow(color: .black.opacity(style == .smoke ? 0.35 : 0.2), radius: 20, y: 10)
-            .animation(.easeInOut(duration: 0.3), value: style)
-    }
-}
-
-/// See-through glass: the system Liquid Glass (macOS 26+, a thin material
-/// before) with a tint, plus light inside it – a soft glow from the upper
-/// left and, for chrome and prism, reflections along the rounded edge that
-/// fade inwards like light running through thick glass.
-private struct LiquidGlassFill: View {
-    let style: LockScreenCardStyle
-    let shape: RoundedRectangle
-    let solid: Double
-
-    private var tint: Color {
-        switch style {
-        case .blue: return Color(red: 0.05, green: 0.45, blue: 0.75).opacity(0.35)
-        case .smoke: return Color.black.opacity(0.45)
-        default: return .clear
-        }
-    }
-
-    var body: some View {
-        ZStack {
-            // Frosting from the transparency slider.
-            shape.fill(.ultraThinMaterial).opacity(solid * 0.8)
-            shape.fill(Color.black.opacity(0.06 + solid * 0.22))
-            if #available(macOS 26.0, *) {
-                Color.clear.glassEffect(.clear.tint(tint), in: shape)
-            } else {
-                shape.fill(.ultraThinMaterial).opacity(0.4)
-                shape.fill(tint)
-            }
-            // Soft light from the upper left, a weaker one at the lower right.
-            shape.fill(RadialGradient(colors: [.white.opacity(style == .smoke ? 0.12 : 0.2), .clear],
-                                      center: .topLeading, startRadius: 0, endRadius: 280))
-            shape.fill(RadialGradient(colors: [.white.opacity(0.08), .clear], center: .bottomTrailing,
-                                      startRadius: 0, endRadius: 200))
-            if style == .chrome { EdgeReflections(shape: shape, colors: Self.chrome, strength: 0.9) }
-            if style == .prism { EdgeReflections(shape: shape, colors: Self.prism, strength: 0.6) }
-            if style == .blue { EdgeReflections(shape: shape, colors: Self.ocean, strength: 0.5) }
-        }
-    }
-
-    /// Bright and dark streaks around the edge like a polished chrome tube.
-    private static let chrome: [Color] = [.white, .clear, .white.opacity(0.6), .black.opacity(0.5), .clear,
-                                          .white, .clear, .black.opacity(0.4), .white.opacity(0.7), .white]
-    private static let prism: [Color] = [.cyan, .clear, .purple, .white, .clear, .pink, .clear, .blue, .cyan]
-    private static let ocean: [Color] = [.white, .clear, Color(red: 0.6, green: 0.85, blue: 1), .clear,
-                                         .orange.opacity(0.6), .clear, .white]
-}
-
-/// Light caught in the curved edge of the glass: a wide, blurred band
-/// inside the outline (never a line on it), strongest at the edge and
-/// fading towards the middle.
-private struct EdgeReflections: View {
-    let shape: RoundedRectangle
-    let colors: [Color]
-    let strength: Double
-
-    var body: some View {
-        shape
-            .strokeBorder(AngularGradient(colors: colors, center: .center, angle: .degrees(-35)), lineWidth: 14)
-            .blur(radius: 7)
-            .clipShape(shape)
-            .opacity(strength)
-            .blendMode(.plusLighter)
-            .allowsHitTesting(false)
-    }
-}
-
-/// The earlier frosted glass with a sheen across the top.
-private struct ClassicGlassFill: View {
-    let shape: RoundedRectangle
-    let solid: Double
-
-    var body: some View {
-        ZStack {
-            shape.fill(.ultraThinMaterial).opacity(solid * 0.9)
-            shape.fill(Color.black.opacity(solid * 0.3))
-            if #available(macOS 26.0, *) {
-                Color.clear.glassEffect(.clear, in: shape)
-            } else {
-                shape.fill(.ultraThinMaterial).opacity(0.35)
-            }
-            shape.fill(LinearGradient(colors: [.white.opacity(0.16), .white.opacity(0.03), .clear],
-                                      startPoint: .top, endPoint: .center))
-        }
-    }
-}
-
-/// Specular rim with a faint cyan/magenta fringe (classic style only).
-private struct ClassicRim: View {
-    let shape: RoundedRectangle
-
-    var body: some View {
-        ZStack {
-            shape.strokeBorder(Color.cyan.opacity(0.35), lineWidth: 1)
-                .offset(x: -0.6, y: -0.6)
-                .blur(radius: 0.6)
-            shape.strokeBorder(Color(red: 1, green: 0.3, blue: 0.8).opacity(0.3), lineWidth: 1)
-                .offset(x: 0.6, y: 0.6)
-                .blur(radius: 0.6)
-            shape.strokeBorder(
-                LinearGradient(stops: [.init(color: .white.opacity(0.85), location: 0),
-                                       .init(color: .white.opacity(0.25), location: 0.25),
-                                       .init(color: .white.opacity(0.06), location: 0.55),
-                                       .init(color: .white.opacity(0.45), location: 1)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing),
-                lineWidth: 1.2)
-        }
-        .blendMode(.plusLighter)
-        .allowsHitTesting(false)
+            .overlay(shape.strokeBorder(Color.white.opacity(0.35), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
     }
 }
 

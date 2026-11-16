@@ -1,15 +1,17 @@
 import Combine
 import SwiftUI
 
-/// Claude Code next to the notch: working (with the tool in use), waiting
-/// for you, finished. The page lists sessions and today's token usage.
+/// Claude Code at the notch, like Pro Notch: the island grows a second row.
+/// Working: an animated spark, the elapsed time and what Claude is doing
+/// ("Editing router.ts", shimmering). Needs you: a badge, NEEDS YOU and
+/// the question. Done: a check that draws itself, DONE and Claude's last
+/// sentence. The page lists sessions and today's token usage.
 final class ClaudeCodeModule: NotchModule {
     let id = "claude"
     var title: String { "Claude Code" }
     let symbol = "sparkle"
     let priority = ModulePriority.claude
     let hasExpandedContent = true
-    let compactWingWidth: CGFloat = 96
 
     let monitor = ClaudeCodeMonitor()
     let usage = ClaudeUsage()
@@ -27,8 +29,25 @@ final class ClaudeCodeModule: NotchModule {
 
     var isActive: Bool { !monitor.visible.isEmpty }
 
+    private var activity: ClaudeCodeMonitor.Activity { monitor.visible.first?.activity ?? .idle }
+
+    /// Working is a little narrower than the two alerts.
+    var compactWingWidth: CGFloat {
+        if case .working = activity { return 78 }
+        return 108
+    }
+    var isPeeking: Bool { isActive }
+    var peekHeight: CGFloat { 28 }
+    var compactGlow: Color? {
+        switch activity {
+        case .waiting, .done: return Self.tint.opacity(0.42)
+        default: return nil
+        }
+    }
+
     func compactLeading() -> AnyView { AnyView(ClaudeLeading(monitor: monitor)) }
     func compactTrailing() -> AnyView { AnyView(ClaudeTrailing(monitor: monitor)) }
+    func peekView() -> AnyView { AnyView(ClaudeLine(monitor: monitor)) }
     func expandedView() -> AnyView { AnyView(ClaudePage(monitor: monitor, usage: usage)) }
 
     #if DEBUG
@@ -47,6 +66,16 @@ final class ClaudeCodeModule: NotchModule {
 }
 
 extension ClaudeCodeMonitor.Activity {
+    /// Which of the four states, without the associated text (for animations).
+    var kind: Int {
+        switch self {
+        case .working: return 0
+        case .waiting: return 1
+        case .done: return 2
+        case .idle: return 3
+        }
+    }
+
     var label: String {
         switch self {
         case .working(let tool): return tool ?? L("arbeitet", "working")
@@ -68,52 +97,156 @@ extension ClaudeCodeMonitor.Activity {
 
 // MARK: - Compact
 
+/// Left of the notch: the spark while working, a badge when Claude needs
+/// you, a check that draws itself when done.
 private struct ClaudeLeading: View {
     @ObservedObject var monitor: ClaudeCodeMonitor
-    @Environment(\.islandTheme) private var theme
 
     var body: some View {
         let session = monitor.visible.first
-        HStack(spacing: 6) {
-            Image(systemName: "sparkle")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(theme.tint(ClaudeCodeModule.tint))
-                .symbolEffect(.pulse, isActive: { if case .working = session?.activity { return true } else { return false } }())
-            Text(session?.project ?? "")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .truncationMode(.middle)
+        ZStack {
+            switch session?.activity {
+            case .working: ClaudeSpark()
+            case .waiting:
+                Text("✳")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 18, height: 18)
+                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(ClaudeCodeModule.tint))
+            case .done: DrawnCheck().frame(width: 15, height: 15)
+            default: EmptyView()
+            }
         }
+        .id(session?.activity.kind)
+        .transition(.scale(scale: 0.6).combined(with: .opacity))
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: session?.activity.kind)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.leading, 10)
+        .padding(.leading, 18)
     }
 }
 
+/// Right of the notch: the time of the turn, NEEDS YOU or DONE.
 private struct ClaudeTrailing: View {
     @ObservedObject var monitor: ClaudeCodeMonitor
-    @Environment(\.islandTheme) private var theme
 
     var body: some View {
-        let activity = monitor.visible.first?.activity ?? .idle
-        HStack(spacing: 5) {
-            if monitor.visible.count > 1 {
-                Text("+\(monitor.visible.count - 1)")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.45))
+        let session = monitor.visible.first
+        Group {
+            switch session?.activity {
+            case .working:
+                if let start = session?.turnStarted {
+                    Text(start, style: .timer)
+                        .font(.system(size: 13, weight: .bold).monospacedDigit())
+                        .foregroundStyle(.white)
+                }
+            case .waiting:
+                Text(L("BRAUCHT DICH", "NEEDS YOU"))
+                    .font(.system(size: 10, weight: .bold)).kerning(0.7)
+                    .foregroundStyle(Color(red: 1, green: 0.62, blue: 0.27))
+            case .done:
+                Text(L("FERTIG", "DONE"))
+                    .font(.system(size: 10, weight: .bold)).kerning(0.7)
+                    .foregroundStyle(Color(red: 0.93, green: 0.6, blue: 0.46))
+            default: EmptyView()
             }
-            if case .done = activity {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(theme.tint(.green))
-            } else if case .waiting = activity {
-                Image(systemName: "hand.raised.fill").foregroundStyle(theme.tint(.yellow))
-            }
-            Text(activity.label)
-                .foregroundStyle(theme.tint(activity.color))
-                .lineLimit(1)
         }
-        .font(.system(size: 11, weight: .semibold))
+        .lineLimit(1)
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .padding(.trailing, 10)
+        .padding(.trailing, 18)
+    }
+}
+
+/// The row below the notch: what Claude does, the question, or its answer.
+private struct ClaudeLine: View {
+    @ObservedObject var monitor: ClaudeCodeMonitor
+
+    var body: some View {
+        let session = monitor.visible.first
+        let extra = monitor.visible.count > 1 ? "  +\(monitor.visible.count - 1)" : ""
+        Group {
+            switch session?.activity {
+            case .working:
+                ShimmerText(text: (session?.detail ?? L("Arbeitet", "Working")) + extra)
+            case .waiting(let message):
+                plain([session?.project ?? "", message].filter { !$0.isEmpty }.joined(separator: " · ") + extra)
+            case .done:
+                plain((["Claude", session?.project ?? "", session?.summary ?? ""]).filter { !$0.isEmpty }
+                        .joined(separator: " · ") + extra)
+            default: EmptyView()
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .animation(.easeInOut(duration: 0.25), value: session?.detail)
+    }
+
+    private func plain(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color(white: 0.82))
+            .lineLimit(1)
+            .truncationMode(.tail)
+    }
+}
+
+/// Claude's spark, cycling through its shapes like the CLI does.
+private struct ClaudeSpark: View {
+    private static let frames = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"]
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.12)) { context in
+            let index = Int(context.date.timeIntervalSinceReferenceDate / 0.12) % Self.frames.count
+            Text(Self.frames[index])
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(ClaudeCodeModule.tint)
+                .frame(width: 18)
+        }
+    }
+}
+
+/// Grey text with a light running through it while Claude works.
+private struct ShimmerText: View {
+    let text: String
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30)) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2.4) / 2.4
+            let grey = Color(white: 0.56)
+            // Gradient stops must stay in order within 0…1.
+            let at = { (x: Double) in min(max(x, 0), 1) }
+            Text(text)
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(LinearGradient(
+                    stops: [.init(color: grey, location: 0),
+                            .init(color: grey, location: at(phase * 1.6 - 0.42)),
+                            .init(color: .white, location: at(phase * 1.6 - 0.3)),
+                            .init(color: grey, location: at(phase * 1.6 - 0.18)),
+                            .init(color: grey, location: 1)],
+                    startPoint: .leading, endPoint: .trailing))
+        }
+    }
+}
+
+/// A check mark that draws itself once.
+private struct DrawnCheck: View {
+    @State private var progress: CGFloat = 0
+
+    var body: some View {
+        CheckShape()
+            .trim(from: 0, to: progress)
+            .stroke(Color(red: 0.93, green: 0.6, blue: 0.46), style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+            .onAppear { withAnimation(.easeOut(duration: 0.5).delay(0.3)) { progress = 1 } }
+    }
+}
+
+private struct CheckShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + rect.width * 0.12, y: rect.minY + rect.height * 0.55))
+        path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.38, y: rect.minY + rect.height * 0.78))
+        path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.88, y: rect.minY + rect.height * 0.22))
+        return path
     }
 }
 
@@ -167,8 +300,10 @@ private struct SessionRow: View {
                         Text(message)
                     } else if session.activity == .idle {
                         Text(L("bereit", "ready"))
+                    } else if case .done = session.activity, let summary = session.summary {
+                        Text(summary)
                     } else {
-                        Text(session.activity.label)
+                        Text(session.detail ?? session.activity.label)
                     }
                 }
                 .font(.system(size: 10))

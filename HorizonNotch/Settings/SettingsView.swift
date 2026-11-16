@@ -884,12 +884,6 @@ private struct LockScreenSettings: View {
                     Text(L("Cover und Songtext", "Cover and lyrics")).tag(LockScreenStart.lyrics)
                 }
                 .disabled(!settings.lockScreenWidgets)
-                Picker(L("Design der Player-Karte", "Player card design"), selection: $settings.lockScreenCardStyle) {
-                    ForEach(LockScreenCardStyle.allCases) { style in
-                        Text(style.title).tag(style)
-                    }
-                }
-                .disabled(!settings.lockScreenWidgets)
                 ValueSlider(title: L("Durchsichtigkeit", "Transparency"),
                             value: Binding(get: { settings.lockScreenTransparency * 100 },
                                            set: { settings.lockScreenTransparency = $0 / 100 }),
