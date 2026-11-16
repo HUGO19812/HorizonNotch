@@ -340,38 +340,75 @@ private struct LiquidPlayerCard<Artwork: View>: View {
     }
 }
 
-/// Clear glass made by hand over the wallpaper piece behind the card.
+/// Glass made by hand over the wallpaper piece behind the card, in
+/// Canopy's two looks:
+/// - clear: the picture stays sharp, but a thick lens bends it strongly
+///   towards the rim, with a red/blue colour fringe where it bends most;
+/// - frosted: the picture is blurred and lightened, with a soft diagonal
+///   sheen across the glass and a light rim.
 private struct CraftedGlass: View {
     let shape: RoundedRectangle
-    /// 0 = clear, 1 = fully frosted.
+    /// 0 = clear, 1 = frosted.
     var frost: Double = 0
 
     var body: some View {
         ZStack {
-            // The wallpaper itself: clear, or frosted by the slider.
-            WallpaperPiece()
-                .blur(radius: frost * 24)
-                .clipShape(shape)
-            // Frosted glass is milky, not dark.
-            shape.fill(Color.white.opacity(frost * 0.13))
-            // Lens: a magnified copy, only along the rim, bends the picture
-            // at the edge the way thick glass does.
-            WallpaperPiece(zoom: 1.12)
-                .blur(radius: frost * 24)
-                .brightness(0.04)
-                .clipShape(shape)
-                .mask {
-                    shape.strokeBorder(Color.white, lineWidth: 16)
-                        .blur(radius: 7)
-                }
-            // A breath of light in the glass body, brighter at the top.
-            shape.fill(LinearGradient(colors: [.white.opacity(0.07), .white.opacity(0.0), .white.opacity(0.04)],
-                                      startPoint: .top, endPoint: .bottom))
+            if frost > 0.5 {
+                frosted
+            } else {
+                clear
+            }
         }
         .compositingGroup()
     }
-}
 
+    private var clear: some View {
+        ZStack {
+            WallpaperPiece()
+            // Lens: magnified copies only along the rim.
+            WallpaperPiece(zoom: 1.28)
+                .brightness(0.04)
+                .mask(rim(width: 34, blur: 12))
+            // Colour fringe: red pushed out, blue pulled in.
+            WallpaperPiece(zoom: 1.34)
+                .colorMultiply(Color(red: 1, green: 0.35, blue: 0.3))
+                .mask(rim(width: 10, blur: 4))
+                .blendMode(.plusLighter)
+                .opacity(0.55)
+            WallpaperPiece(zoom: 1.2)
+                .colorMultiply(Color(red: 0.3, green: 0.5, blue: 1))
+                .mask(rim(width: 14, blur: 5))
+                .blendMode(.plusLighter)
+                .opacity(0.5)
+            // A faint bright edge where the light catches.
+            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.35), .white.opacity(0.03), .white.opacity(0.2)],
+                                              startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
+                .blendMode(.plusLighter)
+        }
+        .clipShape(shape)
+    }
+
+    private var frosted: some View {
+        ZStack {
+            WallpaperPiece()
+                .blur(radius: 22)
+            shape.fill(Color.white.opacity(0.12))
+            // The diagonal sheen across the glass.
+            LinearGradient(stops: [.init(color: .clear, location: 0.25),
+                                   .init(color: .white.opacity(0.16), location: 0.5),
+                                   .init(color: .clear, location: 0.72)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+                .blendMode(.plusLighter)
+            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.4), .white.opacity(0.08), .white.opacity(0.25)],
+                                              startPoint: .top, endPoint: .bottom), lineWidth: 1)
+        }
+        .clipShape(shape)
+    }
+
+    private func rim(width: CGFloat, blur: CGFloat) -> some View {
+        shape.strokeBorder(Color.white, lineWidth: width).blur(radius: blur)
+    }
+}
 
 /// The part of the desktop picture that lies exactly behind this view
 /// (the panel covers the whole screen, so window coordinates are screen
