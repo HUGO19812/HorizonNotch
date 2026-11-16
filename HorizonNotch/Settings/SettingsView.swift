@@ -70,7 +70,7 @@ private let settingsGroups: [SettingsGroup] = [
         SettingsEntry(tab: .claude, de: "Claude Code", en: "Claude Code", symbol: "sparkle",
                       keywords: "Hooks Token Verbrauch usage KI AI"),
         SettingsEntry(tab: .lockScreen, de: "Sperrbildschirm", en: "Lock Screen", symbol: "lock.display",
-                      keywords: "gesperrt locked Player Musik music Cover Lyrics Songtext Bildschirmschoner screen saver screensaver"),
+                      keywords: "Design Chrom chrome Glas glass Karte card Ozean Graphit Prisma Horizont gesperrt locked Player Musik music Cover Lyrics Songtext Bildschirmschoner screen saver screensaver"),
     ]),
     SettingsGroup(de: "System", en: "System", entries: [
         SettingsEntry(tab: .permissions, de: "Berechtigungen", en: "Permissions", symbol: "lock.shield",
@@ -882,6 +882,12 @@ private struct LockScreenSettings: View {
                     Text(L("Kleiner Player", "Small player")).tag(LockScreenStart.compact)
                     Text(L("Großes Cover", "Large cover")).tag(LockScreenStart.cover)
                     Text(L("Cover und Songtext", "Cover and lyrics")).tag(LockScreenStart.lyrics)
+                }
+                .disabled(!settings.lockScreenWidgets)
+                Picker(L("Design der Player-Karte", "Player card design"), selection: $settings.lockScreenCardStyle) {
+                    ForEach(LockScreenCardStyle.allCases) { style in
+                        Text(style.title).tag(style)
+                    }
                 }
                 .disabled(!settings.lockScreenWidgets)
                 ValueSlider(title: L("Durchsichtigkeit", "Transparency"),

@@ -236,12 +236,10 @@ private struct LockControls<Header: View>: View {
     }
 }
 
-/// Chrome-like Liquid Glass card: clear glass (macOS 26+, a thin material
-/// before), a specular rim that is bright at the top left and reflects at
-/// the bottom right, a soft sheen across the top and a faint cyan/magenta
-/// fringe like light breaking at the edge. The transparency slider
-/// (Settings → Lock Screen) only changes the frosting and tint below the
-/// glass, so the shine stays at every setting.
+/// The player card in the style chosen under Settings → Lock Screen:
+/// a liquid-chrome texture, clear Liquid Glass (both without a border), or
+/// the classic frosted glass with a shiny rim. The transparency slider
+/// fades the texture or the frosting; text stays readable on all of them.
 private struct GlassCard<Content: View>: View {
     @ObservedObject private var settings = AppSettings.shared
     @ViewBuilder var content: Content
@@ -249,48 +247,121 @@ private struct GlassCard<Content: View>: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
         let solid = 1 - min(max(settings.lockScreenTransparency, 0), 1)
+        let style = settings.lockScreenCardStyle
         content
             .padding(.horizontal, 22)
             .padding(.vertical, 16)
             .background {
-                ZStack {
-                    // Frosting and tint: 0 % transparency = milky and dark,
-                    // 100 % = clear.
-                    shape.fill(.ultraThinMaterial).opacity(solid * 0.9)
-                    shape.fill(Color.black.opacity(solid * 0.3))
-                    if #available(macOS 26.0, *) {
-                        Color.clear.glassEffect(.clear, in: shape)
+                Group {
+                    if let texture = style.texture {
+                        ChromeFill(texture: texture, shape: shape, solid: solid)
+                    } else if style == .clearGlass {
+                        ClearGlassFill(shape: shape, solid: solid)
                     } else {
-                        shape.fill(.ultraThinMaterial).opacity(0.35)
+                        ClassicGlassFill(shape: shape, solid: solid)
                     }
-                    // Sheen across the top.
-                    shape.fill(LinearGradient(colors: [.white.opacity(0.16), .white.opacity(0.03), .clear],
-                                              startPoint: .top, endPoint: .center))
                 }
                 .animation(.easeInOut(duration: 0.25), value: solid)
             }
             .overlay {
-                ZStack {
-                    // Chromatic fringe.
-                    shape.strokeBorder(Color.cyan.opacity(0.35), lineWidth: 1)
-                        .offset(x: -0.6, y: -0.6)
-                        .blur(radius: 0.6)
-                    shape.strokeBorder(Color(red: 1, green: 0.3, blue: 0.8).opacity(0.3), lineWidth: 1)
-                        .offset(x: 0.6, y: 0.6)
-                        .blur(radius: 0.6)
-                    // Specular rim.
-                    shape.strokeBorder(
-                        LinearGradient(stops: [.init(color: .white.opacity(0.85), location: 0),
-                                               .init(color: .white.opacity(0.25), location: 0.25),
-                                               .init(color: .white.opacity(0.06), location: 0.55),
-                                               .init(color: .white.opacity(0.45), location: 1)],
-                                       startPoint: .topLeading, endPoint: .bottomTrailing),
-                        lineWidth: 1.2)
-                }
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
+                if style == .classic { ClassicRim(shape: shape) }
             }
-            .shadow(color: .black.opacity(0.25), radius: 18, y: 8)
+            .shadow(color: .black.opacity(style == .clearGlass ? 0.18 : 0.35), radius: 20, y: 10)
+            .animation(.easeInOut(duration: 0.3), value: style)
+    }
+}
+
+/// Liquid chrome: the texture fills the card, darkened towards the
+/// buttons so white text stays readable; with more transparency the
+/// wallpaper shows through.
+private struct ChromeFill: View {
+    let texture: String
+    let shape: RoundedRectangle
+    let solid: Double
+
+    var body: some View {
+        ZStack {
+            shape.fill(.ultraThinMaterial)
+            // Overlay on a clear view so the picture fills the card without
+            // making it larger.
+            Color.clear.overlay {
+                Image(texture)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            }
+            .clipped()
+            .opacity(0.45 + 0.55 * solid)
+            LinearGradient(colors: [.black.opacity(0.32), .black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
+        }
+        .clipShape(shape)
+    }
+}
+
+/// Clear Liquid Glass with soft light instead of a rim: brighter at the
+/// upper left, a faint caustic at the lower right.
+private struct ClearGlassFill: View {
+    let shape: RoundedRectangle
+    let solid: Double
+
+    var body: some View {
+        ZStack {
+            shape.fill(.ultraThinMaterial).opacity(solid * 0.8)
+            shape.fill(Color.black.opacity(0.08 + solid * 0.2))
+            if #available(macOS 26.0, *) {
+                Color.clear.glassEffect(.clear, in: shape)
+            } else {
+                shape.fill(.ultraThinMaterial).opacity(0.4)
+            }
+            shape.fill(RadialGradient(colors: [.white.opacity(0.22), .clear], center: .topLeading,
+                                      startRadius: 0, endRadius: 260))
+            shape.fill(RadialGradient(colors: [.white.opacity(0.10), .clear], center: .bottomTrailing,
+                                      startRadius: 0, endRadius: 200))
+        }
+    }
+}
+
+/// The earlier frosted glass with a sheen across the top.
+private struct ClassicGlassFill: View {
+    let shape: RoundedRectangle
+    let solid: Double
+
+    var body: some View {
+        ZStack {
+            shape.fill(.ultraThinMaterial).opacity(solid * 0.9)
+            shape.fill(Color.black.opacity(solid * 0.3))
+            if #available(macOS 26.0, *) {
+                Color.clear.glassEffect(.clear, in: shape)
+            } else {
+                shape.fill(.ultraThinMaterial).opacity(0.35)
+            }
+            shape.fill(LinearGradient(colors: [.white.opacity(0.16), .white.opacity(0.03), .clear],
+                                      startPoint: .top, endPoint: .center))
+        }
+    }
+}
+
+/// Specular rim with a faint cyan/magenta fringe (classic style only).
+private struct ClassicRim: View {
+    let shape: RoundedRectangle
+
+    var body: some View {
+        ZStack {
+            shape.strokeBorder(Color.cyan.opacity(0.35), lineWidth: 1)
+                .offset(x: -0.6, y: -0.6)
+                .blur(radius: 0.6)
+            shape.strokeBorder(Color(red: 1, green: 0.3, blue: 0.8).opacity(0.3), lineWidth: 1)
+                .offset(x: 0.6, y: 0.6)
+                .blur(radius: 0.6)
+            shape.strokeBorder(
+                LinearGradient(stops: [.init(color: .white.opacity(0.85), location: 0),
+                                       .init(color: .white.opacity(0.25), location: 0.25),
+                                       .init(color: .white.opacity(0.06), location: 0.55),
+                                       .init(color: .white.opacity(0.45), location: 1)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing),
+                lineWidth: 1.2)
+        }
+        .blendMode(.plusLighter)
+        .allowsHitTesting(false)
     }
 }
 
