@@ -69,7 +69,8 @@ final class NotchViewModel: ObservableObject {
                                                      height: notch.height + module.peekHeight),
                                     earRadius: attached ? 8 : 0,
                                     topRadius: attached ? 0 : 18,
-                                    bottomRadius: 16,
+                                    // The device card is rounder, like a widget.
+                                    bottomRadius: module.id == "devices" ? 26 : 16,
                                     visible: true)
             }
             return IslandLayout(bodySize: CGSize(width: gap + 2 * wing + grow, height: notch.height + grow / 2),
