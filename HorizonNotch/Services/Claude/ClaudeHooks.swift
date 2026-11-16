@@ -29,10 +29,28 @@ enum ClaudeHooks {
     private static var command: String { "\"\(scriptURL.path)\"" }
 
     static var isInstalled: Bool {
+        hasEntries && FileManager.default.isExecutableFile(atPath: scriptURL.path)
+    }
+
+    /// Our entries are in Claude's settings (the script may still be missing).
+    private static var hasEntries: Bool {
         guard let hooks = readSettings()["hooks"] as? [String: Any] else { return false }
         return events.allSatisfy { event in
             ((hooks[event] as? [[String: Any]]) ?? []).contains(where: isOurs)
         }
+    }
+
+    /// The hooks point at a script in Application Support. If that folder
+    /// was deleted (e.g. when reinstalling), Claude's hooks run into nothing
+    /// and the notch stays empty: write the script and folder again.
+    static func repairIfNeeded() {
+        guard hasEntries else { return }
+        let manager = FileManager.default
+        try? manager.createDirectory(at: eventFolder, withIntermediateDirectories: true)
+        let current = try? String(contentsOf: scriptURL, encoding: .utf8)
+        guard current != script || !manager.isExecutableFile(atPath: scriptURL.path) else { return }
+        try? script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try? manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
     }
 
     /// Writes the script and adds one hook entry per event to

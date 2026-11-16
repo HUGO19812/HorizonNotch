@@ -28,9 +28,7 @@ final class HUDModule: NotchModule {
     private var subscriptions = Set<AnyCancellable>()
     private let settings = AppSettings.shared
 
-    /// In the side-bar style the island stays as it is.
-    var isActive: Bool { visible && settings.hudStyle == .notch }
-    private let sideHUD = SideHUDController()
+    var isActive: Bool { visible }
     var tapIsRunning: Bool { tap.isRunning }
 
     init() {
@@ -97,10 +95,6 @@ final class HUDModule: NotchModule {
     }
 
     private func show(_ kind: Kind, level: Float, muted: Bool) {
-        if settings.hudStyle == .sideBar {
-            sideHUD.show(kind: kind, level: level, muted: muted)
-            return
-        }
         self.kind = kind
         self.level = level
         self.muted = muted

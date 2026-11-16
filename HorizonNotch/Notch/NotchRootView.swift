@@ -205,7 +205,10 @@ private struct ExpandedContent: View {
                                 ? TabIcon.labelWidth(pages[active].title) : 0,
                              infoWidths: pages.map { settings.headerLiveInfo ? TabIcon.infoWidth(infos[$0.id]) : 0 })
 
-        return HStack(spacing: 0) {
+        if settings.headerIconStyle == .pageDots {
+            return AnyView(dotsHeader(wing: wing, gap: gap))
+        }
+        return AnyView(HStack(spacing: 0) {
             HStack(spacing: TabSplit.spacing) {
                 if coordinator.pages.count > 1 {
                     ForEach(0..<split.leading, id: \.self) { tab($0, split: split) }
@@ -228,6 +231,49 @@ private struct ExpandedContent: View {
                 Button {
                     // NSApp.delegate is SwiftUI's adaptor, not AppDelegate, so
                     // ask through a notification.
+                    NotificationCenter.default.post(name: .openSettings, object: nil)
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .frame(width: 22, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(L("Einstellungen", "Settings"))
+            }
+            .frame(width: wing, alignment: .trailing)
+        }
+        .padding(.horizontal, 20))
+    }
+
+    /// Like Pro Notch: the current page's symbol and name on the left, page
+    /// dots on the right (click one to switch), then status and settings.
+    private func dotsHeader(wing: CGFloat, gap: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 6) {
+                if let page = coordinator.currentPage {
+                    Image(systemName: page.symbol)
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(page.title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                }
+            }
+            .foregroundStyle(.white.opacity(0.6))
+            .frame(width: wing, alignment: .leading)
+            .animation(.easeInOut(duration: 0.2), value: coordinator.pageIndex)
+            Spacer(minLength: gap)
+            HStack(spacing: 10) {
+                if coordinator.pages.count > 1 {
+                    PageDots(count: coordinator.pages.count, index: coordinator.pageIndex,
+                             titles: coordinator.pages.map(\.title)) { index in
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { coordinator.pageIndex = index }
+                    }
+                }
+                Spacer(minLength: 0)
+                HeaderStatus()
+                Button {
                     NotificationCenter.default.post(name: .openSettings, object: nil)
                 } label: {
                     Image(systemName: "gearshape.fill")
@@ -576,5 +622,29 @@ private struct HelloView: View {
             withAnimation(.easeInOut(duration: 1.8).delay(0.3)) { written = 1 }
             withAnimation(.easeOut(duration: 0.5).delay(1.9)) { showRest = true }
         }
+    }
+}
+
+/// Page dots like Pro Notch: the current page a short white bar, the
+/// others small dots. Each one switches to its page.
+private struct PageDots: View {
+    let count: Int
+    let index: Int
+    let titles: [String]
+    let select: (Int) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<count, id: \.self) { i in
+                Capsule()
+                    .fill(Color.white.opacity(i == index ? 1 : 0.32))
+                    .frame(width: i == index ? 20 : 7, height: 7)
+                    .frame(height: 20)
+                    .contentShape(Rectangle())
+                    .onTapGesture { select(i) }
+                    .help(titles.indices.contains(i) ? titles[i] : "")
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: index)
     }
 }

@@ -90,6 +90,10 @@ final class ScreenSaverController {
         state.lyrics = settings.screenSaverLyrics
         if state.lyrics, let info = nowPlaying.info { lyrics.load(for: info) }
         let window = self.window ?? makeWindow()
+        // Built when shown and dropped when hidden: no updates in between.
+        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics, state: state))
+        host.sizingOptions = []
+        window.contentView = host
         window.setFrame(screen.frame, display: true)
         window.alphaValue = 0
         window.orderFrontRegardless()
@@ -112,7 +116,9 @@ final class ScreenSaverController {
             context.duration = 0.25
             window.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
-            if self?.isShowing == false { window.orderOut(nil) }
+            guard self?.isShowing == false else { return }
+            window.orderOut(nil)
+            window.contentView = nil
         })
     }
 
@@ -148,9 +154,6 @@ final class ScreenSaverController {
         window.hidesOnDeactivate = false
         // Clicks end the screen saver instead of hitting the buttons.
         window.ignoresMouseEvents = true
-        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics, state: state))
-        host.sizingOptions = []
-        window.contentView = host
         self.window = window
         return window
     }
