@@ -323,14 +323,16 @@ private struct LiquidPlayerCard<Artwork: View>: View {
                 // values frost and shade it more and more.
                 if overWallpaper && Wallpaper.shared.image != nil {
                     CraftedGlass(shape: shape, frost: solid)
+                } else if #available(macOS 26.0, *) {
+                    Color.clear.glassEffect(solid > 0.4 ? .regular : .clear, in: shape)
                 } else {
-                    // Without the wallpaper piece: a material whose strength
-                    // follows the slider (system glass cannot be dimmed).
-                    shape.fill(.ultraThinMaterial).opacity(solid)
+                    shape.fill(.ultraThinMaterial).opacity(0.3 + solid * 0.7)
                 }
-                // Clearly visible over the whole range: 100 % = no shade,
-                // 0 % = dark smoked glass.
-                shape.fill(Color.black.opacity(solid * 0.55))
+                // 100 % = nothing on top, as clean as Canopy's; lower values
+                // shade it into dark smoked glass.
+                if solid > 0 {
+                    shape.fill(Color.black.opacity(solid * 0.55))
+                }
             }
             .animation(.easeInOut(duration: 0.25), value: solid)
         }
@@ -433,7 +435,8 @@ final class Wallpaper: ObservableObject {
         context.draw(cg, in: CGRect(x: 0, y: 0, width: 16, height: 16))
         var total = 0
         for i in stride(from: 0, to: pixels.count, by: 4) { total += Int(pixels[i]) + Int(pixels[i + 1]) + Int(pixels[i + 2]) }
-        return Double(total) / Double(16 * 16 * 3) < 12
+        // Only a truly black placeholder; dark pictures (space, night) count.
+        return Double(total) / Double(16 * 16 * 3) < 2.5
     }
 
     /// One of Apple's own desktop pictures (for the settings preview).

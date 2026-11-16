@@ -96,6 +96,8 @@ final class ClaudeCodeMonitor: ObservableObject {
 
     private func apply(_ event: [String: Any]) {
         guard let id = event["session_id"] as? String, let name = event["hook_event_name"] as? String else { return }
+        // For the settings: proof that Claude Code's hooks reach the app.
+        if id != ClaudeHooks.testSessionID { UserDefaults.standard.set(Date(), forKey: "claudeLastEvent") }
         let cwd = event["cwd"] as? String ?? ""
         let project = URL(fileURLWithPath: cwd).lastPathComponent
         var session = sessions.first { $0.id == id } ?? Session(id: id, project: project, activity: .idle, updated: Date())
