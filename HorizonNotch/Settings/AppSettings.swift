@@ -117,6 +117,8 @@ final class AppSettings: ObservableObject {
     @Published var connectivityFocus: Bool { didSet { defaults.set(connectivityFocus, forKey: "connectivityFocus") } }
     @Published var notifyDownloads: Bool { didSet { defaults.set(notifyDownloads, forKey: "notifyDownloads") } }
     @Published var lockScreenWidgets: Bool { didSet { defaults.set(lockScreenWidgets, forKey: "lockScreenWidgets") } }
+    /// Weather, battery and headphones under the lock screen clock.
+    @Published var lockScreenStatusRow: Bool { didSet { defaults.set(lockScreenStatusRow, forKey: "lockScreenStatusRow") } }
     @Published var lockScreenStart: LockScreenStart { didSet { defaults.set(lockScreenStart.rawValue, forKey: "lockScreenStart") } }
     /// How see-through the lock screen player card is (0 = solid glass, 1 = almost invisible).
     @Published var lockScreenTransparency: Double { didSet { defaults.set(lockScreenTransparency, forKey: "lockScreenTransparency") } }
@@ -214,9 +216,10 @@ final class AppSettings: ObservableObject {
         connectivityFocus = defaults.bool(forKey: "connectivityFocus")
         notifyDownloads = defaults.bool(forKey: "notifyDownloads")
         lockScreenWidgets = defaults.object(forKey: "lockScreenWidgets") as? Bool ?? true
+        lockScreenStatusRow = defaults.object(forKey: "lockScreenStatusRow") as? Bool ?? true
         lockScreenStart = LockScreenStart(rawValue: defaults.string(forKey: "lockScreenStart") ?? "") ?? .compact
         lockScreenTransparency = defaults.object(forKey: "lockScreenTransparency") as? Double ?? 0.6
-        lockScreenBackdrop = LockScreenBackdrop(rawValue: defaults.string(forKey: "lockScreenBackdrop") ?? "") ?? .tinted
+        lockScreenBackdrop = LockScreenBackdrop(rawValue: defaults.string(forKey: "lockScreenBackdrop") ?? "") ?? .cover
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true
         screenSaverEnabled = defaults.bool(forKey: "screenSaverEnabled")

@@ -26,6 +26,9 @@ final class NotchViewModel: ObservableObject {
     @Published private(set) var isHovering = false
     /// Files are being dragged over the island: show the drop zones.
     @Published private(set) var isFileDragActive = false
+    /// First launch: the open island says hello and stays open until
+    /// "Get Started" is clicked.
+    @Published var showHello = false
     /// Provides the drop zones; nil when the shelf module is missing.
     var shelf: ShelfModule?
 

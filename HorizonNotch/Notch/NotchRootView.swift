@@ -161,7 +161,10 @@ private struct ExpandedContent: View {
                 .onChange(of: settings.headerLiveInfo) { refreshInfos() }
                 .onChange(of: coordinator.pages.map(\.id)) { refreshInfos() }
             ZStack {
-                if model.isFileDragActive, let shelf = model.shelf {
+                if model.showHello {
+                    HelloView { NotificationCenter.default.post(name: .helloFinished, object: nil) }
+                        .transition(.opacity)
+                } else if model.isFileDragActive, let shelf = model.shelf {
                     shelf.dropZones(onDone: onDropFinished)
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 } else if let page = coordinator.currentPage {
@@ -522,5 +525,56 @@ private struct HeaderStatus: View {
         }
         let time = end.formatted(date: .omitted, time: .shortened)
         return L("Wach bleiben bis \(time) – klicken zum Ausschalten", "Stay awake until \(time) – click to turn off")
+    }
+}
+
+extension Notification.Name {
+    /// "Get Started" in the first-launch greeting.
+    static let helloFinished = Notification.Name("horizon.helloFinished")
+}
+
+/// First-launch greeting in the open island: "hello" written out in a
+/// colourful script, a welcome line and a button to start the setup.
+private struct HelloView: View {
+    let onStart: () -> Void
+    @State private var written: CGFloat = 0
+    @State private var showRest = false
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text("hello")
+                .font(.custom("SnellRoundhand-Bold", size: 58))
+                .foregroundStyle(LinearGradient(colors: [Color(red: 0.36, green: 0.55, blue: 1), Color(red: 0.66, green: 0.36, blue: 1),
+                                                         Color(red: 0.94, green: 0.44, blue: 0.82)],
+                                                startPoint: .leading, endPoint: .trailing))
+                // Written from left to right.
+                .mask(alignment: .leading) {
+                    GeometryReader { proxy in
+                        Rectangle().frame(width: proxy.size.width * written)
+                    }
+                }
+                .frame(height: 64)
+            Group {
+                Text(L("Willkommen bei Horizon Notch", "Welcome to Horizon Notch"))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.65))
+                Button(action: onStart) {
+                    Text(L("Los geht's", "Get Started"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(.white))
+                }
+                .buttonStyle(PressScaleStyle())
+            }
+            .opacity(showRest ? 1 : 0)
+            .offset(y: showRest ? 0 : 6)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.8).delay(0.3)) { written = 1 }
+            withAnimation(.easeOut(duration: 0.5).delay(1.9)) { showRest = true }
+        }
     }
 }

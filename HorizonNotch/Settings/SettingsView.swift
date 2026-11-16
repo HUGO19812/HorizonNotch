@@ -878,6 +878,9 @@ private struct LockScreenSettings: View {
         Form {
             Section {
                 Toggle(L("Musik-Player auf dem Sperrbildschirm", "Music player on the lock screen"), isOn: $settings.lockScreenWidgets)
+                Toggle(L("Wetter, Akku und Kopfhörer unter der Uhr", "Weather, battery and headphones under the clock"),
+                       isOn: $settings.lockScreenStatusRow)
+                    .disabled(!settings.lockScreenWidgets)
                 Picker(L("Beim Sperren zeigen", "When locking, show"), selection: $settings.lockScreenStart) {
                     Text(L("Kleiner Player", "Small player")).tag(LockScreenStart.compact)
                     Text(L("Großes Cover", "Large cover")).tag(LockScreenStart.cover)
