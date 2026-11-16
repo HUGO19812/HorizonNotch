@@ -27,23 +27,23 @@ struct NotchRootView: View {
                     .padding(.horizontal, layout.earRadius)
             }
             .frame(width: layout.outerSize.width, height: layout.outerSize.height, alignment: .top)
+            // Only the content is clipped: Liquid Glass must stay out of
+            // clips and shadows, or it is drawn offscreen and turns flat.
+            .clipShape(shape)
             // Closed and with a live activity beside the notch it stays pure
             // black so it blends with the hardware notch; the chosen style
             // only applies to the open island.
             .background(IslandBackground(shape: shape, style: state == .expanded ? settings.appearance : .black,
                                          tint: Color(hex: settings.islandTintColor) ?? .black))
-            .clipShape(shape)
             .overlay {
-                if settings.islandBorder && state == .expanded {
+                if settings.islandBorder && state == .expanded && settings.appearance != .glass {
                     shape.stroke(Color.white.opacity(0.16), lineWidth: 1)
                 }
             }
             .contentShape(shape)
-            .shadow(color: .black.opacity(state == .expanded ? settings.islandShadow : 0),
-                    radius: 8 + 14 * settings.islandShadow, y: 4 + 6 * settings.islandShadow)
-            // A module's glow while closed, e.g. orange when Claude needs you.
-            .shadow(color: state == .compact ? (coordinator.compactModule?.compactGlow ?? .clear) : .clear,
-                    radius: 17, y: 10)
+            .modifier(IslandShadow(enabled: !(state == .expanded && settings.appearance == .glass),
+                                   strength: state == .expanded ? settings.islandShadow : 0,
+                                   glow: state == .compact ? (coordinator.compactModule?.compactGlow ?? .clear) : .clear))
             .opacity(layout.visible ? 1 : 0)
             .animation(spring, value: layout)
             .animation(spring, value: state)
@@ -82,6 +82,25 @@ struct NotchRootView: View {
                             .animation(spring.delay(0.05)),
                         removal: .opacity.animation(.easeOut(duration: 0.12))))
             }
+        }
+    }
+}
+
+/// Drop shadow and a module's coloured glow under the island – left out
+/// for Liquid Glass, which brings its own depth.
+private struct IslandShadow: ViewModifier {
+    let enabled: Bool
+    let strength: Double
+    let glow: Color
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .shadow(color: .black.opacity(strength), radius: 8 + 14 * strength, y: 4 + 6 * strength)
+                // A module's glow while closed, e.g. orange when Claude needs you.
+                .shadow(color: glow, radius: 17, y: 10)
+        } else {
+            content
         }
     }
 }

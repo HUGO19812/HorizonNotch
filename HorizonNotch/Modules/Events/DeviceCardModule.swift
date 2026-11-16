@@ -138,6 +138,10 @@ private struct DeviceImage: View {
                     .shadow(color: .black.opacity(0.45), radius: 8, y: 6)
                     .padding(4)
                     .opacity(card.connected ? 1 : 0.55)
+            } else if card.name.lowercased().contains("airpods") && !card.name.lowercased().contains("max") {
+                AirPodsCaseDrawing(ledOn: card.connected)
+                    .padding(8)
+                    .opacity(card.connected ? 1 : 0.55)
             } else {
                 symbolView
             }
@@ -310,5 +314,65 @@ enum DevicePhotos {
             return ca != cb ? ca : a.count < b.count
         }
         return sorted.lazy.compactMap { NSImage(contentsOfFile: coreTypesRoot + "/" + $0) }.first
+    }
+}
+
+/// A charging case drawn with depth – glossy white body, the lid's seam,
+/// the status light, a highlight and a soft shadow – for when macOS has no
+/// picture of the device.
+private struct AirPodsCaseDrawing: View {
+    let ledOn: Bool
+
+    var body: some View {
+        GeometryReader { proxy in
+            let w = min(proxy.size.width, proxy.size.height / 0.78)
+            let h = w * 0.78
+            let caseShape = RoundedRectangle(cornerRadius: w * 0.3, style: .continuous)
+            ZStack {
+                // Shadow on the ground.
+                Ellipse()
+                    .fill(Color.black.opacity(0.55))
+                    .frame(width: w * 0.85, height: h * 0.16)
+                    .blur(radius: 8)
+                    .offset(y: h * 0.5)
+                // Body: bright top, greyer towards the bottom edge.
+                caseShape
+                    .fill(LinearGradient(colors: [Color(white: 0.99), Color(white: 0.93), Color(white: 0.8)],
+                                         startPoint: .top, endPoint: .bottom))
+                    .frame(width: w, height: h)
+                // Rounded sides fall off into shade.
+                caseShape
+                    .fill(LinearGradient(colors: [Color.black.opacity(0.16), .clear, .clear, Color.black.opacity(0.16)],
+                                         startPoint: .leading, endPoint: .trailing))
+                    .frame(width: w, height: h)
+                // The lid's seam with a light lip below it.
+                VStack(spacing: 0) {
+                    Rectangle().fill(Color(white: 0.55)).frame(height: max(1, w * 0.012))
+                    Rectangle().fill(Color.white.opacity(0.9)).frame(height: max(1, w * 0.01))
+                }
+                .frame(width: w * 0.98)
+                .offset(y: -h * 0.17)
+                .mask(caseShape.frame(width: w, height: h))
+                // Status light.
+                Capsule()
+                    .fill(ledOn ? Color(red: 0.35, green: 0.95, blue: 0.45) : Color(white: 0.6))
+                    .frame(width: w * 0.035, height: w * 0.035)
+                    .shadow(color: ledOn ? Color.green.opacity(0.9) : .clear, radius: 3)
+                    .offset(y: h * 0.06)
+                // Gloss on the lid.
+                Ellipse()
+                    .fill(LinearGradient(colors: [.white.opacity(0.95), .white.opacity(0)], startPoint: .top, endPoint: .bottom))
+                    .frame(width: w * 0.62, height: h * 0.22)
+                    .blur(radius: 3)
+                    .offset(x: -w * 0.08, y: -h * 0.3)
+                // Fine outline.
+                caseShape
+                    .strokeBorder(LinearGradient(colors: [.white, Color(white: 0.7)], startPoint: .top, endPoint: .bottom),
+                                  lineWidth: 1)
+                    .frame(width: w, height: h)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .aspectRatio(1 / 0.78, contentMode: .fit)
     }
 }
