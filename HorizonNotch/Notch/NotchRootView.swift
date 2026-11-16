@@ -160,6 +160,8 @@ private struct ExpandedContent: View {
                 .onReceive(infoChanges) { refreshInfos() }
                 .onChange(of: settings.headerLiveInfo) { refreshInfos() }
                 .onChange(of: coordinator.pages.map(\.id)) { refreshInfos() }
+                // The page-dot popup hangs down over the page.
+                .zIndex(2)
             ZStack {
                 if model.showHello {
                     HelloView { NotificationCenter.default.post(name: .helloFinished, object: nil) }
@@ -181,9 +183,19 @@ private struct ExpandedContent: View {
             .padding(.bottom, 14)
             .overlay(alignment: .bottom) {
                 if let transient = coordinator.transientModule {
-                    TransientStrip(module: transient)
-                        .id(transient.id)
-                        .transition(.offset(y: 12).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottom)))
+                    if transient.id == "devices" {
+                        // A connected device covers the whole page as a
+                        // card instead of squeezing into the small pill.
+                        transient.transientView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Color.black)
+                            .id(transient.id)
+                            .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                    } else {
+                        TransientStrip(module: transient)
+                            .id(transient.id)
+                            .transition(.offset(y: 12).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottom)))
+                    }
                 }
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.82), value: coordinator.transientModule?.id)
@@ -247,38 +259,34 @@ private struct ExpandedContent: View {
         .padding(.horizontal, 20))
     }
 
-    /// Like Pro Notch: the current page's symbol and name on the left, page
-    /// dots on the right (click one to switch), then status and settings.
+    /// Like Pro Notch: page dots on the left (hover shows the page's name,
+    /// click switches), on the right the status capsule with the coffee
+    /// cup and battery, then the gear.
     private func dotsHeader(wing: CGFloat, gap: CGFloat) -> some View {
         HStack(spacing: 0) {
-            HStack(spacing: 6) {
-                if let page = coordinator.currentPage {
-                    Image(systemName: page.symbol)
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(page.title)
-                        .font(.system(size: 11, weight: .semibold))
-                        .lineLimit(1)
-                }
-            }
-            .foregroundStyle(.white.opacity(0.6))
-            .frame(width: wing, alignment: .leading)
-            .animation(.easeInOut(duration: 0.2), value: coordinator.pageIndex)
-            Spacer(minLength: gap)
-            HStack(spacing: 10) {
+            HStack(spacing: 0) {
                 if coordinator.pages.count > 1 {
-                    PageDots(count: coordinator.pages.count, index: coordinator.pageIndex,
-                             titles: coordinator.pages.map(\.title)) { index in
+                    PageDots(pages: coordinator.pages.map { PageDots.Page(title: $0.title, symbol: $0.symbol) },
+                             index: coordinator.pageIndex, accent: theme.accent) { index in
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { coordinator.pageIndex = index }
                     }
+                } else if let page = coordinator.currentPage {
+                    Text(page.title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.55))
                 }
+            }
+            .frame(width: wing, alignment: .leading)
+            Spacer(minLength: gap)
+            HStack(spacing: 10) {
                 Spacer(minLength: 0)
-                HeaderStatus()
+                HeaderStatus(alwaysShowCup: true, alwaysGrouped: true)
                 Button {
                     NotificationCenter.default.post(name: .openSettings, object: nil)
                 } label: {
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.55))
                         .frame(width: 22, height: 20)
                         .contentShape(Rectangle())
                 }
@@ -520,6 +528,9 @@ private struct TransientStrip: View {
 /// Small status icons at the top right of the open island, optionally
 /// together in a glass capsule.
 private struct HeaderStatus: View {
+    /// The page-dots header always shows the cup, in the capsule.
+    var alwaysShowCup = false
+    var alwaysGrouped = false
     @ObservedObject private var awake = KeepAwake.shared
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var power = PowerSource.shared
@@ -533,7 +544,7 @@ private struct HeaderStatus: View {
     }
 
     var body: some View {
-        let grouped = settings.headerStatusGroup && Self.hasContent
+        let grouped = alwaysGrouped || (settings.headerStatusGroup && Self.hasContent)
         icons
             .padding(.horizontal, grouped ? Self.groupPadding : 0)
             .frame(height: grouped ? 22 : nil)
@@ -547,7 +558,7 @@ private struct HeaderStatus: View {
 
     private var icons: some View {
         HStack(spacing: 8) {
-            if settings.keepAwakeIcon {
+            if settings.keepAwakeIcon || alwaysShowCup {
                 Button { awake.toggle() } label: {
                     Image(systemName: awake.isOn ? "cup.and.heat.waves.fill" : "cup.and.saucer")
                         .font(.system(size: 11, weight: .semibold))
@@ -626,25 +637,86 @@ private struct HelloView: View {
 }
 
 /// Page dots like Pro Notch: the current page a short white bar, the
-/// others small dots. Each one switches to its page.
+/// others small dots. Each one switches to its page; hovering shows the
+/// page's name in a small glass label below.
 private struct PageDots: View {
-    let count: Int
+    struct Page {
+        let title: String
+        let symbol: String
+    }
+
+    let pages: [Page]
     let index: Int
-    let titles: [String]
+    let accent: Color
     let select: (Int) -> Void
+    @State private var hovered: Int?
 
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(0..<count, id: \.self) { i in
+        HStack(spacing: 7) {
+            ForEach(pages.indices, id: \.self) { i in
                 Capsule()
-                    .fill(Color.white.opacity(i == index ? 1 : 0.32))
-                    .frame(width: i == index ? 20 : 7, height: 7)
+                    .fill(Color.white.opacity(i == index ? 1 : (hovered == i ? 0.7 : 0.32)))
+                    .frame(width: i == index ? 22 : 7, height: 7)
                     .frame(height: 20)
-                    .contentShape(Rectangle())
+                    .contentShape(Rectangle().inset(by: -3))
                     .onTapGesture { select(i) }
-                    .help(titles.indices.contains(i) ? titles[i] : "")
+                    .onHover { inside in
+                        if inside { hovered = i } else if hovered == i { hovered = nil }
+                    }
+                    .overlay(alignment: .top) {
+                        if hovered == i {
+                            PageLabel(page: pages[i], accent: accent, active: i == index)
+                                .fixedSize()
+                                .offset(y: 24)
+                                .allowsHitTesting(false)
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: 0.85, anchor: .top))
+                                        .combined(with: .offset(y: -4)),
+                                    removal: .opacity))
+                        }
+                    }
+                    .zIndex(hovered == i ? 1 : 0)
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: index)
+        .animation(.spring(response: 0.28, dampingFraction: 0.78), value: hovered)
+    }
+}
+
+/// The name under a hovered page dot: a glass capsule with the page's
+/// symbol on an accent-coloured disc and its name.
+private struct PageLabel: View {
+    let page: PageDots.Page
+    let accent: Color
+    let active: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: page.symbol)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(LinearGradient(colors: [accent, accent.opacity(0.6)],
+                                                         startPoint: .top, endPoint: .bottom)))
+            Text(page.title)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(.white)
+            if active {
+                Circle().fill(Color.white.opacity(0.6)).frame(width: 4, height: 4)
+            }
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 11)
+        .frame(height: 26)
+        .background {
+            ZStack {
+                Capsule().fill(.ultraThinMaterial)
+                Capsule().fill(Color(white: 0.12).opacity(0.75))
+                Capsule().strokeBorder(LinearGradient(colors: [.white.opacity(0.35), .white.opacity(0.06)],
+                                                      startPoint: .top, endPoint: .bottom), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.5), radius: 10, y: 4)
+        }
+        .environment(\.colorScheme, .dark)
     }
 }

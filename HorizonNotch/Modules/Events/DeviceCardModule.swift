@@ -50,19 +50,23 @@ final class DeviceCardModule: NotchModule {
     func compactLeading() -> AnyView { AnyView(EmptyView()) }
     func compactTrailing() -> AnyView { AnyView(EmptyView()) }
     func peekView() -> AnyView { AnyView(DeviceCardView(module: self)) }
-    func transientView() -> AnyView { AnyView(DeviceCardView(module: self).frame(width: 360, height: peekHeight)) }
+    func transientView() -> AnyView { AnyView(DeviceCardView(module: self, inline: true)) }
 }
 
 private struct DeviceCardView: View {
     @ObservedObject var module: DeviceCardModule
+    /// Inside the open island: covers the page instead of reaching up
+    /// beside the notch.
+    var inline = false
 
     var body: some View {
         if let card = module.card {
             HStack(alignment: .center, spacing: 26) {
                 DeviceImage(card: card)
-                    .frame(width: card.connected ? 118 : 70, height: card.connected ? 118 : 60)
+                    .frame(width: card.connected ? (inline ? 104 : 118) : 70,
+                           height: card.connected ? (inline ? 104 : 118) : 60)
                     // Reaches up beside the notch, like Pro Notch's picture.
-                    .offset(y: card.connected ? -16 : -8)
+                    .offset(y: inline ? 0 : (card.connected ? -16 : -8))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(card.name)
                         .font(.system(size: 19, weight: .bold))
@@ -113,24 +117,10 @@ private struct DeviceImage: View {
         return candidates.first { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil } ?? "headphones"
     }
 
-    /// A photo-real product picture from the asset catalogue
-    /// (AirPodsPro, AirPodsMax, AirPods, Headphones), when one was added.
-    private var photo: NSImage? {
-        let name = card.name.lowercased()
-        let candidates: [String]
-        if name.contains("airpods pro") {
-            candidates = ["AirPodsPro", "AirPods"]
-        } else if name.contains("airpods max") {
-            candidates = ["AirPodsMax"]
-        } else if name.contains("airpods") {
-            candidates = ["AirPods", "AirPodsPro"]
-        } else if name.contains("beats") || name.contains("headphone") || name.contains("kopfhörer") {
-            candidates = ["Headphones"]
-        } else {
-            candidates = []
-        }
-        return candidates.lazy.compactMap { NSImage(named: $0) }.first
-    }
+    /// A photo-real product picture: one added to the asset catalogue
+    /// (AirPodsPro, AirPodsMax, AirPods, Headphones), else the 3D render
+    /// macOS itself ships for the device (as in System Settings).
+    private var photo: NSImage? { DevicePhotos.image(for: card.name) }
 
     var body: some View {
         ZStack {
@@ -206,5 +196,88 @@ private struct BatteryRing: View {
                 .font(.system(size: 13, weight: .bold).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.8))
         }
+    }
+}
+
+/// Finds a 3D product picture for a Bluetooth device. Nothing is bundled
+/// from Apple: the pictures come from the Mac's own CoreTypes bundle (the
+/// renders System Settings and Finder use), unless the asset catalogue has
+/// one of its own.
+enum DevicePhotos {
+    private enum Kind { case pro, max, regular, beats, other }
+    private static var cache: [String: NSImage?] = [:]
+    private static let coreTypes = "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources"
+
+    static func image(for deviceName: String) -> NSImage? {
+        let kind = kind(of: deviceName)
+        let key = "\(kind)"
+        if let cached = cache[key] { return cached }
+        let found = assetImage(kind) ?? systemImage(kind)
+        cache[key] = found
+        return found
+    }
+
+    private static func kind(of name: String) -> Kind {
+        let name = name.lowercased()
+        if name.contains("airpods pro") { return .pro }
+        if name.contains("airpods max") { return .max }
+        if name.contains("airpods") { return .regular }
+        if name.contains("beats") || name.contains("powerbeats") { return .beats }
+        return .other
+    }
+
+    private static func assetImage(_ kind: Kind) -> NSImage? {
+        let names: [String]
+        switch kind {
+        case .pro: names = ["AirPodsPro", "AirPods"]
+        case .max: names = ["AirPodsMax"]
+        case .regular: names = ["AirPods", "AirPodsPro"]
+        case .beats: names = ["Headphones"]
+        case .other: names = []
+        }
+        return names.lazy.compactMap { NSImage(named: $0) }.first
+    }
+
+    /// The device's type identifier first, then any CoreTypes file whose
+    /// name fits (Apple renames them between macOS versions).
+    private static func systemImage(_ kind: Kind) -> NSImage? {
+        let identifiers: [String]
+        let words: [String]
+        let avoid: [String]
+        switch kind {
+        case .pro:
+            identifiers = ["com.apple.airpods-pro-2-usbc", "com.apple.airpods-pro-2", "com.apple.airpods-pro"]
+            words = ["airpods", "pro"]
+            avoid = ["max"]
+        case .max:
+            identifiers = ["com.apple.airpods-max"]
+            words = ["airpods", "max"]
+            avoid = []
+        case .regular:
+            identifiers = ["com.apple.airpods-4", "com.apple.airpods-3", "com.apple.airpods-2", "com.apple.airpods"]
+            words = ["airpods"]
+            avoid = ["pro", "max"]
+        case .beats, .other:
+            return nil
+        }
+        for identifier in identifiers {
+            if let file = try? FileManager.default.contentsOfDirectory(atPath: coreTypes)
+                .first(where: { $0 == identifier + ".icns" }),
+               let image = NSImage(contentsOfFile: coreTypes + "/" + file) {
+                return image
+            }
+        }
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: coreTypes) else { return nil }
+        let matches = files.filter { file in
+            let lower = file.lowercased()
+            return lower.hasSuffix(".icns") && words.allSatisfy { lower.contains($0) }
+                && !avoid.contains { lower.contains($0) }
+        }
+        // Prefer the case (like Pro Notch's picture), then the shortest name.
+        let sorted = matches.sorted { a, b in
+            let ca = a.lowercased().contains("case"), cb = b.lowercased().contains("case")
+            return ca != cb ? ca : a.count < b.count
+        }
+        return sorted.lazy.compactMap { NSImage(contentsOfFile: coreTypes + "/" + $0) }.first
     }
 }

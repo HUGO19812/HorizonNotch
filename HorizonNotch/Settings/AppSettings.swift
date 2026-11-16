@@ -259,7 +259,14 @@ final class AppSettings: ObservableObject {
         fontDesign = IslandFontDesign(rawValue: defaults.string(forKey: "fontDesign") ?? "") ?? .standard
         boldText = defaults.bool(forKey: "boldText")
         visualizerColor = VisualizerColorMode(rawValue: defaults.string(forKey: "visualizerColor") ?? "") ?? .cover
-        headerIconStyle = HeaderIconStyle(rawValue: defaults.string(forKey: "headerIconStyle") ?? "") ?? .pageDots
+        // Page dots (like Pro Notch) become the look once for everyone.
+        if defaults.bool(forKey: "headerPageDotsV2") {
+            headerIconStyle = HeaderIconStyle(rawValue: defaults.string(forKey: "headerIconStyle") ?? "") ?? .pageDots
+        } else {
+            defaults.set(true, forKey: "headerPageDotsV2")
+            defaults.set(HeaderIconStyle.pageDots.rawValue, forKey: "headerIconStyle")
+            headerIconStyle = .pageDots
+        }
         headerActiveLabel = defaults.object(forKey: "headerActiveLabel") as? Bool ?? true
         headerLiveInfo = defaults.object(forKey: "headerLiveInfo") as? Bool ?? true
         headerStatusGroup = defaults.object(forKey: "headerStatusGroup") as? Bool ?? true

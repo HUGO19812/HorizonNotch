@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// What the lock screen player shows; back to the chosen start view
@@ -71,15 +72,15 @@ struct LockScreenView: View {
 
     /// Small glass card above "Touch ID or Enter Password".
     private func compact(info: NowPlayingInfo) -> some View {
-        LiquidPlayerCard(service: nowPlaying, info: info, lyricsOn: false,
+        LiquidPlayerCard(service: nowPlaying, info: info, lyricsOn: false, showsLyricsButton: false, overWallpaper: true,
                          onLyrics: { state.large = true; state.lyrics = true }) {
-            CoverArt(image: nowPlaying.artwork, cornerRadius: 9)
+            CoverArt(image: nowPlaying.artwork, cornerRadius: 8)
                 .matchedGeometryEffect(id: "cover", in: player)
-                .frame(width: 56, height: 56)
+                .frame(width: 52, height: 52)
                 .onTapGesture { state.large = true }
                 .help(L("Groß anzeigen", "Show large"))
         }
-        .frame(width: 370)
+        .frame(width: 320)
         .transition(.opacity)
     }
 
@@ -227,81 +228,147 @@ private struct StatusRow: View {
     }
 }
 
-/// The player card: clear Liquid Glass (its bright, refracting edge comes
-/// from the system on macOS 26), artwork and titles, a waveform while
-/// playing, progress, the three buttons and the output device.
+/// The player card, laid out like Canopy's: cover, title and artist, a
+/// waveform at the top right, the progress line with times, the three
+/// buttons in the middle and the output device on the right – in clear
+/// Liquid Glass.
+///
+/// The lock screen's wallpaper belongs to another process, so glass in
+/// this window would only see an empty backdrop and turn flat grey. The
+/// card therefore lays the matching piece of the wallpaper behind itself
+/// (the lock screen shows the desktop picture); the glass then bends it
+/// at the edges like the real thing.
 private struct LiquidPlayerCard<Artwork: View>: View {
     @ObservedObject var service: NowPlayingService
     @ObservedObject private var output = AudioOutput.shared
     @ObservedObject private var settings = AppSettings.shared
     let info: NowPlayingInfo
     let lyricsOn: Bool
+    var showsLyricsButton = true
+    /// Over the lock screen's own wallpaper (the small card); the large
+    /// view draws its own backdrop that the glass can see.
+    var overWallpaper = false
     let onLyrics: () -> Void
     @ViewBuilder var artwork: Artwork
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
         let solid = 1 - min(max(settings.lockScreenTransparency, 0), 1)
-        VStack(spacing: 9) {
-            HStack(alignment: .center, spacing: 11) {
+        VStack(spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
                 artwork
-                VStack(alignment: Artwork.self == EmptyView.self ? .center : .leading, spacing: 1) {
+                VStack(alignment: Artwork.self == EmptyView.self ? .center : .leading, spacing: 2) {
                     Text(info.title)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .lineLimit(1)
                     Text(info.artist.isEmpty ? (info.appName ?? "") : info.artist)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.6))
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(.white.opacity(0.7))
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: Artwork.self == EmptyView.self ? .center : .leading)
+                .padding(.trailing, 22)
             }
             .overlay(alignment: .topTrailing) {
                 Image(systemName: "waveform")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.6))
                     .symbolEffect(.variableColor.iterative, isActive: info.isPlaying)
+                    .padding(.top, 2)
             }
             LockProgress(service: service, info: info)
             HStack(spacing: 0) {
-                LockButton(symbol: lyricsOn ? "quote.bubble.fill" : "quote.bubble", size: 14, action: onLyrics)
-                    .foregroundStyle(.white.opacity(lyricsOn ? 1 : 0.5))
-                    .help(L("Songtext", "Lyrics"))
+                Group {
+                    if showsLyricsButton {
+                        LockButton(symbol: lyricsOn ? "quote.bubble.fill" : "quote.bubble", size: 13, action: onLyrics)
+                            .foregroundStyle(.white.opacity(lyricsOn ? 1 : 0.55))
+                            .help(L("Songtext", "Lyrics"))
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(width: 40)
                 Spacer(minLength: 0)
-                LockButton(symbol: "backward.fill", size: 18) { service.send(.previous) }
-                LockButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 25) { service.send(.togglePlayPause) }
-                LockButton(symbol: "forward.fill", size: 18) { service.send(.next) }
+                HStack(spacing: 14) {
+                    LockButton(symbol: "backward.fill", size: 17) { service.send(.previous) }
+                    LockButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 26) { service.send(.togglePlayPause) }
+                    LockButton(symbol: "forward.fill", size: 17) { service.send(.next) }
+                }
                 Spacer(minLength: 0)
                 Image(systemName: output.symbol)
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .frame(width: 42)
+                    .foregroundStyle(.white.opacity(0.6))
+                    .frame(width: 40)
                     .help(output.deviceName)
             }
         }
-        .padding(EdgeInsets(top: 16, leading: 18, bottom: 10, trailing: 18))
-        // Readable through a soft shadow on text and symbols, not by
-        // darkening the glass.
-        .shadow(color: .black.opacity(0.35 + solid * 0.2), radius: 3, y: 1)
+        .foregroundStyle(.white)
+        .padding(EdgeInsets(top: 14, leading: 16, bottom: 8, trailing: 16))
+        // A whisper of shadow keeps text readable on bright wallpapers.
+        .shadow(color: .black.opacity(0.22 + solid * 0.2), radius: 2, y: 0.5)
         .background {
             ZStack {
+                if overWallpaper { WallpaperPiece().clipShape(shape) }
                 if #available(macOS 26.0, *) {
                     Color.clear.glassEffect(.clear, in: shape)
                 } else {
-                    shape.fill(.ultraThinMaterial).opacity(0.25 + solid * 0.4)
-                    shape.fill(Color.white.opacity(0.04))
+                    shape.fill(.ultraThinMaterial).opacity(0.15 + solid * 0.5)
+                    shape.fill(LinearGradient(colors: [.white.opacity(0.1), .white.opacity(0.02)],
+                                              startPoint: .top, endPoint: .bottom))
+                    shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.7), .white.opacity(0.08),
+                                                               .white.opacity(0.1), .white.opacity(0.45)],
+                                                      startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
+                        .blendMode(.plusLighter)
                 }
-                // Less transparency = only a faint shade behind the text.
-                shape.fill(Color.black.opacity(solid * 0.12))
-                // Clear glass with a glowing rim, like Canopy.
-                shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.65), .white.opacity(0.06),
-                                                           .white.opacity(0.08), .white.opacity(0.4)],
-                                                  startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
-                    .blendMode(.plusLighter)
+                if solid > 0 {
+                    shape.fill(Color.black.opacity(solid * 0.25))
+                }
             }
             .animation(.easeInOut(duration: 0.25), value: solid)
         }
-        .shadow(color: .black.opacity(0.1), radius: 14, y: 6)
+    }
+}
+
+/// The part of the desktop picture that lies exactly behind this view
+/// (the panel covers the whole screen, so window coordinates are screen
+/// coordinates).
+private struct WallpaperPiece: View {
+    var body: some View {
+        GeometryReader { proxy in
+            if let wallpaper = Wallpaper.shared.image {
+                let frame = proxy.frame(in: .global)
+                let screen = Wallpaper.shared.screenSize
+                Image(nsImage: wallpaper)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: screen.width, height: screen.height)
+                    .clipped()
+                    .offset(x: -frame.minX, y: -frame.minY)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// The desktop picture of the island's screen, loaded once per lock.
+final class Wallpaper {
+    static let shared = Wallpaper()
+    private(set) var image: NSImage?
+    private(set) var screenSize: CGSize = .zero
+    private var loadedURL: URL?
+
+    func load(for screen: NSScreen) {
+        screenSize = screen.frame.size
+        guard let url = NSWorkspace.shared.desktopImageURL(for: screen) else { image = nil; return }
+        if url == loadedURL, image != nil { return }
+        loadedURL = url
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue {
+            image = NSImage(contentsOf: url)
+        } else {
+            image = nil
+        }
     }
 }
 

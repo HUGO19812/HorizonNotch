@@ -43,6 +43,7 @@ final class LockScreenController {
     func show() {
         guard !isShowing, let screen = NSScreen.islandScreen(preferred: settings.displayID) else { return }
         state.reset()
+        Wallpaper.shared.load(for: screen)
         let panel = window ?? makeWindow()
         // The view only exists while shown, so nothing updates in the
         // background (the progress bar ticks twice a second while playing).
