@@ -81,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let info = self.nowPlaying.info {
                     self.nowPlaying.seek(to: max(0, info.elapsed(at: Date()) + Double(direction * 10)))
                 }
-            case .off: break
+            case .off, .tabs: break
             }
         }
 
@@ -94,14 +94,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.screenSaver?.screenLocked(locked)
         }
 
+        OnboardingActions.requestCalendar = { [weak self] in self?.calendar.requestAccess() }
+        OnboardingActions.requestLocation = { [weak self] in self?.weather.service.activate() }
+        OnboardingActions.accessibilityChanged = { [weak self] in self?.permissionsChanged() }
         if !AppSettings.shared.onboardingDone {
-            // Say hello in the notch first; "Get Started" opens the setup.
+            // Say hello in the notch, then ask for each permission there,
+            // one step at a time; the island stays open until "Done".
             controller.model.showHello = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { controller.expand() }
-            NotificationCenter.default.addObserver(forName: .helloFinished, object: nil, queue: .main) { [weak self, weak controller] _ in
+            NotificationCenter.default.addObserver(forName: .helloFinished, object: nil, queue: .main) { [weak controller] _ in
                 controller?.model.showHello = false
                 controller?.collapse()
-                self?.showSettings(tab: .permissions)
+                AppSettings.shared.onboardingDone = true
             }
         }
         #if DEBUG

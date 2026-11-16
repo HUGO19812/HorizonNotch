@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// A Bluetooth device that connected or disconnected, with its battery.
 struct DeviceCard: Equatable {
@@ -206,7 +207,7 @@ private struct BatteryRing: View {
 enum DevicePhotos {
     private enum Kind { case pro, max, regular, beats, other }
     private static var cache: [String: NSImage?] = [:]
-    private static let coreTypes = "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources"
+    private static let coreTypesRoot = "/System/Library/CoreServices/CoreTypes.bundle/Contents"
 
     static func image(for deviceName: String) -> NSImage? {
         let kind = kind(of: deviceName)
@@ -238,46 +239,76 @@ enum DevicePhotos {
         return names.lazy.compactMap { NSImage(named: $0) }.first
     }
 
-    /// The device's type identifier first, then any CoreTypes file whose
-    /// name fits (Apple renames them between macOS versions).
+    /// The device type macOS declares (its icon is the 3D render Finder and
+    /// System Settings show), then any CoreTypes file whose name fits.
     private static func systemImage(_ kind: Kind) -> NSImage? {
         let identifiers: [String]
+        let modelCodes: [String]
         let words: [String]
         let avoid: [String]
         switch kind {
         case .pro:
-            identifiers = ["com.apple.airpods-pro-2-usbc", "com.apple.airpods-pro-2", "com.apple.airpods-pro"]
+            identifiers = ["com.apple.airpods-pro-2-usbc", "com.apple.airpods-pro-2", "com.apple.airpods-pro",
+                           "com.apple.airpodspro", "com.apple.airpods-pro-1"]
+            modelCodes = ["AirPodsPro2,4", "AirPodsPro2,2", "AirPodsPro2,1", "AirPodsPro1,2", "AirPodsPro1,1", "iProd8,1"]
             words = ["airpods", "pro"]
             avoid = ["max"]
         case .max:
-            identifiers = ["com.apple.airpods-max"]
+            identifiers = ["com.apple.airpods-max", "com.apple.airpodsmax"]
+            modelCodes = ["AirPodsMax1,1", "AirPodsMax2,1", "iProd9,1"]
             words = ["airpods", "max"]
             avoid = []
         case .regular:
             identifiers = ["com.apple.airpods-4", "com.apple.airpods-3", "com.apple.airpods-2", "com.apple.airpods"]
+            modelCodes = ["AirPods4,1", "AirPods3,1", "AirPods1,3", "AirPods1,2", "AirPods1,1"]
             words = ["airpods"]
             avoid = ["pro", "max"]
         case .beats, .other:
             return nil
         }
         for identifier in identifiers {
-            if let file = try? FileManager.default.contentsOfDirectory(atPath: coreTypes)
-                .first(where: { $0 == identifier + ".icns" }),
-               let image = NSImage(contentsOfFile: coreTypes + "/" + file) {
-                return image
+            if let type = UTType(identifier), type.isDeclared,
+               let icon = Optional(NSWorkspace.shared.icon(for: type)), !isGeneric(icon) {
+                return icon
             }
         }
-        guard let files = try? FileManager.default.contentsOfDirectory(atPath: coreTypes) else { return nil }
-        let matches = files.filter { file in
-            let lower = file.lowercased()
-            return lower.hasSuffix(".icns") && words.allSatisfy { lower.contains($0) }
-                && !avoid.contains { lower.contains($0) }
+        let modelClass = UTTagClass(rawValue: "com.apple.device-model-code")
+        for code in modelCodes {
+            if let type = UTType(tag: code, tagClass: modelClass, conformingTo: nil), type.isDeclared,
+               let icon = Optional(NSWorkspace.shared.icon(for: type)), !isGeneric(icon) {
+                return icon
+            }
+        }
+        return fileImage(words: words, avoid: avoid)
+    }
+
+    /// A declared type without its own picture gets the blank document icon.
+    private static func isGeneric(_ icon: NSImage) -> Bool {
+        func bytes(_ image: NSImage) -> Data? {
+            var rect = NSRect(x: 0, y: 0, width: 32, height: 32)
+            guard let cg = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return nil }
+            return NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])
+        }
+        let sample = bytes(icon)
+        return [UTType.data, .item, .content, .text].contains { bytes(NSWorkspace.shared.icon(for: $0)) == sample }
+    }
+
+    private static func fileImage(words: [String], avoid: [String]) -> NSImage? {
+        // Files anywhere in CoreTypes (also its sub-bundles).
+        guard let enumerator = FileManager.default.enumerator(atPath: coreTypesRoot) else { return nil }
+        var matches: [String] = []
+        for case let path as String in enumerator {
+            let lower = (path as NSString).lastPathComponent.lowercased()
+            guard lower.hasSuffix(".icns") || lower.hasSuffix(".png") else { continue }
+            if words.allSatisfy({ lower.contains($0) }) && !avoid.contains(where: { lower.contains($0) }) {
+                matches.append(path)
+            }
         }
         // Prefer the case (like Pro Notch's picture), then the shortest name.
         let sorted = matches.sorted { a, b in
             let ca = a.lowercased().contains("case"), cb = b.lowercased().contains("case")
             return ca != cb ? ca : a.count < b.count
         }
-        return sorted.lazy.compactMap { NSImage(contentsOfFile: coreTypes + "/" + $0) }.first
+        return sorted.lazy.compactMap { NSImage(contentsOfFile: coreTypesRoot + "/" + $0) }.first
     }
 }

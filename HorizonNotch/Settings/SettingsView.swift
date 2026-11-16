@@ -801,7 +801,8 @@ private struct MusicSettings: View {
         // Only the sections: the settings window puts them in one form.
         Group {
             Section {
-                TilePicker(title: L("Wischen im Musik-Reiter", "Swipe on the music tab"), selection: $settings.musicGesture, options: [
+                TilePicker(title: L("Mit zwei Fingern seitlich wischen", "Two-finger sideways swipe"), selection: $settings.musicGesture, options: [
+                    TileOption(value: MusicGesture.tabs, title: L("Reiter wechseln", "Switch tabs"), symbol: "rectangle.on.rectangle"),
                     TileOption(value: MusicGesture.track, title: L("Titel wechseln", "Change track"), symbol: "forward.end.fill"),
                     TileOption(value: MusicGesture.seek, title: L("10 s spulen", "Seek 10 s"), symbol: "goforward.10"),
                     TileOption(value: MusicGesture.off, title: L("Aus", "Off"), symbol: "hand.raised.slash"),
@@ -809,8 +810,8 @@ private struct MusicSettings: View {
             } header: {
                 Text(L("Gesten", "Gestures"))
             } footer: {
-                note("Mit zwei Fingern seitlich wischen, während der Musik-Reiter offen ist. Nach links = weiter, nach rechts = zurück; mit Trackpad-Klick.",
-                     "Swipe sideways with two fingers while the music tab is open. Left = forward, right = back; with a trackpad click.")
+                note("Nach links = nächster Reiter bzw. Titel, nach rechts = zurück; mit Trackpad-Klick. „Titel wechseln“ und „10 s spulen“ gelten nur im Musik-Reiter, Kalender und Wetter blättern weiter durch ihre Tage.",
+                     "Left = next tab or track, right = back; with a trackpad click. “Change track” and “Seek 10 s” only apply on the music tab; calendar and weather keep scrolling through their days.")
             }
             Section(L("Player", "Player")) {
                 Toggle(L("Quelle unter dem Cover anzeigen", "Show the source below the cover"), isOn: $settings.showSource)
@@ -849,6 +850,8 @@ private struct LyricsSettings: View {
                 Toggle(L("Songtext-Feld neben dem Player", "Lyrics field next to the player"), isOn: $settings.showLyrics)
                 Toggle(L("Große Schrift", "Large text"), isOn: $settings.lyricsLarge)
                     .disabled(!settings.showLyrics)
+                ValueSlider(title: L("Zeitversatz", "Timing offset"), value: $settings.lyricsOffset,
+                            range: -3...3, step: 0.1, format: "%+.1f s")
             } footer: {
                 note("Synchronisierte Songtexte von LRCLIB. Ein Klick auf eine Zeile springt dorthin.",
                      "Synced lyrics from LRCLIB. Click a line to jump there.")

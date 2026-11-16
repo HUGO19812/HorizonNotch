@@ -305,13 +305,16 @@ struct LyricsPanel: View {
     var fontSize: CGFloat?
     /// Jumps playback to a position (a tapped line).
     let onSeek: (Double) -> Void
+    @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
         Group {
             switch lyrics.state {
             case .loaded:
                 TimelineView(.periodic(from: .now, by: info.isPlaying ? 0.1 : 3600)) { context in
-                    let position = info.elapsed(at: context.date)
+                    // The adjustable offset makes up for lyrics files that
+                    // run early or late against this recording.
+                    let position = info.elapsed(at: context.date) + settings.lyricsOffset
                     let current = lyrics.index(at: position)
                     LyricsScroller(lines: lyrics.lines, current: current,
                                    sung: current.map { lyrics.sungWords(in: $0, at: position) } ?? 0,

@@ -105,11 +105,11 @@ final class LyricsService: ObservableObject {
 
     /// Index of the line being sung at `position`, if any.
     func index(at position: Double) -> Int? {
-        guard let first = lines.first, position >= first.time - 0.3 else { return nil }
+        guard let first = lines.first, position >= first.time - 0.1 else { return nil }
         var low = 0, high = lines.count - 1
         while low < high {
             let mid = (low + high + 1) / 2
-            if lines[mid].time <= position + 0.3 { low = mid } else { high = mid - 1 }
+            if lines[mid].time <= position + 0.1 { low = mid } else { high = mid - 1 }
         }
         return low
     }
