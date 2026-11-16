@@ -31,54 +31,58 @@ private struct SettingsGroup: Identifiable {
     var id: String { en }
 }
 
+/// Like Canopy: few pages in a few groups. Pages that used to be separate
+/// (behaviour, tabs, modules, lyrics, notifications, downloads) are part of
+/// their natural page now.
 private let settingsGroups: [SettingsGroup] = [
-    SettingsGroup(de: "App", en: "App", entries: [
+    SettingsGroup(de: "", en: "", entries: [
         SettingsEntry(tab: .general, de: "Allgemein", en: "General", symbol: "gearshape",
-                      keywords: "Anmeldung starten Autostart login Sprache language Bildschirm display screen Monitor Update Aktualisierung Version"),
+                      keywords: "Anmeldung starten Autostart login Sprache language Bildschirm display screen Monitor Update Aktualisierung Version Verzögerung hover delay Öffnen open Reiter tab Vollbild full screen fullscreen Film movie video ausblenden hide Trackpad Klick haptic Haptik"),
         SettingsEntry(tab: .appearance, de: "Darstellung", en: "Appearance", symbol: "paintbrush",
-                      keywords: "Notch Höhe angleichen match height niedriger lower Stil style Glas glass Hintergrundfarbe background colour color Rand border Akzentfarbe accent Farbig coloured Visualizer Größe size Breite width Höhe height Eckenradius corner radius Schatten shadow Schrift font Schriftart fett bold Reiter-Symbole tab icons Form shape"),
-        SettingsEntry(tab: .behavior, de: "Verhalten", en: "Behaviour", symbol: "cursorarrow.motionlines",
-                      keywords: "Verzögerung hover delay Öffnen open erster letzter Reiter first last tab Vollbild full screen fullscreen Film movie video ausblenden hide Trackpad Klick haptic Haptik Klickstärke"),
+                      keywords: "Notch Höhe angleichen match height Stil style Glas glass Hintergrundfarbe background colour color Rand border Akzentfarbe accent Farbig coloured Visualizer Größe size Breite width Eckenradius corner radius Schatten shadow Schrift font fett bold Reiter tabs Punkte dots Reihenfolge order Module modules einschalten ausschalten enable disable"),
     ]),
-    SettingsGroup(de: "Island", en: "Island", entries: [
-        SettingsEntry(tab: .tabs, de: "Reiter", en: "Tabs", symbol: "rectangle.split.3x1",
-                      keywords: "Reihenfolge order ausblenden hide Seiten pages"),
-        SettingsEntry(tab: .modules, de: "Module", en: "Modules", symbol: "square.grid.2x2",
-                      keywords: "einschalten ausschalten enable disable Funktionen features"),
+    SettingsGroup(de: "Medien", en: "Media", entries: [
+        SettingsEntry(tab: .music, de: "Musik", en: "Music", symbol: "play.fill",
+                      keywords: "Player Spotify Wischen swipe Geste gesture Quelle source Cover Albumfarbe album Visualizer Sneak Peek Titelwechsel Spulen seek Songtext lyrics Text Schrift Farbe gesungen sung"),
+        SettingsEntry(tab: .lockScreen, de: "Sperrbildschirm", en: "Lock Screen", symbol: "lock.fill",
+                      keywords: "gesperrt locked Player Musik Cover Lyrics Songtext Uhr clock Wetter Akku Kopfhörer Bildschirmschoner screen saver screensaver Durchsichtigkeit transparency"),
     ]),
-    SettingsGroup(de: "Funktionen", en: "Features", entries: [
-        SettingsEntry(tab: .music, de: "Musik", en: "Music", symbol: "music.note",
-                      keywords: "Player Spotify Wischen swipe Geste gesture Quelle source Cover Albumfarbe album colour Visualizer Sneak Peek Titelwechsel Spulen seek"),
-        SettingsEntry(tab: .lyrics, de: "Songtext", en: "Lyrics", symbol: "quote.bubble",
-                      keywords: "Lyrics Text große Schrift large font Farbe colour color gesungen sung"),
-        SettingsEntry(tab: .hud, de: "Lautstärke & Helligkeit", en: "Volume & Brightness", symbol: "speaker.wave.2",
+    SettingsGroup(de: "Overlays", en: "Overlays", entries: [
+        SettingsEntry(tab: .hud, de: "Lautstärke & Helligkeit", en: "Volume & Brightness", symbol: "speaker.wave.2.fill",
                       keywords: "HUD Ton sound volume Helligkeit brightness Tastaturlicht keyboard backlight System-Anzeige Balken bar Farbe colour weiß white Prozent percent"),
-        SettingsEntry(tab: .battery, de: "Akku & Energie", en: "Battery & Power", symbol: "battery.75percent",
+        SettingsEntry(tab: .battery, de: "Akku", en: "Battery", symbol: "bolt.fill",
                       keywords: "Batterie battery laden charging Prozent percent wach bleiben stay awake Amphetamine Koffein caffeine Kaffeetasse coffee zugeklappt lid sleep Ruhezustand"),
+        SettingsEntry(tab: .connectivity, de: "Geräte & Mitteilungen", en: "Devices & Notifications", symbol: "airpodspro",
+                      keywords: "Verbindungen connectivity Bluetooth AirPods Kopfhörer headphones WLAN WiFi Fokus focus Benachrichtigungen notifications Mitteilungen Downloads Fortschritt progress"),
         SettingsEntry(tab: .calendar, de: "Kalender", en: "Calendar", symbol: "calendar",
                       keywords: "Termine events ganztägig all-day Meeting Countdown Zoom Teams Meet Ansicht view"),
-        SettingsEntry(tab: .weather, de: "Wetter", en: "Weather", symbol: "cloud.sun",
-                      keywords: "Standort location Ort place Stadt city suchen search Einheiten units Celsius Fahrenheit Temperatur temperature"),
-        SettingsEntry(tab: .shelf, de: "Ablage", en: "Shelf", symbol: "tray.full",
+        SettingsEntry(tab: .weather, de: "Wetter", en: "Weather", symbol: "cloud.sun.fill",
+                      keywords: "Standort location Ort place Stadt city suchen search Einheiten units Celsius Fahrenheit Temperatur"),
+        SettingsEntry(tab: .shelf, de: "Ablage", en: "Shelf", symbol: "tray.full.fill",
                       keywords: "Dateien files AirDrop ziehen drag Versandart"),
-        SettingsEntry(tab: .connectivity, de: "Verbindungen", en: "Connectivity", symbol: "dot.radiowaves.left.and.right",
-                      keywords: "Bluetooth AirPods Kopfhörer headphones WLAN WiFi Fokus focus"),
-        SettingsEntry(tab: .notifications, de: "Benachrichtigungen", en: "Notifications", symbol: "bell.badge",
-                      keywords: "Mitteilungen Downloads fertig finished"),
-        SettingsEntry(tab: .downloads, de: "Downloads", en: "Downloads", symbol: "arrow.down.circle",
-                      keywords: "Fortschritt progress Safari Chrome herunterladen"),
         SettingsEntry(tab: .claude, de: "Claude Code", en: "Claude Code", symbol: "sparkle",
-                      keywords: "Hooks Token Verbrauch usage KI AI"),
-        SettingsEntry(tab: .lockScreen, de: "Sperrbildschirm", en: "Lock Screen", symbol: "lock.display",
-                      keywords: "Design Chrom chrome Glas glass Flüssigglas liquid Karte card Ozean Rauchglas Prisma gesperrt locked Player Musik music Cover Lyrics Songtext Bildschirmschoner screen saver screensaver"),
+                      keywords: "Agents Agenten Hooks Token Verbrauch usage KI AI Codex"),
     ]),
     SettingsGroup(de: "System", en: "System", entries: [
-        SettingsEntry(tab: .permissions, de: "Berechtigungen", en: "Permissions", symbol: "lock.shield",
+        SettingsEntry(tab: .permissions, de: "Berechtigungen", en: "Permissions", symbol: "hand.raised.fill",
                       keywords: "Bedienungshilfen accessibility Kalender calendar Standort location Bluetooth Fokus focus Zugriff access Datenschutz privacy"),
-        SettingsEntry(tab: .about, de: "Über", en: "About", symbol: "info.circle",
+        SettingsEntry(tab: .about, de: "Über", en: "About", symbol: "info.circle.fill",
                       keywords: "Version Info Update"),
     ]),
 ]
+
+extension SettingsTab {
+    /// Pages that were merged into another one show that one.
+    var page: SettingsTab {
+        switch self {
+        case .behavior: return .general
+        case .tabs, .modules: return .appearance
+        case .lyrics: return .music
+        case .notifications, .downloads: return .connectivity
+        default: return self
+        }
+    }
+}
 
 struct SettingsView: View {
     let appDelegate: AppDelegate
@@ -97,14 +101,29 @@ struct SettingsView: View {
         }
     }
 
+    private var page: SettingsTab { selection.tab.page }
+
     var body: some View {
         NavigationSplitView {
-            List(selection: $selection.tab) {
+            List(selection: Binding(get: { page }, set: { selection.tab = $0 })) {
                 ForEach(visibleGroups) { group in
-                    Section(L(group.de, group.en)) {
+                    Section {
                         ForEach(group.entries) { entry in
-                            Label(entry.title, systemImage: entry.symbol).tag(entry.tab)
+                            Label {
+                                Text(entry.title)
+                            } icon: {
+                                // Small coloured tiles like Canopy / System Settings.
+                                Image(systemName: entry.symbol)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 20, height: 20)
+                                    .background(RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+                                        .fill(Color.white.opacity(0.14)))
+                            }
+                            .tag(entry.tab)
                         }
+                    } header: {
+                        if !group.de.isEmpty { Text(L(group.de, group.en)) }
                     }
                 }
             }
@@ -114,41 +133,92 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .searchable(text: $query, placement: .sidebar, prompt: L("Einstellungen suchen", "Search settings"))
+            .searchable(text: $query, placement: .sidebar, prompt: L("Suchen", "Search"))
             .onChange(of: trimmedQuery) { _, _ in
                 // Show the first hit when the open page no longer matches.
                 let hits = visibleGroups.flatMap(\.entries).map(\.tab)
-                if let first = hits.first, !hits.contains(selection.tab) { selection.tab = first }
+                if let first = hits.first, !hits.contains(page) { selection.tab = first }
             }
-            .navigationSplitViewColumnWidth(220)
+            .navigationSplitViewColumnWidth(210)
         } detail: {
-            Group {
-                switch selection.tab {
-                case .general: GeneralSettings()
-                case .appearance: AppearanceSettings()
-                case .behavior: BehaviorSettings()
-                case .tabs: TabSettings(coordinator: appDelegate.coordinator)
-                case .modules: ModuleSettings(coordinator: appDelegate.coordinator)
-                case .music: MusicSettings()
-                case .lyrics: LyricsSettings()
-                case .hud: HUDSettings()
-                case .battery: BatterySettings()
-                case .downloads: DownloadSettings()
-                case .claude: ClaudeSettings()
-                case .calendar: CalendarSettings()
-                case .weather: WeatherSettings()
-                case .shelf: ShelfSettings()
-                case .connectivity: ConnectivitySettings()
-                case .notifications: NotificationSettings()
-                case .lockScreen: LockScreenSettings(appDelegate: appDelegate)
-                case .permissions: PermissionSettings(appDelegate: appDelegate)
-                case .about: AboutSettings()
-                }
+            VStack(alignment: .leading, spacing: 0) {
+                pageTitle
+                    .padding(.horizontal, 28)
+                    .padding(.top, 14)
+                pageContent
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(minWidth: 680, minHeight: 480)
+        .background(VisualEffectBackground().ignoresSafeArea())
+        .frame(minWidth: 720, minHeight: 520)
     }
+
+    /// "▶ Media": the page's symbol and name, large, like Canopy.
+    private var pageTitle: some View {
+        let entry = settingsGroups.flatMap(\.entries).first { $0.tab == page }
+        return HStack(spacing: 10) {
+            Image(systemName: entry?.symbol ?? "gearshape")
+                .font(.system(size: 17, weight: .semibold))
+            Text(entry?.title ?? "")
+                .font(.system(size: 22, weight: .bold))
+        }
+    }
+
+    @ViewBuilder
+    private var pageContent: some View {
+        switch page {
+        case .permissions:
+            PermissionSettings(appDelegate: appDelegate)
+                .scrollContentBackground(.hidden)
+        case .about:
+            AboutSettings()
+        default:
+            Form { sections }
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+        }
+    }
+
+    @ViewBuilder
+    private var sections: some View {
+        switch page {
+        case .general:
+            GeneralSettings()
+            BehaviorSettings()
+        case .appearance:
+            AppearanceSettings()
+            TabSettings(coordinator: appDelegate.coordinator)
+            ModuleSettings(coordinator: appDelegate.coordinator)
+        case .music:
+            MusicSettings()
+            LyricsSettings()
+        case .lockScreen: LockScreenSettings(appDelegate: appDelegate)
+        case .hud: HUDSettings()
+        case .battery: BatterySettings()
+        case .connectivity:
+            ConnectivitySettings()
+            NotificationSettings()
+            DownloadSettings()
+        case .calendar: CalendarSettings()
+        case .weather: WeatherSettings()
+        case .shelf: ShelfSettings()
+        case .claude: ClaudeSettings()
+        default: EmptyView()
+        }
+    }
+}
+
+/// The translucent, blurred window background (behind the whole window).
+private struct VisualEffectBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
 /// Footer text under a settings section.
@@ -216,7 +286,8 @@ private struct GeneralSettings: View {
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 Toggle(L("Bei der Anmeldung starten", "Launch at login"), isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, value in LaunchAtLogin.set(value) }
@@ -239,7 +310,6 @@ private struct GeneralSettings: View {
             }
             UpdateSection()
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -247,7 +317,8 @@ private struct AppearanceSettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 Picker(L("Stil der Island", "Island style"), selection: $settings.appearance) {
                     Text(L("Schwarz", "Black")).tag(IslandAppearance.black)
@@ -326,7 +397,6 @@ private struct AppearanceSettings: View {
                             range: 0.5...1.8, step: 0.1, format: "%.1f×")
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -339,7 +409,8 @@ private struct BehaviorSettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 ValueSlider(title: L("Verzögerung beim Überfahren", "Hover delay"), value: $settings.hoverDelay,
                             range: 0...0.8, step: 0.05, format: "%.2f s")
@@ -364,7 +435,6 @@ private struct BehaviorSettings: View {
             }
             HapticSection()
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -394,7 +464,8 @@ private struct TabSettings: View {
     }
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 List {
                     ForEach(rows) { row in
@@ -425,7 +496,6 @@ private struct TabSettings: View {
                      "Drag to reorder; the switch hides a tab. Hidden modules keep working, e.g. a running timer still shows its countdown next to the notch.")
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -435,7 +505,8 @@ private struct ModuleSettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 ForEach(coordinator.modules.map { ModuleRow(id: $0.id, title: $0.title, symbol: $0.symbol) }) { row in
                     HStack(spacing: 10) {
@@ -452,7 +523,6 @@ private struct ModuleSettings: View {
                      "A disabled module disappears completely: no tab and nothing next to the notch.")
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -462,7 +532,8 @@ private struct MusicSettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 Picker(L("Wischen im Musik-Reiter", "Swipe on the music tab"), selection: $settings.musicGesture) {
                     Text(L("Titel wechseln", "Change track")).tag(MusicGesture.track)
@@ -499,7 +570,6 @@ private struct MusicSettings: View {
                 note("Zeigt kurz den Titel, ohne die Island zu öffnen.", "Briefly shows the song without opening the island.")
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -507,7 +577,8 @@ private struct LyricsSettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 Toggle(L("Songtext-Feld neben dem Player", "Lyrics field next to the player"), isOn: $settings.showLyrics)
                 Toggle(L("Große Schrift", "Large text"), isOn: $settings.lyricsLarge)
@@ -530,7 +601,6 @@ private struct LyricsSettings: View {
                 }
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -538,7 +608,8 @@ private struct HUDSettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 Toggle(L("System-Anzeige ersetzen", "Replace the system overlay"), isOn: $settings.replaceSystemHUD)
             } footer: {
@@ -556,7 +627,6 @@ private struct HUDSettings: View {
                      "Coloured: volume in the accent colour, brightness yellow, keyboard light blue.")
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -564,7 +634,8 @@ private struct CalendarSettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section(L("Ansicht", "View")) {
                 Stepper(value: $settings.calendarDaysAhead, in: 3...60) {
                     Text(L("Tage voraus in der Datumsleiste: \(settings.calendarDaysAhead)",
@@ -581,7 +652,6 @@ private struct CalendarSettings: View {
                 .disabled(!settings.calendarCountdown)
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -670,7 +740,8 @@ private struct WeatherSettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 Toggle(L("Aktuellen Standort verwenden", "Use current location"), isOn: $settings.weatherUsesLocation)
                 if !settings.weatherUsesLocation {
@@ -688,7 +759,6 @@ private struct WeatherSettings: View {
             }
             HapticSection()
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -696,7 +766,8 @@ private struct ShelfSettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 Picker(L("Versandart", "Send via"), selection: $settings.shareService) {
                     ForEach(ShareService.allCases) { service in
@@ -708,7 +779,6 @@ private struct ShelfSettings: View {
                      "The small field on the left of the shelf sends files this way.")
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -716,7 +786,8 @@ private struct ConnectivitySettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 Toggle(L("Alle Bluetooth-Geräte und AirPods-Akku", "All Bluetooth devices and AirPods battery"),
                        isOn: $settings.connectivityAllBluetooth)
@@ -726,7 +797,6 @@ private struct ConnectivitySettings: View {
                      "Headphones and Wi-Fi changes always show, without a permission. The two options ask for Bluetooth or Focus status when switched on.")
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -734,7 +804,8 @@ private struct NotificationSettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 Toggle(L("Fertige Downloads", "Finished downloads"), isOn: $settings.notifyDownloads)
             } footer: {
@@ -742,7 +813,6 @@ private struct NotificationSettings: View {
                      "Asks for access to the Downloads folder when switched on. macOS does not pass other apps' notifications to third-party apps.")
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -751,7 +821,8 @@ private struct BatterySettings: View {
     @ObservedObject private var awake = KeepAwake.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section(L("Anzeige", "Display")) {
                 Toggle(L("Akku oben rechts in der geöffneten Island", "Battery at the top right of the open island"),
                        isOn: $settings.batteryInHeader)
@@ -792,7 +863,6 @@ private struct BatterySettings: View {
                      "Stays on until you switch it off or the time limit is up – also after a restart. The limit counts from switching on; a change applies the next time you switch it on. macOS uses “pmset disablesleep” for this. Only the very first time macOS asks for your password; after that Horizon Notch may run exactly this one command without a password (like Amphetamine Enhancer). Careful: closed in a bag the Mac can get warm.")
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -800,7 +870,8 @@ private struct DownloadSettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 Toggle(L("Laufende und fertige Downloads anzeigen", "Show running and finished downloads"), isOn: $settings.notifyDownloads)
             } footer: {
@@ -808,7 +879,6 @@ private struct DownloadSettings: View {
                      "Shows progress next to the notch while Safari, Chrome & co. download into the Downloads folder, and reports finished files. Asks for access to the Downloads folder when switched on.")
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -817,7 +887,8 @@ private struct ClaudeSettings: View {
     @State private var error: String?
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 HStack {
                     Image(systemName: installed ? "checkmark.circle.fill" : "circle.dashed")
@@ -849,7 +920,6 @@ private struct ClaudeSettings: View {
                 Text(L("KI-Verbrauch", "AI usage"))
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -858,7 +928,8 @@ private struct LockScreenSettings: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        // Only the sections: the settings window puts them in one form.
+        Group {
             Section {
                 Toggle(L("Musik-Player auf dem Sperrbildschirm", "Music player on the lock screen"), isOn: $settings.lockScreenWidgets)
                 Toggle(L("Wetter, Akku und Kopfhörer unter der Uhr", "Weather, battery and headphones under the clock"),
@@ -903,7 +974,6 @@ private struct LockScreenSettings: View {
                      "Large cover, clock and lyrics on the cover-tinted background when you have been idle that long and music plays. A key, click or mouse move ends it. It stays off for videos and in full screen. Set the macOS screen saver to a longer time or “Never”, otherwise that one starts first.")
             }
         }
-        .formStyle(.grouped)
     }
 }
 
