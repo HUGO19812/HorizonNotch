@@ -327,7 +327,7 @@ private struct AirPodsCaseDrawing: View {
         GeometryReader { proxy in
             let w = min(proxy.size.width, proxy.size.height / 0.78)
             let h = w * 0.78
-            let body = RoundedRectangle(cornerRadius: w * 0.3, style: .continuous)
+            let caseShape = RoundedRectangle(cornerRadius: w * 0.3, style: .continuous)
             ZStack {
                 // Shadow on the ground.
                 Ellipse()
@@ -336,12 +336,12 @@ private struct AirPodsCaseDrawing: View {
                     .blur(radius: 8)
                     .offset(y: h * 0.5)
                 // Body: bright top, greyer towards the bottom edge.
-                body
+                caseShape
                     .fill(LinearGradient(colors: [Color(white: 0.99), Color(white: 0.93), Color(white: 0.8)],
                                          startPoint: .top, endPoint: .bottom))
                     .frame(width: w, height: h)
                 // Rounded sides fall off into shade.
-                body
+                caseShape
                     .fill(LinearGradient(colors: [Color.black.opacity(0.16), .clear, .clear, Color.black.opacity(0.16)],
                                          startPoint: .leading, endPoint: .trailing))
                     .frame(width: w, height: h)
@@ -352,7 +352,7 @@ private struct AirPodsCaseDrawing: View {
                 }
                 .frame(width: w * 0.98)
                 .offset(y: -h * 0.17)
-                .mask(body.frame(width: w, height: h))
+                .mask(caseShape.frame(width: w, height: h))
                 // Status light.
                 Capsule()
                     .fill(ledOn ? Color(red: 0.35, green: 0.95, blue: 0.45) : Color(white: 0.6))
@@ -366,7 +366,7 @@ private struct AirPodsCaseDrawing: View {
                     .blur(radius: 3)
                     .offset(x: -w * 0.08, y: -h * 0.3)
                 // Fine outline.
-                body
+                caseShape
                     .strokeBorder(LinearGradient(colors: [.white, Color(white: 0.7)], startPoint: .top, endPoint: .bottom),
                                   lineWidth: 1)
                     .frame(width: w, height: h)
