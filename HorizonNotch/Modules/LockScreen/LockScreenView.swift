@@ -23,6 +23,7 @@ struct LockScreenView: View {
     @ObservedObject var nowPlaying: NowPlayingService
     @ObservedObject var lyrics: LyricsService
     @ObservedObject var state: LockScreenState
+    @ObservedObject private var settings = AppSettings.shared
     @Namespace private var player
 
     private var spring: Animation { .spring(response: 0.5, dampingFraction: 0.86) }
@@ -33,7 +34,8 @@ struct LockScreenView: View {
             ZStack {
                 if let info = nowPlaying.info {
                     if state.large {
-                        Backdrop(image: nowPlaying.artwork, tint: nowPlaying.accent, size: size)
+                        Backdrop(image: nowPlaying.artwork, tint: nowPlaying.accent, size: size,
+                                 style: settings.lockScreenBackdrop)
                             .transition(.opacity)
                         LockClock(screenHeight: size.height)
                             .transition(.opacity)
@@ -51,6 +53,7 @@ struct LockScreenView: View {
         .animation(spring, value: nowPlaying.info == nil)
         .animation(spring, value: state.large)
         .animation(spring, value: state.lyrics)
+        .animation(.easeInOut(duration: 0.4), value: settings.lockScreenBackdrop)
     }
 
     /// Small card above "Touch ID or Enter Password".
@@ -104,27 +107,42 @@ struct LockScreenView: View {
     }
 }
 
-/// Covers the wallpaper with a dark background tinted by the cover: the
-/// artwork hugely blurred, a glow of its colour from the lower right.
+/// Covers the wallpaper once the cover is large: either a dark background
+/// tinted by the cover (the artwork hugely blurred, a glow of its colour
+/// from the lower right) or the cover itself filling the screen.
 private struct Backdrop: View {
     let image: NSImage?
     let tint: Color
     let size: CGSize
+    let style: LockScreenBackdrop
 
     var body: some View {
         ZStack {
             Color(red: 0.05, green: 0.05, blue: 0.07)
-            if let image {
+            if style != .tinted, let image {
                 Image(nsImage: image)
                     .resizable()
+                    .interpolation(.high)
                     .aspectRatio(contentMode: .fill)
                     .frame(width: size.width, height: size.height)
-                    .blur(radius: 110)
-                    .opacity(0.4)
+                    .blur(radius: style == .coverBlurred ? 40 : 0, opaque: true)
+                    .clipped()
+                // Keep clock, titles and lyrics readable on bright covers.
+                LinearGradient(colors: [.black.opacity(0.5), .black.opacity(0.25), .black.opacity(0.55)],
+                               startPoint: .top, endPoint: .bottom)
+            } else {
+                if let image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: size.width, height: size.height)
+                        .blur(radius: 110)
+                        .opacity(0.4)
+                }
+                RadialGradient(colors: [tint.opacity(0.28), .clear], center: .bottomTrailing,
+                               startRadius: 0, endRadius: max(size.width, size.height) * 0.75)
+                LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .center)
             }
-            RadialGradient(colors: [tint.opacity(0.28), .clear], center: .bottomTrailing,
-                           startRadius: 0, endRadius: max(size.width, size.height) * 0.75)
-            LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .center)
         }
         .frame(width: size.width, height: size.height)
         .clipped()
@@ -218,24 +236,61 @@ private struct LockControls<Header: View>: View {
     }
 }
 
-/// Translucent, lightly outlined card: Liquid Glass on macOS 26+.
+/// Chrome-like Liquid Glass card: clear glass (macOS 26+, a thin material
+/// before), a specular rim that is bright at the top left and reflects at
+/// the bottom right, a soft sheen across the top and a faint cyan/magenta
+/// fringe like light breaking at the edge. The transparency slider
+/// (Settings → Lock Screen) only changes the frosting and tint below the
+/// glass, so the shine stays at every setting.
 private struct GlassCard<Content: View>: View {
+    @ObservedObject private var settings = AppSettings.shared
     @ViewBuilder var content: Content
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
-        let padded = content
+        let solid = 1 - min(max(settings.lockScreenTransparency, 0), 1)
+        content
             .padding(.horizontal, 22)
             .padding(.vertical, 16)
-        Group {
-            if #available(macOS 26.0, *) {
-                padded.glassEffect(.regular.tint(.black.opacity(0.15)), in: shape)
-            } else {
-                padded.background(shape.fill(.ultraThinMaterial))
-                    .background(shape.fill(Color.black.opacity(0.2)))
+            .background {
+                ZStack {
+                    // Frosting and tint: 0 % transparency = milky and dark,
+                    // 100 % = clear.
+                    shape.fill(.ultraThinMaterial).opacity(solid * 0.9)
+                    shape.fill(Color.black.opacity(solid * 0.3))
+                    if #available(macOS 26.0, *) {
+                        Color.clear.glassEffect(.clear, in: shape)
+                    } else {
+                        shape.fill(.ultraThinMaterial).opacity(0.35)
+                    }
+                    // Sheen across the top.
+                    shape.fill(LinearGradient(colors: [.white.opacity(0.16), .white.opacity(0.03), .clear],
+                                              startPoint: .top, endPoint: .center))
+                }
+                .animation(.easeInOut(duration: 0.25), value: solid)
             }
-        }
-        .overlay(shape.strokeBorder(Color.white.opacity(0.22), lineWidth: 1))
+            .overlay {
+                ZStack {
+                    // Chromatic fringe.
+                    shape.strokeBorder(Color.cyan.opacity(0.35), lineWidth: 1)
+                        .offset(x: -0.6, y: -0.6)
+                        .blur(radius: 0.6)
+                    shape.strokeBorder(Color(red: 1, green: 0.3, blue: 0.8).opacity(0.3), lineWidth: 1)
+                        .offset(x: 0.6, y: 0.6)
+                        .blur(radius: 0.6)
+                    // Specular rim.
+                    shape.strokeBorder(
+                        LinearGradient(stops: [.init(color: .white.opacity(0.85), location: 0),
+                                               .init(color: .white.opacity(0.25), location: 0.25),
+                                               .init(color: .white.opacity(0.06), location: 0.55),
+                                               .init(color: .white.opacity(0.45), location: 1)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        lineWidth: 1.2)
+                }
+                .blendMode(.plusLighter)
+                .allowsHitTesting(false)
+            }
+            .shadow(color: .black.opacity(0.25), radius: 18, y: 8)
     }
 }
 

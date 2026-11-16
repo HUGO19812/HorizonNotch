@@ -19,6 +19,10 @@ final class WeatherModule: NotchModule {
 
     var isActive: Bool { false }
 
+    var headerInfo: HeaderInfo? {
+        service.report.map { .text("\(Int($0.temperature.rounded()))°") }
+    }
+
     func compactLeading() -> AnyView { AnyView(EmptyView()) }
     func compactTrailing() -> AnyView { AnyView(EmptyView()) }
     func expandedView() -> AnyView { AnyView(WeatherPage(service: service)) }

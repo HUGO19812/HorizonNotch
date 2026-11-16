@@ -34,6 +34,22 @@ final class TimerModule: NotchModule {
         endDate != nil || pausedRemaining != nil || finished || stopwatchStart != nil
     }
 
+    var headerInfo: HeaderInfo? {
+        if let end = endDate { return .countdown(end) }
+        if let left = pausedRemaining { return .text(Self.clock(left)) }
+        if let start = stopwatchStart { return .elapsed(start) }
+        if let elapsed = stopwatchPaused { return .text(Self.clock(elapsed)) }
+        return nil
+    }
+
+    /// "4:12" or "1:04:12".
+    static func clock(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded(.down)))
+        return total >= 3600
+            ? String(format: "%d:%02d:%02d", total / 3600, total / 60 % 60, total % 60)
+            : String(format: "%d:%02d", total / 60, total % 60)
+    }
+
     var timerRunning: Bool { endDate != nil }
     var stopwatchRunning: Bool { stopwatchStart != nil }
 
