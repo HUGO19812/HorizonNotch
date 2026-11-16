@@ -289,8 +289,11 @@ final class NotchWindowController {
     /// Two-finger sideways swipe on the music tab: next/previous track or
     /// ±10 s (settings). Other tabs keep their own scrolling.
     private func handleMediaSwipe(_ event: NSEvent) {
-        guard model.isExpanded, settings.musicGesture != .off, coordinator.currentPage?.id == "media",
-              event.hasPreciseScrollingDeltas else { return }
+        let page = coordinator.currentPage?.id
+        let tabs = settings.musicGesture == .tabs
+        // Calendar and weather scroll through their days sideways.
+        guard model.isExpanded, settings.musicGesture != .off, event.hasPreciseScrollingDeltas,
+              tabs ? (page != "calendar" && page != "weather") : page == "media" else { return }
         if event.phase == .began {
             swipeAccumulator = 0
             swipeConsumed = false
@@ -300,7 +303,12 @@ final class NotchWindowController {
         guard abs(swipeAccumulator) > 50, abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) else { return }
         swipeConsumed = true
         // Natural scrolling: fingers moving left give negative deltas = forward.
-        onMediaSwipe?(swipeAccumulator < 0 ? 1 : -1)
+        let direction = swipeAccumulator < 0 ? 1 : -1
+        if tabs {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { coordinator.showPage(offset: direction) }
+        } else {
+            onMediaSwipe?(direction)
+        }
         if settings.scrollHaptics { TrackpadHaptics.click(level: settings.hapticLevel) }
     }
 

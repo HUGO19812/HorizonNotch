@@ -31,6 +31,7 @@ struct LockScreenView: View {
     @ObservedObject var lyrics: LyricsService
     @ObservedObject var state: LockScreenState
     @ObservedObject private var settings = AppSettings.shared
+    @StateObject private var hiRes = HiResArtwork()
     @Namespace private var player
 
     private var spring: Animation { .spring(response: 0.5, dampingFraction: 0.86) }
@@ -40,7 +41,9 @@ struct LockScreenView: View {
             let size = proxy.size
             ZStack {
                 if let info = nowPlaying.info, state.large {
-                    Backdrop(image: nowPlaying.artwork, tint: nowPlaying.accent, size: size,
+                    Backdrop(image: settings.lockScreenBackdrop == .tinted ? nowPlaying.artwork
+                                : (hiRes.image ?? nowPlaying.artwork),
+                             tint: nowPlaying.accent, size: size,
                              style: settings.lockScreenBackdrop)
                         .transition(.opacity)
                     // The backdrop covers the system clock: draw our own.
@@ -68,6 +71,9 @@ struct LockScreenView: View {
         .animation(spring, value: state.large)
         .animation(spring, value: state.lyrics)
         .animation(.easeInOut(duration: 0.4), value: settings.lockScreenBackdrop)
+        .task(id: (nowPlaying.info?.artist ?? "") + "|" + (nowPlaying.info?.title ?? "")) {
+            await hiRes.load(for: nowPlaying.info)
+        }
     }
 
     /// Small glass card above "Touch ID or Enter Password".
@@ -284,10 +290,10 @@ private struct LiquidPlayerCard<Artwork: View>: View {
                             .foregroundStyle(.white.opacity(lyricsOn ? 1 : 0.55))
                             .help(L("Songtext", "Lyrics"))
                     } else {
-                        Color.clear
+                        Color.clear.frame(height: 34)
                     }
                 }
-                .frame(width: 40)
+                .frame(width: 40, height: 34)
                 Spacer(minLength: 0)
                 HStack(spacing: 14) {
                     LockButton(symbol: "backward.fill", size: 17) { service.send(.previous) }
@@ -435,5 +441,43 @@ private struct LockButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressScaleStyle())
+    }
+}
+
+/// The cover in high resolution for the full-screen backdrop: the player
+/// only hands over a small thumbnail (often 300 px), which turns to mush
+/// when stretched over the screen. Looks the song up in the iTunes catalogue
+/// and takes its artwork at 3000 px.
+@MainActor
+final class HiResArtwork: ObservableObject {
+    @Published private(set) var image: NSImage?
+    private var key = ""
+    private static var cache: [String: NSImage] = [:]
+
+    func load(for info: NowPlayingInfo?) async {
+        guard let info, !info.title.isEmpty else { image = nil; return }
+        let key = info.artist + "|" + info.title
+        guard key != self.key else { return }
+        self.key = key
+        image = Self.cache[key]
+        guard image == nil else { return }
+        var components = URLComponents(string: "https://itunes.apple.com/search")!
+        components.queryItems = [URLQueryItem(name: "term", value: "\(info.artist) \(info.title)"),
+                                 URLQueryItem(name: "entity", value: "song"),
+                                 URLQueryItem(name: "limit", value: "5")]
+        guard let url = components.url,
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = json["results"] as? [[String: Any]] else { return }
+        // Same artist if possible, else the first hit.
+        let artist = info.artist.lowercased()
+        let hit = results.first { ($0["artistName"] as? String)?.lowercased().contains(artist.prefix(12)) == true }
+            ?? results.first
+        guard let small = hit?["artworkUrl100"] as? String,
+              let big = URL(string: small.replacingOccurrences(of: "100x100bb", with: "3000x3000bb")),
+              let (imageData, _) = try? await URLSession.shared.data(from: big),
+              let loaded = NSImage(data: imageData), key == self.key else { return }
+        Self.cache[key] = loaded
+        image = loaded
     }
 }

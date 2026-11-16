@@ -74,6 +74,9 @@ struct NotchRootView: View {
             }
             if state == .expanded {
                 ExpandedContent(model: model, coordinator: coordinator, onDropFinished: onDropFinished)
+                    // On clear glass the content carries a soft shadow
+                    // instead of a dark tint behind it.
+                    .shadow(color: .black.opacity(settings.appearance == .glass ? 0.45 : 0), radius: 2.5, y: 0.5)
                     .transition(.asymmetric(
                         insertion: .opacity.combined(with: .scale(scale: 0.92, anchor: .top))
                             .animation(spring.delay(0.05)),
@@ -94,11 +97,16 @@ private struct IslandBackground: View {
     var body: some View {
         switch style {
         case .glass:
+            // Clear glass like Canopy: the desktop shows through, bent and
+            // brightened at the edges. Text stays readable by its shadow.
             if #available(macOS 26.0, *) {
-                Color.clear.glassEffect(.regular.tint(.black.opacity(0.35)), in: shape)
+                Color.clear.glassEffect(.clear, in: shape)
             } else {
-                shape.fill(.ultraThinMaterial)
-                    .overlay(shape.fill(Color.black.opacity(0.45)))
+                shape.fill(.ultraThinMaterial).opacity(0.35)
+                    .overlay(shape.fill(LinearGradient(colors: [.white.opacity(0.1), .white.opacity(0.02)],
+                                                       startPoint: .top, endPoint: .bottom)))
+                    .overlay(shape.stroke(LinearGradient(colors: [.white.opacity(0.6), .white.opacity(0.1), .white.opacity(0.35)],
+                                                         startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
             }
         case .tinted:
             // Black at the top so the island still grows out of the notch.
@@ -160,11 +168,9 @@ private struct ExpandedContent: View {
                 .onReceive(infoChanges) { refreshInfos() }
                 .onChange(of: settings.headerLiveInfo) { refreshInfos() }
                 .onChange(of: coordinator.pages.map(\.id)) { refreshInfos() }
-                // The page-dot popup hangs down over the page.
-                .zIndex(2)
             ZStack {
                 if model.showHello {
-                    HelloView { NotificationCenter.default.post(name: .helloFinished, object: nil) }
+                    OnboardingView { NotificationCenter.default.post(name: .helloFinished, object: nil) }
                         .transition(.opacity)
                 } else if model.isFileDragActive, let shelf = model.shelf {
                     shelf.dropZones(onDone: onDropFinished)
@@ -188,7 +194,13 @@ private struct ExpandedContent: View {
                         // card instead of squeezing into the small pill.
                         transient.transientView()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Color.black)
+                            .background {
+                                if settings.appearance == .glass {
+                                    Color.clear
+                                } else {
+                                    Color.black
+                                }
+                            }
                             .id(transient.id)
                             .transition(.opacity.combined(with: .scale(scale: 0.97)))
                     } else {
@@ -590,55 +602,10 @@ extension Notification.Name {
     static let helloFinished = Notification.Name("horizon.helloFinished")
 }
 
-/// First-launch greeting in the open island: "hello" written out in a
-/// colourful script, a welcome line and a button to start the setup.
-private struct HelloView: View {
-    let onStart: () -> Void
-    @State private var written: CGFloat = 0
-    @State private var showRest = false
-
-    var body: some View {
-        VStack(spacing: 6) {
-            Text("hello")
-                .font(.custom("SnellRoundhand-Bold", size: 58))
-                .foregroundStyle(LinearGradient(colors: [Color(red: 0.36, green: 0.55, blue: 1), Color(red: 0.66, green: 0.36, blue: 1),
-                                                         Color(red: 0.94, green: 0.44, blue: 0.82)],
-                                                startPoint: .leading, endPoint: .trailing))
-                // Written from left to right.
-                .mask(alignment: .leading) {
-                    GeometryReader { proxy in
-                        Rectangle().frame(width: proxy.size.width * written)
-                    }
-                }
-                .frame(height: 64)
-            Group {
-                Text(L("Willkommen bei Horizon Notch", "Welcome to Horizon Notch"))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.65))
-                Button(action: onStart) {
-                    Text(L("Los geht's", "Get Started"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(.white))
-                }
-                .buttonStyle(PressScaleStyle())
-            }
-            .opacity(showRest ? 1 : 0)
-            .offset(y: showRest ? 0 : 6)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.8).delay(0.3)) { written = 1 }
-            withAnimation(.easeOut(duration: 0.5).delay(1.9)) { showRest = true }
-        }
-    }
-}
-
 /// Page dots like Pro Notch: the current page a short white bar, the
-/// others small dots. Each one switches to its page; hovering shows the
-/// page's name in a small glass label below.
+/// others small dots. Each one switches to its page. Hovering a dot opens
+/// it in place into a small capsule with the page's symbol and name – no
+/// bubble hanging over the page.
 private struct PageDots: View {
     struct Page {
         let title: String
@@ -652,71 +619,42 @@ private struct PageDots: View {
     @State private var hovered: Int?
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 6) {
             ForEach(pages.indices, id: \.self) { i in
-                Capsule()
-                    .fill(Color.white.opacity(i == index ? 1 : (hovered == i ? 0.7 : 0.32)))
-                    .frame(width: i == index ? 22 : 7, height: 7)
-                    .frame(height: 20)
-                    .contentShape(Rectangle().inset(by: -3))
+                dot(i)
                     .onTapGesture { select(i) }
                     .onHover { inside in
                         if inside { hovered = i } else if hovered == i { hovered = nil }
                     }
-                    .overlay(alignment: .top) {
-                        if hovered == i {
-                            PageLabel(page: pages[i], accent: accent, active: i == index)
-                                .fixedSize()
-                                .offset(y: 24)
-                                .allowsHitTesting(false)
-                                .transition(.asymmetric(
-                                    insertion: .opacity.combined(with: .scale(scale: 0.85, anchor: .top))
-                                        .combined(with: .offset(y: -4)),
-                                    removal: .opacity))
-                        }
-                    }
-                    .zIndex(hovered == i ? 1 : 0)
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: index)
-        .animation(.spring(response: 0.28, dampingFraction: 0.78), value: hovered)
+        .animation(.spring(response: 0.3, dampingFraction: 0.82), value: hovered)
     }
-}
 
-/// The name under a hovered page dot: a glass capsule with the page's
-/// symbol on an accent-coloured disc and its name.
-private struct PageLabel: View {
-    let page: PageDots.Page
-    let accent: Color
-    let active: Bool
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: page.symbol)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 18, height: 18)
-                .background(Circle().fill(LinearGradient(colors: [accent, accent.opacity(0.6)],
-                                                         startPoint: .top, endPoint: .bottom)))
-            Text(page.title)
-                .font(.system(size: 11.5, weight: .semibold))
-                .foregroundStyle(.white)
-            if active {
-                Circle().fill(Color.white.opacity(0.6)).frame(width: 4, height: 4)
+    private func dot(_ i: Int) -> some View {
+        let active = i == index
+        let open = hovered == i
+        return HStack(spacing: 4) {
+            if open {
+                Image(systemName: pages[i].symbol)
+                    .font(.system(size: 9, weight: .bold))
+                Text(pages[i].title)
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .lineLimit(1)
+                    .fixedSize()
             }
         }
-        .padding(.leading, 4)
-        .padding(.trailing, 11)
-        .frame(height: 26)
-        .background {
-            ZStack {
-                Capsule().fill(.ultraThinMaterial)
-                Capsule().fill(Color(white: 0.12).opacity(0.75))
-                Capsule().strokeBorder(LinearGradient(colors: [.white.opacity(0.35), .white.opacity(0.06)],
-                                                      startPoint: .top, endPoint: .bottom), lineWidth: 1)
+        .foregroundStyle(active ? Color.black : Color.white)
+        .padding(.horizontal, open ? 8 : 0)
+        .frame(width: open ? nil : (active ? 22 : 7), height: open ? 18 : 7)
+        .background(Capsule().fill(active ? Color.white : Color.white.opacity(open ? 0.2 : 0.32)))
+        .overlay {
+            if open && !active {
+                Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
             }
-            .shadow(color: .black.opacity(0.5), radius: 10, y: 4)
         }
-        .environment(\.colorScheme, .dark)
+        .frame(height: 20)
+        .contentShape(Rectangle())
     }
 }

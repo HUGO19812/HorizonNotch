@@ -23,7 +23,8 @@ enum SneakPeekStyle: String, CaseIterable, Identifiable {
 
 /// What a sideways swipe on the music tab does.
 enum MusicGesture: String, CaseIterable, Identifiable {
-    case off, track, seek
+    /// tabs = switch the island's pages (on every page).
+    case off, track, seek, tabs
     var id: String { rawValue }
 }
 
@@ -138,6 +139,8 @@ final class AppSettings: ObservableObject {
     /// Where a Bluetooth device connecting or disconnecting shows.
     @Published var hudBarColor: HUDBarColor { didSet { defaults.set(hudBarColor.rawValue, forKey: "hudBarColor") } }
     @Published var musicGesture: MusicGesture { didSet { defaults.set(musicGesture.rawValue, forKey: "musicGesture") } }
+    /// Seconds the lyrics run ahead (+) or behind (−) the music.
+    @Published var lyricsOffset: Double { didSet { defaults.set(lyricsOffset, forKey: "lyricsOffset") } }
     @Published var keepAwakeIcon: Bool { didSet { defaults.set(keepAwakeIcon, forKey: "keepAwakeIcon") } }
     /// Stay awake switches itself off after this many hours; 0 = no limit.
     @Published var keepAwakeLimitHours: Int { didSet { defaults.set(keepAwakeLimitHours, forKey: "keepAwakeLimitHours") } }
@@ -230,7 +233,15 @@ final class AppSettings: ObservableObject {
         hiddenTabs = Set(defaults.stringArray(forKey: "hiddenTabs") ?? [])
         hudShowPercent = defaults.bool(forKey: "hudShowPercent")
         hudBarColor = HUDBarColor(rawValue: defaults.string(forKey: "hudBarColor") ?? "") ?? .colorful
-        musicGesture = MusicGesture(rawValue: defaults.string(forKey: "musicGesture") ?? "") ?? .track
+        // Swiping switches tabs now; moved over once for everyone.
+        if defaults.bool(forKey: "swipeTabsV2") {
+            musicGesture = MusicGesture(rawValue: defaults.string(forKey: "musicGesture") ?? "") ?? .tabs
+        } else {
+            defaults.set(true, forKey: "swipeTabsV2")
+            defaults.set(MusicGesture.tabs.rawValue, forKey: "musicGesture")
+            musicGesture = .tabs
+        }
+        lyricsOffset = defaults.object(forKey: "lyricsOffset") as? Double ?? 0
         keepAwakeIcon = defaults.object(forKey: "keepAwakeIcon") as? Bool ?? true
         keepAwakeLimitHours = defaults.object(forKey: "keepAwakeLimitHours") as? Int ?? 0
         batteryInHeader = defaults.object(forKey: "batteryInHeader") as? Bool ?? true
