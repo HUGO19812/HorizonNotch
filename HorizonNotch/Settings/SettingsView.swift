@@ -488,19 +488,27 @@ private struct TilePicker<Value: Hashable>: View {
     }
 }
 
-/// The player source as a small dark stage: name above, app icon below; a
-/// soft light rises under the chosen app with a dot, and follows the
+/// A choice as a small dark stage: optional name above, a picture below;
+/// a soft light rises under the chosen item with a dot, and follows the
 /// pointer while it hovers another one.
-private struct SourcePicker: View {
-    @Binding var selection: MediaSourceChoice
-    @State private var hovered: MediaSourceChoice?
+private struct StageItem<Value: Hashable> {
+    let value: Value
+    var title: String?
+    let picture: AnyView
+}
+
+private struct StagePicker<Value: Hashable>: View {
+    @Binding var selection: Value
+    let items: [StageItem<Value>]
+    var pictureSize: CGFloat = 44
+    @State private var hovered: Value?
     @Namespace private var glow
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
         HStack(spacing: 0) {
-            ForEach(MediaSourceChoice.allCases) { choice in
-                item(choice)
+            ForEach(items.indices, id: \.self) { index in
+                item(items[index])
             }
         }
         .padding(.vertical, 18)
@@ -514,16 +522,18 @@ private struct SourcePicker: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: hovered)
     }
 
-    private func item(_ choice: MediaSourceChoice) -> some View {
-        let selected = choice == selection
-        let lit = hovered.map { $0 == choice } ?? selected
-        return Button { selection = choice } label: {
+    private func item(_ item: StageItem<Value>) -> some View {
+        let selected = item.value == selection
+        let lit = hovered.map { $0 == item.value } ?? selected
+        return Button { selection = item.value } label: {
             VStack(spacing: 12) {
-                Text(title(choice))
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(.white.opacity(selected || lit ? 0.85 : 0.5))
-                icon(choice)
-                    .frame(width: 44, height: 44)
+                if let title = item.title {
+                    Text(title)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(.white.opacity(selected || lit ? 0.85 : 0.5))
+                }
+                item.picture
+                    .frame(width: pictureSize, height: pictureSize)
                     .scaleEffect(lit ? 1.06 : 1)
                 Circle()
                     .fill(Color.white.opacity(selected ? 0.9 : 0))
@@ -546,8 +556,19 @@ private struct SourcePicker: View {
         }
         .buttonStyle(.plain)
         .onHover { inside in
-            if inside { hovered = choice } else if hovered == choice { hovered = nil }
+            if inside { hovered = item.value } else if hovered == item.value { hovered = nil }
         }
+    }
+}
+
+/// The player source: Auto, Spotify, Music with their app icons.
+private struct SourcePicker: View {
+    @Binding var selection: MediaSourceChoice
+
+    var body: some View {
+        StagePicker(selection: $selection, items: MediaSourceChoice.allCases.map { choice in
+            StageItem(value: choice, title: title(choice), picture: AnyView(icon(choice)))
+        })
     }
 
     private func title(_ choice: MediaSourceChoice) -> String {
@@ -1180,6 +1201,21 @@ private struct ConnectivitySettings: View {
     var body: some View {
         // Only the sections: the settings window puts them in one form.
         Group {
+            Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(L("Darstellung der Kopfhörer", "Headphone style"))
+                    StagePicker(selection: $settings.accessoryStyle, items: [
+                        StageItem(value: AccessoryStyle.model3D, picture: AnyView(AirPods3DView(spinning: false))),
+                        StageItem(value: AccessoryStyle.glyph, picture: AnyView(
+                            Image(systemName: "airpods")
+                                .font(.system(size: 30, weight: .medium))
+                                .foregroundStyle(.white))),
+                    ], pictureSize: 64)
+                }
+            } footer: {
+                note("3D zeigt beim Verbinden ein echtes, langsam drehendes 3D-Modell, Symbol das schlichte Systemsymbol.",
+                     "3D shows a real, slowly turning 3D model when connecting, Symbol the plain system glyph.")
+            }
             Section {
                 Toggle(L("Alle Bluetooth-Geräte und AirPods-Akku", "All Bluetooth devices and AirPods battery"),
                        isOn: $settings.connectivityAllBluetooth)

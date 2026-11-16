@@ -353,7 +353,7 @@ private struct CraftedGlass: View {
                 .blur(radius: frost * 24)
                 .clipShape(shape)
             // Frosted glass is milky, not dark.
-            shape.fill(Color.white.opacity(frost * 0.1))
+            shape.fill(Color.white.opacity(frost * 0.13))
             // Lens: a magnified copy, only along the rim, bends the picture
             // at the edge the way thick glass does.
             WallpaperPiece(zoom: 1.12)

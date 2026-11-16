@@ -136,12 +136,13 @@ private struct IslandBackground: View {
         switch style {
         case .glass:
             // Black at the top so the island still grows out of the notch,
-            // then clear glass like the lock screen player. Like Canopy it
-            // is hand-made over the desktop picture: the matching piece of
-            // the wallpaper, magnified along the rim like a lens. With a
-            // moving wallpaper the system glass stands in.
+            // then clear Liquid Glass: on macOS 26 the system's own glass,
+            // which bends whatever lies behind (windows too) like Canopy's.
+            // Before macOS 26 a hand-made glass over the desktop picture.
             ZStack {
-                if wallpaper.image != nil {
+                if #available(macOS 26.0, *) {
+                    Color.clear.glassEffect(.clear, in: shape)
+                } else if wallpaper.image != nil {
                     ZStack {
                         WallpaperPiece(windowOrigin: windowOrigin)
                         WallpaperPiece(zoom: 1.1, windowOrigin: windowOrigin)
@@ -153,8 +154,6 @@ private struct IslandBackground: View {
                         shape.fill(Color.white.opacity(0.04))
                     }
                     .clipShape(shape)
-                } else if #available(macOS 26.0, *) {
-                    Color.clear.glassEffect(.clear, in: shape)
                 } else {
                     shape.fill(.ultraThinMaterial).opacity(0.5)
                 }

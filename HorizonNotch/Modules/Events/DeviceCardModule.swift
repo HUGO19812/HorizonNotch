@@ -123,13 +123,21 @@ private struct DeviceImage: View {
     /// macOS itself ships for the device (as in System Settings).
     private var photo: NSImage? { DevicePhotos.image(for: card.name) }
 
+    private var isEarbuds: Bool {
+        let name = card.name.lowercased()
+        return name.contains("airpods") && !name.contains("max")
+    }
+
     var body: some View {
         ZStack {
             Circle()
                 .fill(Color(red: 0.5, green: 0.36, blue: 1).opacity(card.connected ? 0.38 : 0.12))
                 .blur(radius: 26)
                 .scaleEffect(0.85)
-            if let photo {
+            if AppSettings.shared.accessoryStyle == .model3D && isEarbuds && photo == nil {
+                AirPods3DView()
+                    .opacity(card.connected ? 1 : 0.55)
+            } else if let photo {
                 Image(nsImage: photo)
                     .resizable()
                     .interpolation(.high)
@@ -137,10 +145,6 @@ private struct DeviceImage: View {
                     .shadow(color: Color(red: 0.55, green: 0.4, blue: 1).opacity(0.45), radius: 14)
                     .shadow(color: .black.opacity(0.45), radius: 8, y: 6)
                     .padding(4)
-                    .opacity(card.connected ? 1 : 0.55)
-            } else if card.name.lowercased().contains("airpods") && !card.name.lowercased().contains("max") {
-                AirPodsCaseDrawing(ledOn: card.connected)
-                    .padding(8)
                     .opacity(card.connected ? 1 : 0.55)
             } else {
                 symbolView
