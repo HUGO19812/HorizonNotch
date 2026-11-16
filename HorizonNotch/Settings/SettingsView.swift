@@ -1227,6 +1227,7 @@ private struct LockScreenSettings: View {
                                            set: { settings.lockScreenTransparency = $0 / 100 }),
                             range: 0...100, step: 5, format: "%.0f %%")
                     .disabled(!settings.lockScreenWidgets)
+                LockCardPreview()
                 Picker(L("Hintergrund beim großen Cover", "Background with large cover"), selection: $settings.lockScreenBackdrop) {
                     Text(L("Dunkel, vom Cover getönt", "Dark, tinted by the cover")).tag(LockScreenBackdrop.tinted)
                     Text(L("Cover, unscharf", "Cover, blurred")).tag(LockScreenBackdrop.coverBlurred)

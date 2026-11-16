@@ -323,14 +323,14 @@ private struct LiquidPlayerCard<Artwork: View>: View {
                 // values frost and shade it more and more.
                 if overWallpaper && Wallpaper.shared.image != nil {
                     CraftedGlass(shape: shape, frost: solid)
-                } else if #available(macOS 26.0, *) {
-                    Color.clear.glassEffect(solid > 0.4 ? .regular : .clear, in: shape)
                 } else {
-                    shape.fill(.ultraThinMaterial).opacity(0.2 + solid * 0.8)
+                    // Without the wallpaper piece: a material whose strength
+                    // follows the slider (system glass cannot be dimmed).
+                    shape.fill(.ultraThinMaterial).opacity(solid)
                 }
-                if solid > 0 {
-                    shape.fill(Color.black.opacity(solid * 0.35))
-                }
+                // Clearly visible over the whole range: 100 % = no shade,
+                // 0 % = dark smoked glass.
+                shape.fill(Color.black.opacity(solid * 0.55))
             }
             .animation(.easeInOut(duration: 0.25), value: solid)
         }
@@ -347,7 +347,7 @@ private struct CraftedGlass: View {
         ZStack {
             // The wallpaper itself: clear, or frosted by the slider.
             WallpaperPiece()
-                .blur(radius: frost * 22)
+                .blur(radius: frost * 28)
                 .clipShape(shape)
             // Lens: a magnified copy, only along the rim, bends the picture
             // at the edge the way thick glass does.
@@ -518,5 +518,76 @@ final class HiResArtwork: ObservableObject {
               let loaded = NSImage(data: imageData), key == self.key else { return }
         Self.cache[key] = loaded
         image = loaded
+    }
+}
+
+/// Live preview of the lock screen card in the settings, over the real
+/// desktop picture, so the transparency slider shows what it does.
+struct LockCardPreview: View {
+    @ObservedObject private var settings = AppSettings.shared
+    @State private var wallpaper: NSImage?
+
+    var body: some View {
+        let solid = 1 - min(max(settings.lockScreenTransparency, 0), 1)
+        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        ZStack {
+            backdrop
+            ZStack {
+                backdrop.blur(radius: solid * 28)
+                Color.black.opacity(solid * 0.55)
+                Color.white.opacity(0.05)
+            }
+            .frame(width: 230, height: 104)
+            .clipShape(shape)
+            .overlay(card)
+        }
+        .frame(height: 150)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .onAppear {
+            if let screen = NSScreen.main, let url = NSWorkspace.shared.desktopImageURL(for: screen) {
+                wallpaper = NSImage(contentsOf: url)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: solid)
+    }
+
+    /// The same picture behind the card and the preview, so they line up.
+    private var backdrop: some View {
+        GeometryReader { _ in
+            if let wallpaper {
+                Image(nsImage: wallpaper).resizable().aspectRatio(contentMode: .fill)
+            } else {
+                LinearGradient(colors: [Color(red: 0.3, green: 0.5, blue: 0.8), Color(red: 0.1, green: 0.15, blue: 0.3)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+            }
+        }
+        .frame(width: 520, height: 150)
+        .clipped()
+    }
+
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.35)).frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(L("Titel", "Title")).font(.system(size: 11, weight: .semibold))
+                    Text(L("Interpret", "Artist")).font(.system(size: 10)).foregroundStyle(.white.opacity(0.7))
+                }
+                Spacer()
+            }
+            Capsule().fill(Color.white.opacity(0.3)).frame(height: 3)
+                .overlay(alignment: .leading) { Capsule().fill(.white).frame(width: 60, height: 3) }
+            HStack(spacing: 22) {
+                Image(systemName: "backward.fill")
+                Image(systemName: "pause.fill").font(.system(size: 16))
+                Image(systemName: "forward.fill")
+            }
+            .font(.system(size: 11))
+            .frame(maxWidth: .infinity)
+        }
+        .foregroundStyle(.white)
+        .padding(12)
+        .frame(width: 230, height: 104)
     }
 }
