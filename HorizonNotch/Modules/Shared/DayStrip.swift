@@ -35,7 +35,8 @@ struct DayStrip<Cell: View>: View {
                 .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.1),
                                              .init(color: .black, location: 0.9), .init(color: .clear, location: 1)],
                                      startPoint: .leading, endPoint: .trailing))
-                // Up/down swipes scroll the days (sideways switches tabs).
+                // Marks the strip: sideways swipes over it scroll the days
+                // instead of switching tabs; mouse wheels scroll it too.
                 .background(HorizontalWheelScroll())
                 .onChange(of: selected) { _, _ in
                     let settings = AppSettings.shared
@@ -66,8 +67,21 @@ struct DayCellBackground: ViewModifier {
     }
 }
 
-/// Turns vertical scrolling over a strip into horizontal scrolling.
+/// Marks a sideways-scrolling strip: mouse wheels scroll it sideways, and
+/// trackpad swipes over it scroll it instead of switching tabs.
 struct HorizontalWheelScroll: NSViewRepresentable {
+    private static let views = NSHashTable<WheelView>.weakObjects()
+
+    /// Is the mouse pointer over one of the strips on screen?
+    static func containsPointer() -> Bool {
+        let location = NSEvent.mouseLocation
+        return views.allObjects.contains { view in
+            guard let window = view.window, window.isVisible else { return false }
+            let rect = window.convertToScreen(view.convert(view.bounds, to: nil))
+            return rect.contains(location)
+        }
+    }
+
     func makeNSView(context: Context) -> NSView { WheelView() }
     func updateNSView(_ nsView: NSView, context: Context) {}
 
@@ -76,15 +90,15 @@ struct HorizontalWheelScroll: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            HorizontalWheelScroll.views.add(self)
             if let monitor { NSEvent.removeMonitor(monitor) }
             monitor = nil
             guard window != nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-                // Mouse wheels always; trackpad up/down swipes while sideways
-                // swipes switch tabs.
+                // Mouse wheels only; the trackpad scrolls sideways itself.
                 guard let self, let window = self.window, event.window === window,
-                      !event.hasPreciseScrollingDeltas || AppSettings.shared.musicGesture == .tabs,
-                      abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX),
+                      !event.hasPreciseScrollingDeltas,
+                      event.scrollingDeltaX == 0, event.scrollingDeltaY != 0,
                       self.bounds.contains(self.convert(event.locationInWindow, from: nil)),
                       let cgEvent = event.cgEvent?.copy() else { return event }
                 // Move the vertical deltas to the horizontal axis, like

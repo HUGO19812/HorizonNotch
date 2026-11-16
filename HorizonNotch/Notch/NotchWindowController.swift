@@ -22,6 +22,7 @@ final class NotchWindowController {
     private var swipeAccumulator: CGFloat = 0
     private var swipeConsumed = false
     private var swipeVertical: CGFloat = 0
+    private var swipeOverStrip = false
     /// Called with +1 (swipe left = forward) or −1 for a swipe on the music tab.
     var onMediaSwipe: ((Int) -> Void)?
     #if DEBUG
@@ -116,6 +117,8 @@ final class NotchWindowController {
 
     /// Opens the island programmatically (e.g. from the menu bar).
     func expand() {
+        // The wallpaper may have changed (glass island lays it behind itself).
+        if let screen { Wallpaper.shared.load(for: screen) }
         cancelTimers()
         model.setExpanded(true)
     }
@@ -136,6 +139,7 @@ final class NotchWindowController {
 
     private func positionPanel() {
         guard let panel, let screen else { return }
+        Wallpaper.shared.load(for: screen)
         let frame = screen.frame
         let origin = CGPoint(x: frame.midX - Self.panelSize.width / 2,
                              y: frame.maxY - Self.panelSize.height)
@@ -299,6 +303,12 @@ final class NotchWindowController {
               event.cgEvent?.getIntegerValueField(.eventSourceUserData) != Self.convertedScrollMarker else { return false }
         let tabs = settings.musicGesture == .tabs
         guard tabs || coordinator.currentPage?.id == "media" else { return false }
+        // Over a scrolling strip (calendar days, weather hours/days) the
+        // swipe scrolls the strip; elsewhere it switches tabs.
+        if event.phase == .began || event.phase == .mayBegin {
+            swipeOverStrip = HorizontalWheelScroll.containsPointer()
+        }
+        if swipeOverStrip { return false }
 
         // Momentum after a used-up swipe belongs to it.
         if event.phase.isEmpty {

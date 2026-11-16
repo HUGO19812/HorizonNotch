@@ -822,8 +822,8 @@ private struct MusicSettings: View {
             } header: {
                 Text(L("Gesten", "Gestures"))
             } footer: {
-                note("Nach links = nächster Reiter bzw. Titel, nach rechts = zurück; mit Trackpad-Klick. „Titel wechseln“ und „10 s spulen“ gelten nur im Musik-Reiter, Kalender und Wetter blättern weiter durch ihre Tage.",
-                     "Left = next tab or track, right = back; with a trackpad click. “Change track” and “Seek 10 s” only apply on the music tab; calendar and weather keep scrolling through their days.")
+                note("Nach links = nächster Reiter bzw. Titel, nach rechts = zurück; mit Trackpad-Klick. Liegt der Zeiger auf einer Tages- oder Stundenleiste (Kalender, Wetter), scrollt das Wischen diese. „Titel wechseln“ und „10 s spulen“ gelten nur im Musik-Reiter.",
+                     "Left = next tab or track, right = back; with a trackpad click. With the pointer on a day or hour strip (calendar, weather) the swipe scrolls it. “Change track” and “Seek 10 s” only apply on the music tab.")
             }
             Section(L("Player", "Player")) {
                 Toggle(L("Quelle unter dem Cover anzeigen", "Show the source below the cover"), isOn: $settings.showSource)

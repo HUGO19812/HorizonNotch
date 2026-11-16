@@ -124,14 +124,36 @@ private struct IslandBackground: View {
     let shape: NotchShape
     let style: IslandAppearance
     let tint: Color
+    @ObservedObject private var wallpaper = Wallpaper.shared
+
+    /// The island panel's top-left corner on its screen (it is centred at
+    /// the top, see NotchWindowController.positionPanel).
+    private var windowOrigin: CGPoint {
+        CGPoint(x: (wallpaper.screenSize.width - NotchWindowController.panelSize.width) / 2, y: 0)
+    }
 
     var body: some View {
         switch style {
         case .glass:
             // Black at the top so the island still grows out of the notch,
-            // then clear Liquid Glass like the lock screen player.
+            // then clear glass like the lock screen player. Like Canopy it
+            // is hand-made over the desktop picture: the matching piece of
+            // the wallpaper, magnified along the rim like a lens. With a
+            // moving wallpaper the system glass stands in.
             ZStack {
-                if #available(macOS 26.0, *) {
+                if wallpaper.image != nil {
+                    ZStack {
+                        WallpaperPiece(windowOrigin: windowOrigin)
+                        WallpaperPiece(zoom: 1.1, windowOrigin: windowOrigin)
+                            .brightness(0.05)
+                            .mask {
+                                shape.stroke(Color.white, lineWidth: 26)
+                                    .blur(radius: 9)
+                            }
+                        shape.fill(Color.white.opacity(0.04))
+                    }
+                    .clipShape(shape)
+                } else if #available(macOS 26.0, *) {
                     Color.clear.glassEffect(.clear, in: shape)
                 } else {
                     shape.fill(.ultraThinMaterial).opacity(0.5)
