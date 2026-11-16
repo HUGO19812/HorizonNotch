@@ -113,22 +113,56 @@ private struct DeviceImage: View {
         return candidates.first { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil } ?? "headphones"
     }
 
+    /// A photo-real product picture from the asset catalogue
+    /// (AirPodsPro, AirPodsMax, AirPods, Headphones), when one was added.
+    private var photo: NSImage? {
+        let name = card.name.lowercased()
+        let candidates: [String]
+        if name.contains("airpods pro") {
+            candidates = ["AirPodsPro", "AirPods"]
+        } else if name.contains("airpods max") {
+            candidates = ["AirPodsMax"]
+        } else if name.contains("airpods") {
+            candidates = ["AirPods", "AirPodsPro"]
+        } else if name.contains("beats") || name.contains("headphone") || name.contains("kopfhörer") {
+            candidates = ["Headphones"]
+        } else {
+            candidates = []
+        }
+        return candidates.lazy.compactMap { NSImage(named: $0) }.first
+    }
+
     var body: some View {
         ZStack {
             Circle()
-                .fill(Color(red: 0.5, green: 0.36, blue: 1).opacity(card.connected ? 0.32 : 0.12))
+                .fill(Color(red: 0.5, green: 0.36, blue: 1).opacity(card.connected ? 0.38 : 0.12))
                 .blur(radius: 26)
                 .scaleEffect(0.85)
-            Image(systemName: symbol)
-                .resizable()
-                .scaledToFit()
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(LinearGradient(colors: [Color(white: 0.97), Color(white: 0.72)],
-                                                startPoint: .top, endPoint: .bottom))
-                .shadow(color: .black.opacity(0.5), radius: 8, y: 5)
-                .padding(10)
-                .opacity(card.connected ? 1 : 0.55)
+            if let photo {
+                Image(nsImage: photo)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .shadow(color: Color(red: 0.55, green: 0.4, blue: 1).opacity(0.45), radius: 14)
+                    .shadow(color: .black.opacity(0.45), radius: 8, y: 6)
+                    .padding(4)
+                    .opacity(card.connected ? 1 : 0.55)
+            } else {
+                symbolView
+            }
         }
+    }
+
+    private var symbolView: some View {
+        Image(systemName: symbol)
+            .resizable()
+            .scaledToFit()
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(LinearGradient(colors: [Color(white: 0.97), Color(white: 0.72)],
+                                            startPoint: .top, endPoint: .bottom))
+            .shadow(color: .black.opacity(0.5), radius: 8, y: 5)
+            .padding(10)
+            .opacity(card.connected ? 1 : 0.55)
     }
 }
 

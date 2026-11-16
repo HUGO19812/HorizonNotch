@@ -207,7 +207,14 @@ final class AppSettings: ObservableObject {
         lockScreenWidgets = defaults.object(forKey: "lockScreenWidgets") as? Bool ?? true
         lockScreenStatusRow = defaults.object(forKey: "lockScreenStatusRow") as? Bool ?? true
         lockScreenStart = LockScreenStart(rawValue: defaults.string(forKey: "lockScreenStart") ?? "") ?? .compact
-        lockScreenTransparency = defaults.object(forKey: "lockScreenTransparency") as? Double ?? 0.6
+        // Clearer glass by default; the old default 0.6 moves up once.
+        let storedTransparency = defaults.object(forKey: "lockScreenTransparency") as? Double
+        if defaults.bool(forKey: "lockScreenTransparencyV2") {
+            lockScreenTransparency = storedTransparency ?? 0.85
+        } else {
+            defaults.set(true, forKey: "lockScreenTransparencyV2")
+            lockScreenTransparency = (storedTransparency == nil || storedTransparency == 0.6) ? 0.85 : storedTransparency!
+        }
         lockScreenBackdrop = LockScreenBackdrop(rawValue: defaults.string(forKey: "lockScreenBackdrop") ?? "") ?? .cover
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true

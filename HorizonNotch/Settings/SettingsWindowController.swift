@@ -18,8 +18,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window = NSWindow(contentViewController: host)
         window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
         window.title = "Horizon Notch"
-        window.setContentSize(NSSize(width: 740, height: 520))
+        // Dark, see-through glass like Canopy: the SwiftUI view draws a
+        // blurred background, the window itself stays clear.
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.setContentSize(NSSize(width: 780, height: 560))
         window.isReleasedWhenClosed = false
         window.center()
         super.init()

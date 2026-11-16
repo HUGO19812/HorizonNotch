@@ -208,8 +208,8 @@ private struct SourceIcon: View {
     }
 }
 
-/// Back, play/pause and forward large in the middle, the output device on
-/// the right – like Pro Notch.
+/// Shuffle, back, play/pause, forward and repeat in the middle, the output
+/// device on the right – like Pro Notch.
 private struct ProControls: View {
     @ObservedObject var service: NowPlayingService
     @ObservedObject private var output = AudioOutput.shared
@@ -219,12 +219,19 @@ private struct ProControls: View {
         HStack(spacing: 0) {
             Color.clear.frame(width: 30, height: 1)
             Spacer(minLength: 0)
-            HStack(spacing: 18) {
+            HStack(spacing: 14) {
+                ControlButton(symbol: "shuffle", size: 13, active: info.isShuffling) { service.toggleShuffle() }
+                    .opacity(service.usingFallback ? 0.3 : 1)
+                    .help(L("Zufallswiedergabe", "Shuffle"))
                 ControlButton(symbol: "backward.fill", size: 19) { service.send(.previous) }
                 ControlButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 25) {
                     service.send(.togglePlayPause)
                 }
                 ControlButton(symbol: "forward.fill", size: 19) { service.send(.next) }
+                ControlButton(symbol: info.repeatMode == 2 ? "repeat.1" : "repeat", size: 13,
+                              active: info.repeatMode > 1) { service.cycleRepeat() }
+                    .opacity(service.usingFallback ? 0.3 : 1)
+                    .help(L("Wiederholen", "Repeat"))
             }
             Spacer(minLength: 0)
             Image(systemName: output.symbol)

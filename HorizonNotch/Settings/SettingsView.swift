@@ -37,7 +37,7 @@ private struct SettingsGroup: Identifiable {
 private let settingsGroups: [SettingsGroup] = [
     SettingsGroup(de: "", en: "", entries: [
         SettingsEntry(tab: .general, de: "Allgemein", en: "General", symbol: "gearshape",
-                      keywords: "Anmeldung starten Autostart login Sprache language Bildschirm display screen Monitor Update Aktualisierung Version Verzögerung hover delay Öffnen open Reiter tab Vollbild full screen fullscreen Film movie video ausblenden hide Trackpad Klick haptic Haptik"),
+                      keywords: "Anmeldung starten Autostart login Sprache language Bildschirm display screen Monitor Verzögerung hover delay Öffnen open Reiter tab Vollbild full screen fullscreen Film movie video ausblenden hide Trackpad Klick haptic Haptik"),
         SettingsEntry(tab: .appearance, de: "Darstellung", en: "Appearance", symbol: "paintbrush",
                       keywords: "Notch Höhe angleichen match height Stil style Glas glass Hintergrundfarbe background colour color Rand border Akzentfarbe accent Farbig coloured Visualizer Größe size Breite width Eckenradius corner radius Schatten shadow Schrift font fett bold Reiter tabs Punkte dots Reihenfolge order Module modules einschalten ausschalten enable disable"),
     ]),
@@ -66,10 +66,14 @@ private let settingsGroups: [SettingsGroup] = [
     SettingsGroup(de: "System", en: "System", entries: [
         SettingsEntry(tab: .permissions, de: "Berechtigungen", en: "Permissions", symbol: "hand.raised.fill",
                       keywords: "Bedienungshilfen accessibility Kalender calendar Standort location Bluetooth Fokus focus Zugriff access Datenschutz privacy"),
-        SettingsEntry(tab: .about, de: "Über", en: "About", symbol: "info.circle.fill",
-                      keywords: "Version Info Update"),
     ]),
 ]
+
+/// Pinned to the bottom of the sidebar, like Canopy's "License/Update".
+private let footerEntry = SettingsEntry(tab: .about, de: "Info & Updates", en: "About & Updates", symbol: "arrow.down.circle",
+                                        keywords: "Über About Version Info Update Aktualisierung automatisch")
+
+private let allEntries = settingsGroups.flatMap(\.entries) + [footerEntry]
 
 extension SettingsTab {
     /// Pages that were merged into another one show that one.
@@ -103,64 +107,92 @@ struct SettingsView: View {
 
     private var page: SettingsTab { selection.tab.page }
 
+    private var footerVisible: Bool { trimmedQuery.isEmpty || footerEntry.matches(trimmedQuery) }
+
     var body: some View {
-        NavigationSplitView {
-            List(selection: Binding(get: { page }, set: { selection.tab = $0 })) {
-                ForEach(visibleGroups) { group in
-                    Section {
-                        ForEach(group.entries) { entry in
-                            Label {
-                                Text(entry.title)
-                            } icon: {
-                                // Small coloured tiles like Canopy / System Settings.
-                                Image(systemName: entry.symbol)
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 20, height: 20)
-                                    .background(RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                                        .fill(Color.white.opacity(0.14)))
-                            }
-                            .tag(entry.tab)
-                        }
-                    } header: {
-                        if !group.de.isEmpty { Text(L(group.de, group.en)) }
-                    }
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 216)
+                .background(Color.black.opacity(0.22))
+                .overlay(alignment: .trailing) {
+                    Rectangle().fill(Color.white.opacity(0.07)).frame(width: 1)
                 }
-            }
-            .overlay {
-                if visibleGroups.isEmpty {
-                    Text(L("Keine Treffer", "No results"))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .searchable(text: $query, placement: .sidebar, prompt: L("Suchen", "Search"))
-            .onChange(of: trimmedQuery) { _, _ in
-                // Show the first hit when the open page no longer matches.
-                let hits = visibleGroups.flatMap(\.entries).map(\.tab)
-                if let first = hits.first, !hits.contains(page) { selection.tab = first }
-            }
-            .navigationSplitViewColumnWidth(210)
-        } detail: {
             VStack(alignment: .leading, spacing: 0) {
                 pageTitle
-                    .padding(.horizontal, 28)
-                    .padding(.top, 14)
+                    .padding(.horizontal, 30)
+                    .padding(.top, 30)
+                    .padding(.bottom, 4)
                 pageContent
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .background(VisualEffectBackground().ignoresSafeArea())
-        .frame(minWidth: 720, minHeight: 520)
+        .background {
+            ZStack {
+                VisualEffectBackground()
+                Color.black.opacity(0.18)
+            }
+            .ignoresSafeArea()
+        }
+        .preferredColorScheme(.dark)
+        .frame(minWidth: 760, minHeight: 540)
+        .onChange(of: trimmedQuery) { _, _ in
+            // Show the first hit when the open page no longer matches.
+            let hits = visibleGroups.flatMap(\.entries).map(\.tab) + (footerVisible ? [footerEntry.tab] : [])
+            if let first = hits.first, !hits.contains(page) { selection.tab = first }
+        }
+    }
+
+    /// Search on top, the pages in groups, "About & Updates" at the bottom.
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SidebarSearchField(text: $query)
+                .padding(.horizontal, 12)
+                // Room for the window buttons.
+                .padding(.top, 40)
+                .padding(.bottom, 8)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(visibleGroups) { group in
+                        if !group.de.isEmpty {
+                            Text(L(group.de, group.en))
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.38))
+                                .padding(.leading, 10)
+                                .padding(.top, 14)
+                                .padding(.bottom, 4)
+                        }
+                        ForEach(group.entries) { entry in
+                            SidebarRow(entry: entry, selected: page == entry.tab) { selection.tab = entry.tab }
+                        }
+                    }
+                    if visibleGroups.isEmpty && !footerVisible {
+                        Text(L("Keine Treffer", "No results"))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 30)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 10)
+            }
+            .scrollIndicators(.never)
+            if footerVisible {
+                Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1)
+                SidebarRow(entry: footerEntry, selected: page == footerEntry.tab) { selection.tab = footerEntry.tab }
+                    .padding(10)
+            }
+        }
     }
 
     /// "▶ Media": the page's symbol and name, large, like Canopy.
     private var pageTitle: some View {
-        let entry = settingsGroups.flatMap(\.entries).first { $0.tab == page }
-        return HStack(spacing: 10) {
+        let entry = allEntries.first { $0.tab == page }
+        return HStack(spacing: 11) {
             Image(systemName: entry?.symbol ?? "gearshape")
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
             Text(entry?.title ?? "")
-                .font(.system(size: 22, weight: .bold))
+                .font(.system(size: 26, weight: .bold))
         }
     }
 
@@ -169,13 +201,10 @@ struct SettingsView: View {
         switch page {
         case .permissions:
             PermissionSettings(appDelegate: appDelegate)
-                .scrollContentBackground(.hidden)
         case .about:
             AboutSettings()
         default:
-            Form { sections }
-                .formStyle(.grouped)
-                .scrollContentBackground(.hidden)
+            SettingsPage { sections }
         }
     }
 
@@ -212,13 +241,251 @@ struct SettingsView: View {
 private struct VisualEffectBackground: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
-        view.material = .sidebar
+        view.material = .hudWindow
         view.blendingMode = .behindWindow
         view.state = .active
         return view
     }
 
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+
+// MARK: - Canopy look
+
+/// The settings of a page as rounded, half-transparent cards with their
+/// heading above and a short grey explanation below. Before macOS 15 the
+/// sections go into a grouped form.
+private struct SettingsPage<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        if #available(macOS 15.0, *) {
+            CardList { content }
+        } else {
+            Form { content }
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+        }
+    }
+}
+
+@available(macOS 15.0, *)
+private struct CardList<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                ForEach(sections: content) { section in
+                    VStack(alignment: .leading, spacing: 7) {
+                        if !section.header.isEmpty {
+                            section.header
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.55))
+                                .padding(.leading, 6)
+                        }
+                        if !section.content.isEmpty {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(section.content) { row in
+                                    row
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 10)
+                                    if row.id != section.content.last?.id {
+                                        Rectangle()
+                                            .fill(Color.white.opacity(0.07))
+                                            .frame(height: 1)
+                                            .padding(.leading, 14)
+                                    }
+                                }
+                            }
+                            .background(SettingsCardBackground())
+                        }
+                        if !section.footer.isEmpty {
+                            section.footer
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(.white.opacity(0.45))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 6)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 30)
+            .padding(.top, 14)
+            .padding(.bottom, 28)
+        }
+        .scrollIndicators(.automatic)
+        .toggleStyle(CardSwitchStyle())
+        .labeledContentStyle(CardLabeledStyle())
+        .controlSize(.regular)
+    }
+}
+
+/// A rounded, half-transparent glass card.
+private struct SettingsCardBackground: View {
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        shape.fill(Color.white.opacity(0.055))
+            .overlay(shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+    }
+}
+
+/// One row per switch: the text on the left, the switch on the right.
+private struct CardSwitchStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        CardSwitchRow(configuration: configuration)
+    }
+}
+
+private struct CardSwitchRow: View {
+    let configuration: ToggleStyleConfiguration
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        HStack(spacing: 12) {
+            configuration.label
+                .opacity(isEnabled ? 1 : 0.45)
+            Spacer(minLength: 8)
+            Toggle("", isOn: configuration.$isOn)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .controlSize(.small)
+        }
+    }
+}
+
+/// Title on the left, the control on the right.
+private struct CardLabeledStyle: LabeledContentStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 12) {
+            configuration.label
+            Spacer(minLength: 12)
+            configuration.content
+        }
+    }
+}
+
+/// Canopy's search field at the top of the sidebar.
+private struct SidebarSearchField: View {
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.45))
+            TextField(L("Suchen", "Search"), text: $text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+            if !text.isEmpty {
+                Button { text = "" } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.white.opacity(0.45))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 9)
+        .frame(height: 28)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.white.opacity(0.06), lineWidth: 1))
+    }
+}
+
+/// A page in the sidebar: small symbol and name, highlighted when open.
+private struct SidebarRow: View {
+    let entry: SettingsEntry
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Image(systemName: entry.symbol)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(selected ? 1 : 0.6))
+                    .frame(width: 18)
+                Text(entry.title)
+                    .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(.white.opacity(selected ? 1 : 0.82))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.white.opacity(selected ? 0.13 : (hovering ? 0.05 : 0))))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
+}
+
+/// A choice as a large tile row, like Canopy's "Source: Auto / Spotify /
+/// Music": a symbol or app icon on top, the name below.
+private struct TileOption<Value: Hashable> {
+    let value: Value
+    let title: String
+    var symbol: String?
+    var bundleID: String?
+}
+
+private struct TilePicker<Value: Hashable>: View {
+    let title: String
+    @Binding var selection: Value
+    let options: [TileOption<Value>]
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+            HStack(spacing: 10) {
+                ForEach(options.indices, id: \.self) { index in
+                    tile(options[index])
+                }
+            }
+        }
+        .opacity(isEnabled ? 1 : 0.45)
+    }
+
+    private func tile(_ option: TileOption<Value>) -> some View {
+        let selected = option.value == selection
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        return Button { selection = option.value } label: {
+            VStack(spacing: 7) {
+                icon(option)
+                    .frame(width: 30, height: 30)
+                Text(option.title)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 6)
+            .background(shape.fill(Color.white.opacity(selected ? 0.13 : 0.04)))
+            .overlay(shape.strokeBorder(selected ? Color.accentColor : Color.white.opacity(0.08),
+                                        lineWidth: selected ? 2 : 1))
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func icon(_ option: TileOption<Value>) -> some View {
+        if let bundle = option.bundleID,
+           let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                .resizable()
+                .scaledToFit()
+        } else {
+            Image(systemName: option.symbol ?? "circle")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.white.opacity(0.85))
+        }
+    }
 }
 
 /// Footer text under a settings section.
@@ -308,7 +575,6 @@ private struct GeneralSettings: View {
                 note("Automatisch nimmt den Bildschirm mit Notch, sonst den Hauptbildschirm. Ohne Notch erscheint eine schwebende Kapsel.",
                      "Automatic picks the display with a notch, otherwise the main display. Without a notch a floating capsule appears.")
             }
-            UpdateSection()
         }
     }
 }
@@ -320,12 +586,11 @@ private struct AppearanceSettings: View {
         // Only the sections: the settings window puts them in one form.
         Group {
             Section {
-                Picker(L("Stil der Island", "Island style"), selection: $settings.appearance) {
-                    Text(L("Schwarz", "Black")).tag(IslandAppearance.black)
-                    Text(L("Glas", "Glass")).tag(IslandAppearance.glass)
-                    Text(L("Farbig", "Tinted")).tag(IslandAppearance.tinted)
-                }
-                .pickerStyle(.segmented)
+                TilePicker(title: L("Stil der Island", "Island style"), selection: $settings.appearance, options: [
+                    TileOption(value: IslandAppearance.black, title: L("Schwarz", "Black"), symbol: "circle.fill"),
+                    TileOption(value: IslandAppearance.glass, title: L("Glas", "Glass"), symbol: "drop.fill"),
+                    TileOption(value: IslandAppearance.tinted, title: L("Farbig", "Tinted"), symbol: "paintpalette.fill"),
+                ])
                 if settings.appearance == .tinted {
                     ColorPicker(L("Hintergrundfarbe", "Background colour"), selection: hexBinding(\.islandTintColor),
                                 supportsOpacity: false)
@@ -488,6 +753,7 @@ private struct TabSettings: View {
                         settings.moduleOrder = ids
                     }
                 }
+                .scrollContentBackground(.hidden)
                 .frame(minHeight: 230)
             } header: {
                 Text(L("Reiter", "Tabs"))
@@ -535,11 +801,11 @@ private struct MusicSettings: View {
         // Only the sections: the settings window puts them in one form.
         Group {
             Section {
-                Picker(L("Wischen im Musik-Reiter", "Swipe on the music tab"), selection: $settings.musicGesture) {
-                    Text(L("Titel wechseln", "Change track")).tag(MusicGesture.track)
-                    Text(L("10 s spulen", "Seek 10 s")).tag(MusicGesture.seek)
-                    Text(L("Aus", "Off")).tag(MusicGesture.off)
-                }
+                TilePicker(title: L("Wischen im Musik-Reiter", "Swipe on the music tab"), selection: $settings.musicGesture, options: [
+                    TileOption(value: MusicGesture.track, title: L("Titel wechseln", "Change track"), symbol: "forward.end.fill"),
+                    TileOption(value: MusicGesture.seek, title: L("10 s spulen", "Seek 10 s"), symbol: "goforward.10"),
+                    TileOption(value: MusicGesture.off, title: L("Aus", "Off"), symbol: "hand.raised.slash"),
+                ])
             } header: {
                 Text(L("Gesten", "Gestures"))
             } footer: {
@@ -935,11 +1201,11 @@ private struct LockScreenSettings: View {
                 Toggle(L("Wetter, Akku und Kopfhörer unter der Uhr", "Weather, battery and headphones under the clock"),
                        isOn: $settings.lockScreenStatusRow)
                     .disabled(!settings.lockScreenWidgets)
-                Picker(L("Beim Sperren zeigen", "When locking, show"), selection: $settings.lockScreenStart) {
-                    Text(L("Kleiner Player", "Small player")).tag(LockScreenStart.compact)
-                    Text(L("Großes Cover", "Large cover")).tag(LockScreenStart.cover)
-                    Text(L("Cover und Songtext", "Cover and lyrics")).tag(LockScreenStart.lyrics)
-                }
+                TilePicker(title: L("Beim Sperren zeigen", "When locking, show"), selection: $settings.lockScreenStart, options: [
+                    TileOption(value: LockScreenStart.compact, title: L("Kleiner Player", "Small player"), symbol: "play.rectangle"),
+                    TileOption(value: LockScreenStart.cover, title: L("Großes Cover", "Large cover"), symbol: "photo"),
+                    TileOption(value: LockScreenStart.lyrics, title: L("Cover und Songtext", "Cover and lyrics"), symbol: "quote.bubble"),
+                ])
                 .disabled(!settings.lockScreenWidgets)
                 ValueSlider(title: L("Durchsichtigkeit", "Transparency"),
                             value: Binding(get: { settings.lockScreenTransparency * 100 },
@@ -987,7 +1253,7 @@ private struct PermissionSettings: View {
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        Form {
+        SettingsPage {
             Section {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L("Willkommen bei Horizon Notch", "Welcome to Horizon Notch"))
@@ -1046,7 +1312,6 @@ private struct PermissionSettings: View {
                     action: nil)
             }
         }
-        .formStyle(.grouped)
         .onReceive(timer) { _ in
             let now = Permissions.accessibilityGranted
             if now != accessibility {
@@ -1125,15 +1390,21 @@ private struct UpdateSection: View {
 
 private struct AboutSettings: View {
     var body: some View {
-        VStack(spacing: 10) {
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable()
-                .frame(width: 96, height: 96)
-            Text("Horizon Notch").font(.title2.weight(.semibold))
-            Text("Version \(Updater.currentVersion) (Build \(Updater.currentBuild))")
-                .foregroundStyle(.secondary)
-            Button(L("Nach Updates suchen", "Check for Updates")) { Updater.shared.check(userInitiated: true) }
+        SettingsPage {
+            Section {
+                HStack(spacing: 16) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .frame(width: 64, height: 64)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Horizon Notch").font(.title2.weight(.semibold))
+                        Text("Version \(Updater.currentVersion) (Build \(Updater.currentBuild))")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            UpdateSection()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

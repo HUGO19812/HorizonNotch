@@ -280,21 +280,28 @@ private struct LiquidPlayerCard<Artwork: View>: View {
             }
         }
         .padding(EdgeInsets(top: 16, leading: 18, bottom: 10, trailing: 18))
+        // Readable through a soft shadow on text and symbols, not by
+        // darkening the glass.
+        .shadow(color: .black.opacity(0.35 + solid * 0.2), radius: 3, y: 1)
         .background {
             ZStack {
                 if #available(macOS 26.0, *) {
                     Color.clear.glassEffect(.clear, in: shape)
                 } else {
-                    shape.fill(.ultraThinMaterial).opacity(0.7)
-                    shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.5), .white.opacity(0.08), .white.opacity(0.3)],
-                                                      startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
+                    shape.fill(.ultraThinMaterial).opacity(0.25 + solid * 0.4)
+                    shape.fill(Color.white.opacity(0.04))
                 }
-                // Less transparency = a little shade behind the text.
-                shape.fill(Color.black.opacity(solid * 0.3))
+                // Less transparency = only a faint shade behind the text.
+                shape.fill(Color.black.opacity(solid * 0.12))
+                // Clear glass with a glowing rim, like Canopy.
+                shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.65), .white.opacity(0.06),
+                                                           .white.opacity(0.08), .white.opacity(0.4)],
+                                                  startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
+                    .blendMode(.plusLighter)
             }
             .animation(.easeInOut(duration: 0.25), value: solid)
         }
-        .shadow(color: .black.opacity(0.15), radius: 14, y: 6)
+        .shadow(color: .black.opacity(0.1), radius: 14, y: 6)
     }
 }
 
