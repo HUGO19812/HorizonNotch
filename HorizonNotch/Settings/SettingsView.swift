@@ -801,6 +801,18 @@ private struct MusicSettings: View {
         // Only the sections: the settings window puts them in one form.
         Group {
             Section {
+                TilePicker(title: L("Quelle", "Source"), selection: $settings.mediaSource, options: [
+                    TileOption(value: MediaSourceChoice.auto, title: "Auto", symbol: "wand.and.stars"),
+                    TileOption(value: MediaSourceChoice.spotify, title: "Spotify", symbol: "music.note",
+                               bundleID: "com.spotify.client"),
+                    TileOption(value: MediaSourceChoice.music, title: L("Musik", "Music"), symbol: "music.note",
+                               bundleID: "com.apple.Music"),
+                ])
+            } footer: {
+                note("Auto zeigt, was gerade spielt (auch Browser). Spotify oder Musik zeigt nur diese App.",
+                     "Auto shows whatever plays (browsers too). Spotify or Music shows only that app.")
+            }
+            Section {
                 TilePicker(title: L("Mit zwei Fingern seitlich wischen", "Two-finger sideways swipe"), selection: $settings.musicGesture, options: [
                     TileOption(value: MusicGesture.tabs, title: L("Reiter wechseln", "Switch tabs"), symbol: "rectangle.on.rectangle"),
                     TileOption(value: MusicGesture.track, title: L("Titel wechseln", "Change track"), symbol: "forward.end.fill"),

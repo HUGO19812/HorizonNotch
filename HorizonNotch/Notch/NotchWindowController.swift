@@ -21,6 +21,7 @@ final class NotchWindowController {
     private var dragCarriesFiles = false
     private var swipeAccumulator: CGFloat = 0
     private var swipeConsumed = false
+    private var swipeVertical: CGFloat = 0
     /// Called with +1 (swipe left = forward) or −1 for a swipe on the music tab.
     var onMediaSwipe: ((Int) -> Void)?
     #if DEBUG
@@ -174,8 +175,7 @@ final class NotchWindowController {
             return event
         }) { monitors.append(local) }
         if let scroll = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel, handler: { [weak self] event in
-            self?.handleMediaSwipe(event)
-            return event
+            (self?.handleSwipe(event) ?? false) ? nil : event
         }) { monitors.append(scroll) }
         if let click = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown, handler: { [weak self] event in
             self?.handleClick()
@@ -286,30 +286,46 @@ final class NotchWindowController {
         expand()
     }
 
-    /// Two-finger sideways swipe on the music tab: next/previous track or
-    /// ±10 s (settings). Other tabs keep their own scrolling.
-    private func handleMediaSwipe(_ event: NSEvent) {
-        let page = coordinator.currentPage?.id
-        let tabs = settings.musicGesture == .tabs
-        // Calendar and weather scroll through their days sideways.
+    /// Marks scroll events the day strips re-sent with vertical turned
+    /// into horizontal; those are scrolling, not a tab swipe.
+    static let convertedScrollMarker: Int64 = 0x484E5357
+
+    /// Two-finger sideways swipe. "Switch tabs" works on every page and
+    /// swallows the whole gesture (the day strips scroll with an up/down
+    /// swipe instead); "change track" / "seek" only on the music tab.
+    /// Returns true when the event was used up.
+    private func handleSwipe(_ event: NSEvent) -> Bool {
         guard model.isExpanded, settings.musicGesture != .off, event.hasPreciseScrollingDeltas,
-              tabs ? (page != "calendar" && page != "weather") : page == "media" else { return }
-        if event.phase == .began {
+              event.cgEvent?.getIntegerValueField(.eventSourceUserData) != Self.convertedScrollMarker else { return false }
+        let tabs = settings.musicGesture == .tabs
+        guard tabs || coordinator.currentPage?.id == "media" else { return false }
+
+        // Momentum after a used-up swipe belongs to it.
+        if event.phase.isEmpty {
+            return tabs && swipeConsumed && !event.momentumPhase.isEmpty
+        }
+        if event.phase == .began || event.phase == .mayBegin {
             swipeAccumulator = 0
+            swipeVertical = 0
             swipeConsumed = false
         }
-        guard event.phase == .changed || event.phase == .began, !swipeConsumed else { return }
         swipeAccumulator += event.scrollingDeltaX
-        guard abs(swipeAccumulator) > 50, abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) else { return }
+        swipeVertical += event.scrollingDeltaY
+        let horizontal = abs(swipeAccumulator) > abs(swipeVertical) * 1.2
+        if swipeConsumed { return tabs }
+        guard event.phase == .changed || event.phase == .began else { return tabs && horizontal && swipeAccumulator != 0 }
+        guard abs(swipeAccumulator) > 45, horizontal else { return tabs && horizontal && abs(swipeAccumulator) > 4 }
         swipeConsumed = true
         // Natural scrolling: fingers moving left give negative deltas = forward.
         let direction = swipeAccumulator < 0 ? 1 : -1
         if tabs {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { coordinator.showPage(offset: direction) }
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) { coordinator.showPage(offset: direction) }
         } else {
             onMediaSwipe?(direction)
         }
-        if settings.scrollHaptics { TrackpadHaptics.click(level: settings.hapticLevel) }
+        // A single, light tap – never the doubled strongest pulse.
+        if settings.scrollHaptics { TrackpadHaptics.click(level: min(settings.hapticLevel, 7)) }
+        return tabs
     }
 
     private func cancelTimers() {

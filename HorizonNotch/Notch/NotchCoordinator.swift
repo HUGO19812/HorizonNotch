@@ -11,7 +11,15 @@ final class NotchCoordinator: ObservableObject {
     /// Short-lived modules (HUD, notifications) that also show while expanded.
     @Published private(set) var transientModule: (any NotchModule)?
     @Published private(set) var pages: [any NotchModule] = []
-    @Published var pageIndex = 0
+    @Published var pageIndex = 0 {
+        didSet { if pageIndex != oldValue { pageDirection = pageIndex > oldValue ? 1 : -1 } }
+    }
+    /// +1 when the last switch went to the right, −1 to the left (for the
+    /// slide direction).
+    @Published private(set) var pageDirection = 1
+    /// Shown as a small bubble beside the closed island while another
+    /// module owns it (Claude Code next to the music).
+    @Published private(set) var bubbleModule: (any NotchModule)?
 
     private var subscriptions = Set<AnyCancellable>()
     private var recomputeScheduled = false
@@ -40,6 +48,7 @@ final class NotchCoordinator: ObservableObject {
     func showPage(offset: Int) {
         guard !pages.isEmpty else { return }
         pageIndex = (pageIndex + offset + pages.count) % pages.count
+        pageDirection = offset >= 0 ? 1 : -1
     }
 
     /// Called when the island opens: start on the first tab, or stay on the
@@ -64,7 +73,14 @@ final class NotchCoordinator: ObservableObject {
     private func recompute() {
         let enabled = modules.filter { settings.isEnabled($0.id) }
         let active = enabled.filter(\.isActive).sorted { $0.priority > $1.priority }
-        let newCompact = active.first
+        var newCompact = active.first
+        var newBubble: (any NotchModule)?
+        // While music plays, Claude Code moves into a bubble beside it.
+        if newCompact?.id == "claude", let media = active.first(where: { $0.id == "media" }) {
+            newBubble = newCompact
+            newCompact = media
+        }
+        if newBubble?.id != bubbleModule?.id { bubbleModule = newBubble }
         let newTransient = active.first { $0.priority >= ModulePriority.notification }
 
         if newCompact?.id != compactModule?.id { compactModule = newCompact }

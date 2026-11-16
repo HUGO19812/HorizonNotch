@@ -55,7 +55,13 @@ enum TrackpadHaptics {
 
     /// Plays one click. Levels 1–3 use the public API (gentle to firm),
     /// 4–7 the actuator's waveforms, 8 two strong pulses back to back.
+    private static var lastClick = Date.distantPast
+
     static func click(level: Int) {
+        // Two sources reacting to the same gesture give one click only.
+        let now = Date()
+        guard now.timeIntervalSince(lastClick) > 0.18 else { return }
+        lastClick = now
         switch min(max(level, 1), levels) {
         case 1: NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         case 2: NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
