@@ -192,49 +192,6 @@ private struct HourCell: View {
 /// A plain mouse wheel only scrolls vertically; this turns vertical wheel
 /// movement over the hour row into sideways scrolling. Trackpads already
 /// scroll sideways and are left alone.
-private struct HorizontalWheelScroll: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { WheelView() }
-    func updateNSView(_ nsView: NSView, context: Context) {}
-
-    final class WheelView: NSView {
-        private var monitor: Any?
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            if let monitor { NSEvent.removeMonitor(monitor) }
-            monitor = nil
-            guard window != nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-                guard let self, let window = self.window, event.window === window,
-                      !event.hasPreciseScrollingDeltas,
-                      event.scrollingDeltaX == 0, event.scrollingDeltaY != 0,
-                      self.bounds.contains(self.convert(event.locationInWindow, from: nil)),
-                      let cgEvent = event.cgEvent?.copy() else { return event }
-                // Move the vertical deltas to the horizontal axis, like
-                // holding Shift does.
-                let pairs: [(CGEventField, CGEventField)] = [
-                    (.scrollWheelEventDeltaAxis1, .scrollWheelEventDeltaAxis2),
-                    (.scrollWheelEventPointDeltaAxis1, .scrollWheelEventPointDeltaAxis2),
-                ]
-                for (vertical, horizontal) in pairs {
-                    cgEvent.setIntegerValueField(horizontal, value: cgEvent.getIntegerValueField(vertical))
-                    cgEvent.setIntegerValueField(vertical, value: 0)
-                }
-                cgEvent.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2,
-                                            value: cgEvent.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1))
-                cgEvent.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: 0)
-                return NSEvent(cgEvent: cgEvent) ?? event
-            }
-        }
-
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-        deinit {
-            if let monitor { NSEvent.removeMonitor(monitor) }
-        }
-    }
-}
-
 private var windUnit: String { AppSettings.shared.useFahrenheit ? "mph" : "km/h" }
 
 /// Today: the current conditions.

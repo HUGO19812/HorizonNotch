@@ -45,6 +45,8 @@ protocol NotchModule: ObservableObject where ObjectWillChangePublisher == Observ
     /// Pill at the bottom of the open island while the module is transient
     /// (HUD, notification). Must size itself; it is not given wing widths.
     func transientView() -> AnyView
+    /// Small round bubble beside the closed island (see bubbleModule).
+    func bubbleView() -> AnyView
     /// Live info next to the tab icon in the open island's header (time
     /// left, temperature, …). nil = just the icon.
     var headerInfo: HeaderInfo? { get }
@@ -71,6 +73,7 @@ extension NotchModule {
     var compactGlow: Color? { nil }
     func peekView() -> AnyView { AnyView(EmptyView()) }
     var headerInfo: HeaderInfo? { nil }
+    func bubbleView() -> AnyView { AnyView(Image(systemName: symbol).font(.system(size: 12, weight: .semibold))) }
     /// Both wings side by side, each as wide as next to the notch – the
     /// wing views stretch to fill, so they need a fixed width here.
     func transientView() -> AnyView {

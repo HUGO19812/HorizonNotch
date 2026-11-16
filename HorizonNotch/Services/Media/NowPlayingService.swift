@@ -94,7 +94,15 @@ final class NowPlayingService: ObservableObject {
         fallback.start()
     }
 
-    private func apply(info newInfo: NowPlayingInfo?, artwork data: Data?) {
+    private func apply(info incoming: NowPlayingInfo?, artwork incomingData: Data?) {
+        // A chosen source (Settings → Music) hides every other player.
+        var newInfo = incoming
+        var data = incomingData
+        if let wanted = AppSettings.shared.mediaSource.bundleID, let candidate = incoming,
+           candidate.bundleID != wanted {
+            newInfo = nil
+            data = nil
+        }
         if newInfo == nil {
             if info != nil { info = nil }
             if artwork != nil { artwork = nil }

@@ -46,6 +46,7 @@ final class ClaudeCodeModule: NotchModule {
     }
 
     func compactLeading() -> AnyView { AnyView(ClaudeLeading(monitor: monitor)) }
+    func bubbleView() -> AnyView { AnyView(ClaudeBubble(monitor: monitor)) }
     func compactTrailing() -> AnyView { AnyView(ClaudeTrailing(monitor: monitor)) }
     func peekView() -> AnyView { AnyView(ClaudeLine(monitor: monitor)) }
     func expandedView() -> AnyView { AnyView(ClaudePage(monitor: monitor, usage: usage)) }
@@ -99,6 +100,30 @@ extension ClaudeCodeMonitor.Activity {
 
 /// Left of the notch: the spark while working, a badge when Claude needs
 /// you, a check that draws itself when done.
+/// The Claude mark alone, for the bubble beside the music.
+private struct ClaudeBubble: View {
+    @ObservedObject var monitor: ClaudeCodeMonitor
+
+    var body: some View {
+        let session = monitor.visible.first
+        ZStack {
+            switch session?.activity {
+            case .waiting:
+                Text("✳")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 17, height: 17)
+                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(ClaudeCodeModule.tint))
+            case .done: DrawnCheck().frame(width: 13, height: 13)
+            default: ClaudeSpark()
+            }
+        }
+        .id(session?.activity.kind)
+        .transition(.scale(scale: 0.6).combined(with: .opacity))
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: session?.activity.kind)
+    }
+}
+
 private struct ClaudeLeading: View {
     @ObservedObject var monitor: ClaudeCodeMonitor
 

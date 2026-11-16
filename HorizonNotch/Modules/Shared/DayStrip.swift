@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Locale for dates in the island, following the app language setting.
@@ -34,6 +35,8 @@ struct DayStrip<Cell: View>: View {
                 .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.1),
                                              .init(color: .black, location: 0.9), .init(color: .clear, location: 1)],
                                      startPoint: .leading, endPoint: .trailing))
+                // Up/down swipes scroll the days (sideways switches tabs).
+                .background(HorizontalWheelScroll())
                 .onChange(of: selected) { _, _ in
                     let settings = AppSettings.shared
                     if settings.scrollHaptics { TrackpadHaptics.click(level: settings.hapticLevel) }
@@ -62,3 +65,51 @@ struct DayCellBackground: ViewModifier {
             .contentShape(Rectangle())
     }
 }
+
+/// Turns vertical scrolling over a strip into horizontal scrolling.
+struct HorizontalWheelScroll: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { WheelView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class WheelView: NSView {
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                // Mouse wheels always; trackpad up/down swipes while sideways
+                // swipes switch tabs.
+                guard let self, let window = self.window, event.window === window,
+                      !event.hasPreciseScrollingDeltas || AppSettings.shared.musicGesture == .tabs,
+                      abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX),
+                      self.bounds.contains(self.convert(event.locationInWindow, from: nil)),
+                      let cgEvent = event.cgEvent?.copy() else { return event }
+                // Move the vertical deltas to the horizontal axis, like
+                // holding Shift does.
+                let pairs: [(CGEventField, CGEventField)] = [
+                    (.scrollWheelEventDeltaAxis1, .scrollWheelEventDeltaAxis2),
+                    (.scrollWheelEventPointDeltaAxis1, .scrollWheelEventPointDeltaAxis2),
+                ]
+                for (vertical, horizontal) in pairs {
+                    cgEvent.setIntegerValueField(horizontal, value: cgEvent.getIntegerValueField(vertical))
+                    cgEvent.setIntegerValueField(vertical, value: 0)
+                }
+                cgEvent.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2,
+                                            value: cgEvent.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1))
+                cgEvent.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: 0)
+                cgEvent.setIntegerValueField(.eventSourceUserData, value: NotchWindowController.convertedScrollMarker)
+                return NSEvent(cgEvent: cgEvent) ?? event
+            }
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        deinit {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+        }
+    }
+}
+

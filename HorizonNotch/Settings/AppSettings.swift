@@ -22,6 +22,21 @@ enum SneakPeekStyle: String, CaseIterable, Identifiable {
 }
 
 /// What a sideways swipe on the music tab does.
+/// Which player the island follows.
+enum MediaSourceChoice: String, CaseIterable, Identifiable {
+    case auto, spotify, music
+    var id: String { rawValue }
+
+    /// nil = whatever plays.
+    var bundleID: String? {
+        switch self {
+        case .auto: return nil
+        case .spotify: return "com.spotify.client"
+        case .music: return "com.apple.Music"
+        }
+    }
+}
+
 enum MusicGesture: String, CaseIterable, Identifiable {
     /// tabs = switch the island's pages (on every page).
     case off, track, seek, tabs
@@ -139,6 +154,7 @@ final class AppSettings: ObservableObject {
     /// Where a Bluetooth device connecting or disconnecting shows.
     @Published var hudBarColor: HUDBarColor { didSet { defaults.set(hudBarColor.rawValue, forKey: "hudBarColor") } }
     @Published var musicGesture: MusicGesture { didSet { defaults.set(musicGesture.rawValue, forKey: "musicGesture") } }
+    @Published var mediaSource: MediaSourceChoice { didSet { defaults.set(mediaSource.rawValue, forKey: "mediaSource") } }
     /// Seconds the lyrics run ahead (+) or behind (−) the music.
     @Published var lyricsOffset: Double { didSet { defaults.set(lyricsOffset, forKey: "lyricsOffset") } }
     @Published var keepAwakeIcon: Bool { didSet { defaults.set(keepAwakeIcon, forKey: "keepAwakeIcon") } }
@@ -242,6 +258,7 @@ final class AppSettings: ObservableObject {
             musicGesture = .tabs
         }
         lyricsOffset = defaults.object(forKey: "lyricsOffset") as? Double ?? 0
+        mediaSource = MediaSourceChoice(rawValue: defaults.string(forKey: "mediaSource") ?? "") ?? .auto
         keepAwakeIcon = defaults.object(forKey: "keepAwakeIcon") as? Bool ?? true
         keepAwakeLimitHours = defaults.object(forKey: "keepAwakeLimitHours") as? Int ?? 0
         batteryInHeader = defaults.object(forKey: "batteryInHeader") as? Bool ?? true

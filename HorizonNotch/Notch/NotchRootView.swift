@@ -44,6 +44,18 @@ struct NotchRootView: View {
             .modifier(IslandShadow(enabled: !(state == .expanded && settings.appearance == .glass),
                                    strength: state == .expanded ? settings.islandShadow : 0,
                                    glow: state == .compact ? (coordinator.compactModule?.compactGlow ?? .clear) : .clear))
+            // Claude Code beside the music: a small bubble right of the island.
+            .overlay(alignment: .topTrailing) {
+                if state == .compact, let bubble = coordinator.bubbleModule {
+                    bubble.bubbleView()
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(Color.black))
+                        .shadow(color: bubble.compactGlow ?? .clear, radius: 8)
+                        .offset(x: 38, y: max(0, (model.geometry.notchSize.height - 30) / 2))
+                        .transition(.scale(scale: 0.3, anchor: .leading).combined(with: .opacity))
+                }
+            }
+            .animation(spring, value: coordinator.bubbleModule?.id)
             .opacity(layout.visible ? 1 : 0)
             .animation(spring, value: layout)
             .animation(spring, value: state)
@@ -116,20 +128,19 @@ private struct IslandBackground: View {
     var body: some View {
         switch style {
         case .glass:
-            // Clear, hand-made glass like Canopy's (system glass frosts and
-            // greys the desktop): the desktop shows through untouched, only
-            // the rim catches the light. Text stays readable by its shadow.
+            // Black at the top so the island still grows out of the notch,
+            // then clear Liquid Glass like the lock screen player.
             ZStack {
-                shape.fill(LinearGradient(colors: [.white.opacity(0.06), .white.opacity(0.015)],
+                if #available(macOS 26.0, *) {
+                    Color.clear.glassEffect(.clear, in: shape)
+                } else {
+                    shape.fill(.ultraThinMaterial).opacity(0.5)
+                }
+                shape.fill(LinearGradient(stops: [.init(color: .black, location: 0),
+                                                  .init(color: .black, location: 0.16),
+                                                  .init(color: .black.opacity(0.55), location: 0.3),
+                                                  .init(color: .clear, location: 0.5)],
                                           startPoint: .top, endPoint: .bottom))
-                // Soft light just inside the edge: the glass's thickness.
-                shape.stroke(Color.white.opacity(0.22), lineWidth: 8)
-                    .blur(radius: 6)
-                    .mask(shape)
-                // Specular rim, brightest at the bottom corners.
-                shape.stroke(LinearGradient(colors: [.white.opacity(0.15), .white.opacity(0.35), .white.opacity(0.8)],
-                                            startPoint: .top, endPoint: .bottom), lineWidth: 1.2)
-                    .mask(shape)
             }
         case .tinted:
             // Black at the top so the island still grows out of the notch.
@@ -201,7 +212,7 @@ private struct ExpandedContent: View {
                 } else if let page = coordinator.currentPage {
                     page.expandedView()
                         .id(page.id)
-                        .transition(.opacity.combined(with: .move(edge: .trailing)))
+                        .transition(.pageSlide(coordinator.pageDirection))
                 } else {
                     Text(L("Keine Module aktiv", "No modules enabled"))
                         .foregroundStyle(.secondary)
@@ -679,5 +690,33 @@ private struct PageDots: View {
         }
         .frame(height: 20)
         .contentShape(Rectangle())
+    }
+}
+
+/// Switching pages: the new page slides in from the side you swiped to,
+/// sharpening out of a blur, while the old one slides off the other way.
+private struct PageSlide: ViewModifier {
+    let offset: CGFloat
+    let blur: CGFloat
+    let opacity: Double
+    let scale: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(scale)
+            .offset(x: offset)
+            .blur(radius: blur)
+            .opacity(opacity)
+    }
+}
+
+extension AnyTransition {
+    static func pageSlide(_ direction: Int) -> AnyTransition {
+        let d = CGFloat(direction)
+        return .asymmetric(
+            insertion: .modifier(active: PageSlide(offset: 70 * d, blur: 10, opacity: 0, scale: 0.94),
+                                 identity: PageSlide(offset: 0, blur: 0, opacity: 1, scale: 1)),
+            removal: .modifier(active: PageSlide(offset: -50 * d, blur: 10, opacity: 0, scale: 0.94),
+                               identity: PageSlide(offset: 0, blur: 0, opacity: 1, scale: 1)))
     }
 }

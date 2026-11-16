@@ -53,7 +53,8 @@ final class AppleScriptMediaSource {
 
     private func poll() {
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
-        let candidates = players.filter { running.contains($0.bundleID) }
+        let wanted = AppSettings.shared.mediaSource.bundleID
+        let candidates = players.filter { running.contains($0.bundleID) && (wanted == nil || $0.bundleID == wanted) }
         guard !candidates.isEmpty else {
             activePlayer = nil
             onState?(nil, nil)
