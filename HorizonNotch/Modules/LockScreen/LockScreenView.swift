@@ -371,14 +371,17 @@ private struct CraftedGlass: View {
 /// The part of the desktop picture that lies exactly behind this view
 /// (the panel covers the whole screen, so window coordinates are screen
 /// coordinates).
-private struct WallpaperPiece: View {
+struct WallpaperPiece: View {
     /// > 1 magnifies around the view's centre (the lens along the rim).
     var zoom: CGFloat = 1
+    /// Where the window's top-left corner sits on the screen (the island
+    /// panel does not cover the whole screen like the lock screen does).
+    var windowOrigin: CGPoint = .zero
 
     var body: some View {
         GeometryReader { proxy in
             if let wallpaper = Wallpaper.shared.image {
-                let frame = proxy.frame(in: .global)
+                let frame = proxy.frame(in: .global).offsetBy(dx: windowOrigin.x, dy: windowOrigin.y)
                 let screen = Wallpaper.shared.screenSize
                 Image(nsImage: wallpaper)
                     .resizable()
@@ -396,10 +399,13 @@ private struct WallpaperPiece: View {
     }
 }
 
-/// The desktop picture of the island's screen, loaded once per lock.
-final class Wallpaper {
+/// The desktop picture of the island's screen. Both the lock screen card
+/// and the glass island lay the matching piece of it behind their glass.
+/// Moving wallpapers (Aerials) only give a black placeholder file; those
+/// count as "no picture" so the system glass is used instead.
+final class Wallpaper: ObservableObject {
     static let shared = Wallpaper()
-    private(set) var image: NSImage?
+    @Published private(set) var image: NSImage?
     private(set) var screenSize: CGSize = .zero
     private var loadedURL: URL?
 
@@ -409,12 +415,49 @@ final class Wallpaper {
         if url == loadedURL, image != nil { return }
         loadedURL = url
         var isDirectory: ObjCBool = false
-        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue {
-            image = NSImage(contentsOf: url)
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue,
+           let loaded = NSImage(contentsOf: url), !Self.isNearlyBlack(loaded) {
+            image = loaded
         } else {
             image = nil
         }
     }
+
+    static func isNearlyBlack(_ image: NSImage) -> Bool {
+        var rect = NSRect(x: 0, y: 0, width: 16, height: 16)
+        guard let cg = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return true }
+        var pixels = [UInt8](repeating: 0, count: 16 * 16 * 4)
+        guard let context = CGContext(data: &pixels, width: 16, height: 16, bitsPerComponent: 8, bytesPerRow: 64,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return true }
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: 16, height: 16))
+        var total = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) { total += Int(pixels[i]) + Int(pixels[i + 1]) + Int(pixels[i + 2]) }
+        return Double(total) / Double(16 * 16 * 3) < 12
+    }
+
+    /// One of Apple's own desktop pictures (for the settings preview).
+    static let applePicture: NSImage? = {
+        let root = "/System/Library/Desktop Pictures"
+        guard let enumerator = FileManager.default.enumerator(atPath: root) else { return nil }
+        var files: [String] = []
+        for case let path as String in enumerator {
+            let lower = path.lowercased()
+            if (lower.hasSuffix(".heic") || lower.hasSuffix(".jpg") || lower.hasSuffix(".png")) && !lower.contains("thumbnail") {
+                files.append(path)
+            }
+        }
+        let preferred = ["tahoe", "sequoia", "sonoma", "ventura", "monterey", "big sur"]
+        let sorted = files.sorted { a, b in
+            let ra = preferred.firstIndex { a.lowercased().contains($0) } ?? 99
+            let rb = preferred.firstIndex { b.lowercased().contains($0) } ?? 99
+            return ra != rb ? ra < rb : a < b
+        }
+        for file in sorted {
+            if let image = NSImage(contentsOfFile: root + "/" + file), !isNearlyBlack(image) { return image }
+        }
+        return nil
+    }()
 }
 
 /// Draggable progress bar with elapsed time left and remaining time right.
@@ -521,52 +564,45 @@ final class HiResArtwork: ObservableObject {
     }
 }
 
-/// Live preview of the lock screen card in the settings, over the real
-/// desktop picture, so the transparency slider shows what it does.
+/// Live preview of the lock screen card in the settings, over one of
+/// Apple's desktop pictures, so the transparency slider shows what it does.
 struct LockCardPreview: View {
     @ObservedObject private var settings = AppSettings.shared
-    @State private var wallpaper: NSImage?
 
     var body: some View {
         let solid = 1 - min(max(settings.lockScreenTransparency, 0), 1)
         let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        let card = shape.frame(width: 230, height: 104)
         ZStack {
             backdrop
-            ZStack {
-                backdrop.blur(radius: solid * 28)
-                Color.black.opacity(solid * 0.55)
-                Color.white.opacity(0.05)
-            }
-            .frame(width: 230, height: 104)
-            .clipShape(shape)
-            .overlay(card)
+            // The same picture, frosted and shaded, inside the card only.
+            backdrop
+                .blur(radius: solid * 28)
+                .overlay(Color.black.opacity(solid * 0.55))
+                .overlay(Color.white.opacity(0.05))
+                .mask(card)
+            content
         }
         .frame(height: 150)
         .frame(maxWidth: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .onAppear {
-            if let screen = NSScreen.main, let url = NSWorkspace.shared.desktopImageURL(for: screen) {
-                wallpaper = NSImage(contentsOf: url)
-            }
-        }
         .animation(.easeInOut(duration: 0.2), value: solid)
     }
 
-    /// The same picture behind the card and the preview, so they line up.
     private var backdrop: some View {
-        GeometryReader { _ in
-            if let wallpaper {
-                Image(nsImage: wallpaper).resizable().aspectRatio(contentMode: .fill)
-            } else {
-                LinearGradient(colors: [Color(red: 0.3, green: 0.5, blue: 0.8), Color(red: 0.1, green: 0.15, blue: 0.3)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
+        Color.clear
+            .overlay {
+                if let picture = Wallpaper.applePicture {
+                    Image(nsImage: picture).resizable().aspectRatio(contentMode: .fill)
+                } else {
+                    LinearGradient(colors: [Color(red: 0.35, green: 0.55, blue: 0.85), Color(red: 0.1, green: 0.15, blue: 0.35)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                }
             }
-        }
-        .frame(width: 520, height: 150)
-        .clipped()
+            .clipped()
     }
 
-    private var card: some View {
+    private var content: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 10) {
                 RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.35)).frame(width: 34, height: 34)
@@ -587,6 +623,7 @@ struct LockCardPreview: View {
             .frame(maxWidth: .infinity)
         }
         .foregroundStyle(.white)
+        .shadow(color: .black.opacity(0.25), radius: 1.5, y: 0.5)
         .padding(12)
         .frame(width: 230, height: 104)
     }
