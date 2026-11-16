@@ -44,6 +44,11 @@ final class LockScreenController {
         guard !isShowing, let screen = NSScreen.islandScreen(preferred: settings.displayID) else { return }
         state.reset()
         let panel = window ?? makeWindow()
+        // The view only exists while shown, so nothing updates in the
+        // background (the progress bar ticks twice a second while playing).
+        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics, state: state))
+        host.sizingOptions = []
+        panel.contentView = host
         panel.setFrame(screen.frame, display: true)
         panel.alphaValue = 0
         panel.orderFrontRegardless()
@@ -64,7 +69,9 @@ final class LockScreenController {
             context.duration = 0.25
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
-            if self?.isShowing == false { panel.orderOut(nil) }
+            guard self?.isShowing == false else { return }
+            panel.orderOut(nil)
+            panel.contentView = nil
         })
     }
 
@@ -78,9 +85,6 @@ final class LockScreenController {
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics, state: state))
-        host.sizingOptions = []
-        panel.contentView = host
         window = panel
         return panel
     }

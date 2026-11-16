@@ -36,6 +36,7 @@ final class ClaudeCodeMonitor: ObservableObject {
     private var doneTimers: [String: DispatchWorkItem] = [:]
 
     init() {
+        ClaudeHooks.repairIfNeeded()
         try? FileManager.default.createDirectory(at: ClaudeHooks.eventFolder, withIntermediateDirectories: true)
         watch()
         drain()
@@ -60,8 +61,20 @@ final class ClaudeCodeMonitor: ObservableObject {
     private func watch() {
         let descriptor = open(ClaudeHooks.eventFolder.path, O_EVTONLY)
         guard descriptor >= 0 else { return }
-        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor, eventMask: .write, queue: .main)
-        source.setEventHandler { [weak self] in self?.drain() }
+        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor,
+                                                               eventMask: [.write, .delete, .rename], queue: .main)
+        source.setEventHandler { [weak self, weak source] in
+            guard let self, let source else { return }
+            if source.data.contains(.delete) || source.data.contains(.rename) {
+                // The folder was deleted or moved: start over with a new one.
+                source.cancel()
+                self.source = nil
+                ClaudeHooks.repairIfNeeded()
+                try? FileManager.default.createDirectory(at: ClaudeHooks.eventFolder, withIntermediateDirectories: true)
+                self.watch()
+            }
+            self.drain()
+        }
         source.setCancelHandler { close(descriptor) }
         source.resume()
         self.source = source

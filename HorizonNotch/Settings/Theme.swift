@@ -26,6 +26,9 @@ enum HeaderIconStyle: String, CaseIterable, Identifiable {
     case pill
     /// Icons with a dot below the active one, in the accent colour.
     case dot
+    /// Like Pro Notch: the current page on the left, page dots on the
+    /// right (the active one a short bar).
+    case pageDots
     var id: String { rawValue }
 }
 

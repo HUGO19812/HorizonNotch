@@ -52,7 +52,7 @@ private let settingsGroups: [SettingsGroup] = [
         SettingsEntry(tab: .lyrics, de: "Songtext", en: "Lyrics", symbol: "quote.bubble",
                       keywords: "Lyrics Text große Schrift large font Farbe colour color gesungen sung"),
         SettingsEntry(tab: .hud, de: "Lautstärke & Helligkeit", en: "Volume & Brightness", symbol: "speaker.wave.2",
-                      keywords: "HUD Ton sound volume Helligkeit brightness Tastaturlicht keyboard backlight System-Anzeige Balken bar Farbe colour weiß white Prozent percent linker Rand left edge"),
+                      keywords: "HUD Ton sound volume Helligkeit brightness Tastaturlicht keyboard backlight System-Anzeige Balken bar Farbe colour weiß white Prozent percent"),
         SettingsEntry(tab: .battery, de: "Akku & Energie", en: "Battery & Power", symbol: "battery.75percent",
                       keywords: "Batterie battery laden charging Prozent percent wach bleiben stay awake Amphetamine Koffein caffeine Kaffeetasse coffee zugeklappt lid sleep Ruhezustand"),
         SettingsEntry(tab: .calendar, de: "Kalender", en: "Calendar", symbol: "calendar",
@@ -312,6 +312,7 @@ private struct AppearanceSettings: View {
                     Text(L("Schlicht", "Plain")).tag(HeaderIconStyle.plain)
                     Text(L("Kapsel", "Capsule")).tag(HeaderIconStyle.pill)
                     Text(L("Punkt", "Dot")).tag(HeaderIconStyle.dot)
+                    Text(L("Seitenpunkte", "Page dots")).tag(HeaderIconStyle.pageDots)
                 }
                 .pickerStyle(.segmented)
                 Toggle(L("Namen des aktiven Reiters zeigen", "Show the active tab's name"), isOn: $settings.headerActiveLabel)
@@ -545,13 +546,7 @@ private struct HUDSettings: View {
                      "Covers volume, mute, display brightness and keyboard light. Needs the Accessibility permission.")
             }
             Section(L("Darstellung", "Look")) {
-                Picker(L("Ort", "Position"), selection: $settings.hudStyle) {
-                    Text(L("In der Notch", "In the notch")).tag(HUDStyle.notch)
-                    Text(L("Balken am linken Rand", "Bar at the left edge")).tag(HUDStyle.sideBar)
-                }
-                .pickerStyle(.radioGroup)
                 Toggle(L("Prozentzahl anzeigen", "Show percentage"), isOn: $settings.hudShowPercent)
-                    .disabled(settings.hudStyle != .notch)
                 Picker(L("Balkenfarbe", "Bar colour"), selection: $settings.hudBarColor) {
                     Text(L("Weiß", "White")).tag(HUDBarColor.white)
                     Text(L("Farbig", "Coloured")).tag(HUDBarColor.colorful)

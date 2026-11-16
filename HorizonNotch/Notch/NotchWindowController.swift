@@ -275,7 +275,9 @@ final class NotchWindowController {
         // when the pointer grazes its edge.
         if model.isExpanded { rect = rect.insetBy(dx: -8, dy: -8) }
         let inside = rect.contains(location)
-        panel?.ignoresMouseEvents = !inside
+        // Called on every pointer move anywhere: only touch the window
+        // when something changes.
+        if let panel, panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
         return inside
     }
 

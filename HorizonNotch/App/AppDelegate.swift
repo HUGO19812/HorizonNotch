@@ -131,10 +131,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "claudedemo": self?.claude.debugDemo()
             case "dldemo": self?.downloads.debugDemo()
             case "settings": NotificationCenter.default.post(name: .openSettings, object: nil)
-            case "sidehud":
-                AppSettings.shared.hudStyle = .sideBar
-                self?.hud.debugShow()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { AppSettings.shared.hudStyle = .notch }
             case "pin": self?.notchController?.debugPinned = true
             case "unpin": self?.notchController?.debugPinned = false
             case "lock": self?.lockScreen?.show()

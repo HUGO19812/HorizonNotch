@@ -33,15 +33,6 @@ enum OpenPageBehavior: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-/// Where the volume/brightness overlay appears.
-enum HUDStyle: String, CaseIterable, Identifiable {
-    /// Inside the island next to the notch.
-    case notch
-    /// A slim vertical bar at the left edge of the screen.
-    case sideBar
-    var id: String { rawValue }
-}
-
 /// Colour of the volume/brightness/keyboard bar.
 enum HUDBarColor: String, CaseIterable, Identifiable {
     case white
@@ -144,7 +135,6 @@ final class AppSettings: ObservableObject {
     @Published var openPage: OpenPageBehavior { didSet { defaults.set(openPage.rawValue, forKey: "openPage") } }
     @Published var hiddenTabs: Set<String> { didSet { defaults.set(Array(hiddenTabs), forKey: "hiddenTabs") } }
     @Published var hudShowPercent: Bool { didSet { defaults.set(hudShowPercent, forKey: "hudShowPercent") } }
-    @Published var hudStyle: HUDStyle { didSet { defaults.set(hudStyle.rawValue, forKey: "hudStyle") } }
     /// Where a Bluetooth device connecting or disconnecting shows.
     @Published var hudBarColor: HUDBarColor { didSet { defaults.set(hudBarColor.rawValue, forKey: "hudBarColor") } }
     @Published var musicGesture: MusicGesture { didSet { defaults.set(musicGesture.rawValue, forKey: "musicGesture") } }
@@ -232,7 +222,6 @@ final class AppSettings: ObservableObject {
         openPage = OpenPageBehavior(rawValue: defaults.string(forKey: "openPage") ?? "") ?? .first
         hiddenTabs = Set(defaults.stringArray(forKey: "hiddenTabs") ?? [])
         hudShowPercent = defaults.bool(forKey: "hudShowPercent")
-        hudStyle = HUDStyle(rawValue: defaults.string(forKey: "hudStyle") ?? "") ?? .notch
         hudBarColor = HUDBarColor(rawValue: defaults.string(forKey: "hudBarColor") ?? "") ?? .colorful
         musicGesture = MusicGesture(rawValue: defaults.string(forKey: "musicGesture") ?? "") ?? .track
         keepAwakeIcon = defaults.object(forKey: "keepAwakeIcon") as? Bool ?? true
@@ -263,7 +252,7 @@ final class AppSettings: ObservableObject {
         fontDesign = IslandFontDesign(rawValue: defaults.string(forKey: "fontDesign") ?? "") ?? .standard
         boldText = defaults.bool(forKey: "boldText")
         visualizerColor = VisualizerColorMode(rawValue: defaults.string(forKey: "visualizerColor") ?? "") ?? .cover
-        headerIconStyle = HeaderIconStyle(rawValue: defaults.string(forKey: "headerIconStyle") ?? "") ?? .plain
+        headerIconStyle = HeaderIconStyle(rawValue: defaults.string(forKey: "headerIconStyle") ?? "") ?? .pageDots
         headerActiveLabel = defaults.object(forKey: "headerActiveLabel") as? Bool ?? true
         headerLiveInfo = defaults.object(forKey: "headerLiveInfo") as? Bool ?? true
         headerStatusGroup = defaults.object(forKey: "headerStatusGroup") as? Bool ?? true
