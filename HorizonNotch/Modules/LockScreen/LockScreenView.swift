@@ -321,10 +321,11 @@ private struct LiquidPlayerCard<Artwork: View>: View {
             ZStack {
                 // Transparency slider: 100 % = perfectly clear glass, lower
                 // values frost and shade it more and more.
+                let frosted = settings.lockGlassStyle == .frosted
                 if overWallpaper && Wallpaper.shared.image != nil {
-                    CraftedGlass(shape: shape, frost: solid)
+                    CraftedGlass(shape: shape, frost: frosted ? 1 : 0)
                 } else if #available(macOS 26.0, *) {
-                    Color.clear.glassEffect(solid > 0.4 ? .regular : .clear, in: shape)
+                    Color.clear.glassEffect(frosted ? .regular : .clear, in: shape)
                 } else {
                     shape.fill(.ultraThinMaterial).opacity(0.3 + solid * 0.7)
                 }
@@ -349,12 +350,14 @@ private struct CraftedGlass: View {
         ZStack {
             // The wallpaper itself: clear, or frosted by the slider.
             WallpaperPiece()
-                .blur(radius: frost * 28)
+                .blur(radius: frost * 24)
                 .clipShape(shape)
+            // Frosted glass is milky, not dark.
+            shape.fill(Color.white.opacity(frost * 0.1))
             // Lens: a magnified copy, only along the rim, bends the picture
             // at the edge the way thick glass does.
             WallpaperPiece(zoom: 1.12)
-                .blur(radius: frost * 22)
+                .blur(radius: frost * 24)
                 .brightness(0.04)
                 .clipShape(shape)
                 .mask {
@@ -567,35 +570,58 @@ final class HiResArtwork: ObservableObject {
     }
 }
 
-/// Live preview of the lock screen card in the settings, over one of
-/// Apple's desktop pictures, so the transparency slider shows what it does.
-struct LockCardPreview: View {
+/// The lock screen in small at the top of its settings page: the desktop
+/// picture (or one of Apple's), the time large, and the player card in the
+/// chosen glass, frosted or clear – it changes as you pick.
+struct LockScreenPreview: View {
     @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var wallpaper = Wallpaper.shared
+
+    private var picture: NSImage? { wallpaper.image ?? Wallpaper.applePicture }
 
     var body: some View {
+        let frosted = settings.lockGlassStyle == .frosted
         let solid = 1 - min(max(settings.lockScreenTransparency, 0), 1)
-        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
-        let card = shape.frame(width: 230, height: 104)
+        let card = RoundedRectangle(cornerRadius: 14, style: .continuous)
         ZStack {
             backdrop
-            // The same picture, frosted and shaded, inside the card only.
+            TimelineView(.everyMinute) { context in
+                Text(context.date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
+                    .font(.system(size: 64, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+            }
+            .offset(y: -50)
+            // The card: the same picture behind it, clear or frosted.
             backdrop
-                .blur(radius: solid * 28)
+                .blur(radius: frosted ? 14 : 0)
+                .overlay(Color.white.opacity(frosted ? 0.08 : 0))
                 .overlay(Color.black.opacity(solid * 0.55))
-                .overlay(Color.white.opacity(0.05))
-                .mask(card)
-            content
+                .mask(card.frame(width: 200, height: 88).offset(y: 50))
+            card
+                .strokeBorder(LinearGradient(colors: [.white.opacity(0.55), .white.opacity(0.08), .white.opacity(0.35)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
+                .frame(width: 200, height: 88)
+                .offset(y: 50)
+            cardContent
+                .frame(width: 200, height: 88)
+                .offset(y: 50)
         }
-        .frame(height: 150)
+        .frame(height: 290)
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+        .animation(.easeInOut(duration: 0.3), value: frosted)
         .animation(.easeInOut(duration: 0.2), value: solid)
+        .onAppear {
+            if let screen = NSScreen.islandScreen(preferred: settings.displayID) { wallpaper.load(for: screen) }
+        }
     }
 
     private var backdrop: some View {
         Color.clear
             .overlay {
-                if let picture = Wallpaper.applePicture {
+                if let picture {
                     Image(nsImage: picture).resizable().aspectRatio(contentMode: .fill)
                 } else {
                     LinearGradient(colors: [Color(red: 0.35, green: 0.55, blue: 0.85), Color(red: 0.1, green: 0.15, blue: 0.35)],
@@ -605,29 +631,28 @@ struct LockCardPreview: View {
             .clipped()
     }
 
-    private var content: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.35)).frame(width: 34, height: 34)
+    private var cardContent: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.35)).frame(width: 28, height: 28)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(L("Titel", "Title")).font(.system(size: 11, weight: .semibold))
-                    Text(L("Interpret", "Artist")).font(.system(size: 10)).foregroundStyle(.white.opacity(0.7))
+                    Text(L("Titel", "Title")).font(.system(size: 10, weight: .semibold))
+                    Text(L("Interpret", "Artist")).font(.system(size: 9)).foregroundStyle(.white.opacity(0.7))
                 }
                 Spacer()
             }
-            Capsule().fill(Color.white.opacity(0.3)).frame(height: 3)
-                .overlay(alignment: .leading) { Capsule().fill(.white).frame(width: 60, height: 3) }
-            HStack(spacing: 22) {
+            Capsule().fill(Color.white.opacity(0.3)).frame(height: 2.5)
+                .overlay(alignment: .leading) { Capsule().fill(.white).frame(width: 50, height: 2.5) }
+            HStack(spacing: 20) {
                 Image(systemName: "backward.fill")
-                Image(systemName: "pause.fill").font(.system(size: 16))
+                Image(systemName: "pause.fill").font(.system(size: 13))
                 Image(systemName: "forward.fill")
             }
-            .font(.system(size: 11))
+            .font(.system(size: 9))
             .frame(maxWidth: .infinity)
         }
         .foregroundStyle(.white)
         .shadow(color: .black.opacity(0.25), radius: 1.5, y: 0.5)
-        .padding(12)
-        .frame(width: 230, height: 104)
+        .padding(10)
     }
 }

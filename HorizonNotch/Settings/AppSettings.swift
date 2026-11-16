@@ -69,6 +69,15 @@ enum LockScreenStart: String, CaseIterable, Identifiable {
 }
 
 /// Background behind the large lock screen player.
+/// The lock screen card's glass.
+enum LockGlassStyle: String, CaseIterable, Identifiable {
+    /// See-through, only the rim bends the picture.
+    case clear
+    /// Milky: the picture behind is blurred and lightened.
+    case frosted
+    var id: String { rawValue }
+}
+
 enum LockScreenBackdrop: String, CaseIterable, Identifiable {
     /// Dark, tinted by the cover colour.
     case tinted
@@ -130,6 +139,7 @@ final class AppSettings: ObservableObject {
     /// How see-through the lock screen player card is (0 = solid glass, 1 = almost invisible).
     @Published var lockScreenTransparency: Double { didSet { defaults.set(lockScreenTransparency, forKey: "lockScreenTransparency") } }
     /// Background once the cover is shown large.
+    @Published var lockGlassStyle: LockGlassStyle { didSet { defaults.set(lockGlassStyle.rawValue, forKey: "lockGlassStyle") } }
     @Published var lockScreenBackdrop: LockScreenBackdrop { didSet { defaults.set(lockScreenBackdrop.rawValue, forKey: "lockScreenBackdrop") } }
     /// Hide the island while another app or a video fills the screen.
     @Published var hideInFullscreen: Bool { didSet { defaults.set(hideInFullscreen, forKey: "hideInFullscreen") } }
@@ -234,6 +244,7 @@ final class AppSettings: ObservableObject {
             defaults.set(true, forKey: "lockScreenTransparencyV2")
             lockScreenTransparency = (storedTransparency == nil || storedTransparency == 0.6) ? 0.85 : storedTransparency!
         }
+        lockGlassStyle = LockGlassStyle(rawValue: defaults.string(forKey: "lockGlassStyle") ?? "") ?? .clear
         lockScreenBackdrop = LockScreenBackdrop(rawValue: defaults.string(forKey: "lockScreenBackdrop") ?? "") ?? .cover
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true

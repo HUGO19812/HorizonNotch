@@ -488,6 +488,120 @@ private struct TilePicker<Value: Hashable>: View {
     }
 }
 
+/// The player source as a small dark stage: name above, app icon below; a
+/// soft light rises under the chosen app with a dot, and follows the
+/// pointer while it hovers another one.
+private struct SourcePicker: View {
+    @Binding var selection: MediaSourceChoice
+    @State private var hovered: MediaSourceChoice?
+    @Namespace private var glow
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+        HStack(spacing: 0) {
+            ForEach(MediaSourceChoice.allCases) { choice in
+                item(choice)
+            }
+        }
+        .padding(.vertical, 18)
+        .padding(.horizontal, 10)
+        .background(shape.fill(Color.black))
+        .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1.5))
+        .clipShape(shape)
+        .frame(maxWidth: 520)
+        .frame(maxWidth: .infinity)
+        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: selection)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: hovered)
+    }
+
+    private func item(_ choice: MediaSourceChoice) -> some View {
+        let selected = choice == selection
+        let lit = hovered.map { $0 == choice } ?? selected
+        return Button { selection = choice } label: {
+            VStack(spacing: 12) {
+                Text(title(choice))
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.white.opacity(selected || lit ? 0.85 : 0.5))
+                icon(choice)
+                    .frame(width: 44, height: 44)
+                    .scaleEffect(lit ? 1.06 : 1)
+                Circle()
+                    .fill(Color.white.opacity(selected ? 0.9 : 0))
+                    .frame(width: 5, height: 5)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+            .background(alignment: .bottom) {
+                if lit {
+                    Ellipse()
+                        .fill(RadialGradient(colors: [.white.opacity(selected ? 0.32 : 0.18), .clear],
+                                             center: .center, startRadius: 0, endRadius: 60))
+                        .frame(width: 120, height: 90)
+                        .offset(y: 46)
+                        .blur(radius: 8)
+                        .matchedGeometryEffect(id: "glow", in: glow)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            if inside { hovered = choice } else if hovered == choice { hovered = nil }
+        }
+    }
+
+    private func title(_ choice: MediaSourceChoice) -> String {
+        switch choice {
+        case .auto: return "Auto"
+        case .spotify: return "Spotify"
+        case .music: return L("Musik", "Music")
+        }
+    }
+
+    @ViewBuilder
+    private func icon(_ choice: MediaSourceChoice) -> some View {
+        if let bundle = choice.bundleID,
+           let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                .resizable()
+                .scaledToFit()
+        } else {
+            Image(systemName: "person.crop.rectangle.stack.fill")
+                .font(.system(size: 26, weight: .medium))
+                .foregroundStyle(.white.opacity(0.85))
+        }
+    }
+}
+
+/// Clear or frosted, as two wide buttons; the chosen one lifted.
+private struct GlassStylePicker: View {
+    @Binding var selection: LockGlassStyle
+
+    var body: some View {
+        HStack(spacing: 12) {
+            button(.clear, L("Klar", "Clear"))
+            button(.frosted, L("Milchig", "Frosted"))
+        }
+        .animation(.easeInOut(duration: 0.2), value: selection)
+    }
+
+    private func button(_ style: LockGlassStyle, _ title: String) -> some View {
+        let selected = selection == style
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        return Button { selection = style } label: {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(selected ? 1 : 0.5))
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .background(shape.fill(Color.white.opacity(selected ? 0.14 : 0.04)))
+                .overlay(shape.strokeBorder(Color.white.opacity(selected ? 0.35 : 0.1), lineWidth: selected ? 1.5 : 1))
+                .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// Footer text under a settings section.
 private func note(_ de: String, _ en: String) -> some View {
     Text(L(de, en)).foregroundStyle(.secondary)
@@ -801,13 +915,10 @@ private struct MusicSettings: View {
         // Only the sections: the settings window puts them in one form.
         Group {
             Section {
-                TilePicker(title: L("Quelle", "Source"), selection: $settings.mediaSource, options: [
-                    TileOption(value: MediaSourceChoice.auto, title: "Auto", symbol: "wand.and.stars"),
-                    TileOption(value: MediaSourceChoice.spotify, title: "Spotify", symbol: "music.note",
-                               bundleID: "com.spotify.client"),
-                    TileOption(value: MediaSourceChoice.music, title: L("Musik", "Music"), symbol: "music.note",
-                               bundleID: "com.apple.Music"),
-                ])
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(L("Quelle", "Source"))
+                    SourcePicker(selection: $settings.mediaSource)
+                }
             } footer: {
                 note("Auto zeigt, was gerade spielt (auch Browser). Spotify oder Musik zeigt nur diese App.",
                      "Auto shows whatever plays (browsers too). Spotify or Music shows only that app.")
@@ -1222,6 +1333,17 @@ private struct LockScreenSettings: View {
         // Only the sections: the settings window puts them in one form.
         Group {
             Section {
+                LockScreenPreview()
+            }
+            Section {
+                GlassStylePicker(selection: $settings.lockGlassStyle)
+            } header: {
+                Text(L("Glas", "Glass style"))
+            } footer: {
+                note("Klar lässt das Hintergrundbild durchscheinen, nur der Rand bricht es. Milchig zeichnet es weich.",
+                     "Clear lets the wallpaper show through, only the rim bends it. Frosted blurs it softly.")
+            }
+            Section {
                 Toggle(L("Musik-Player auf dem Sperrbildschirm", "Music player on the lock screen"), isOn: $settings.lockScreenWidgets)
                 Toggle(L("Wetter, Akku und Kopfhörer unter der Uhr", "Weather, battery and headphones under the clock"),
                        isOn: $settings.lockScreenStatusRow)
@@ -1232,12 +1354,11 @@ private struct LockScreenSettings: View {
                     TileOption(value: LockScreenStart.lyrics, title: L("Cover und Songtext", "Cover and lyrics"), symbol: "quote.bubble"),
                 ])
                 .disabled(!settings.lockScreenWidgets)
-                ValueSlider(title: L("Durchsichtigkeit", "Transparency"),
+                ValueSlider(title: L("Helligkeit des Glases", "Glass brightness"),
                             value: Binding(get: { settings.lockScreenTransparency * 100 },
                                            set: { settings.lockScreenTransparency = $0 / 100 }),
                             range: 0...100, step: 5, format: "%.0f %%")
                     .disabled(!settings.lockScreenWidgets)
-                LockCardPreview()
                 Picker(L("Hintergrund beim großen Cover", "Background with large cover"), selection: $settings.lockScreenBackdrop) {
                     Text(L("Dunkel, vom Cover getönt", "Dark, tinted by the cover")).tag(LockScreenBackdrop.tinted)
                     Text(L("Cover, unscharf", "Cover, blurred")).tag(LockScreenBackdrop.coverBlurred)
