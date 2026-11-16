@@ -1370,6 +1370,23 @@ private struct ShelfSettings: View {
 
 private struct ConnectivitySettings: View {
     @ObservedObject private var settings = AppSettings.shared
+    @State private var customPicture = NSImage(contentsOf: DevicePhotos.customURL)
+
+    private func choosePicture() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .jpeg, .heic, .tiff]
+        panel.allowsMultipleSelection = false
+        NSApp.activate()
+        guard panel.runModal() == .OK, let url = panel.url, let image = NSImage(contentsOf: url),
+              let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
+              let png = bitmap.representation(using: .png, properties: [:]) else { return }
+        try? FileManager.default.createDirectory(at: DevicePhotos.customURL.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        try? png.write(to: DevicePhotos.customURL)
+        DevicePhotos.resetCache()
+        customPicture = image
+        settings.accessoryStyle = .model3D
+    }
 
     var body: some View {
         // Only the sections: the settings window puts them in one form.
@@ -1378,16 +1395,35 @@ private struct ConnectivitySettings: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(L("Darstellung der Kopfhörer", "Headphone style"))
                     StagePicker(selection: $settings.accessoryStyle, items: [
-                        StageItem(value: AccessoryStyle.model3D, picture: AnyView(AirPods3DView(spinning: false))),
+                        StageItem(value: AccessoryStyle.model3D, picture: AnyView(
+                            Group {
+                                if let custom = customPicture {
+                                    Image(nsImage: custom).resizable().scaledToFit()
+                                } else {
+                                    AirPods3DView(spinning: false)
+                                }
+                            })),
                         StageItem(value: AccessoryStyle.glyph, picture: AnyView(
                             Image(systemName: "airpods")
                                 .font(.system(size: 30, weight: .medium))
                                 .foregroundStyle(.white))),
                     ], pictureSize: 64)
                 }
+                HStack {
+                    Text(L("Eigenes Bild", "Own picture"))
+                    Spacer()
+                    if customPicture != nil {
+                        Button(L("Entfernen", "Remove")) {
+                            try? FileManager.default.removeItem(at: DevicePhotos.customURL)
+                            DevicePhotos.resetCache()
+                            customPicture = nil
+                        }
+                    }
+                    Button(L("Bild wählen …", "Choose picture …"), action: choosePicture)
+                }
             } footer: {
-                note("3D zeigt beim Verbinden ein echtes, langsam drehendes 3D-Modell, Symbol das schlichte Systemsymbol.",
-                     "3D shows a real, slowly turning 3D model when connecting, Symbol the plain system glyph.")
+                note("Links ein Bild deiner Kopfhörer (z. B. ein 3D-Render als PNG mit durchsichtigem Hintergrund, über „Bild wählen …“) oder ohne eigenes Bild das gezeichnete Modell, rechts das schlichte Systemsymbol.",
+                     "Left a picture of your headphones (e.g. a 3D render as a PNG with a transparent background, via “Choose picture …”) or, without one, the drawn model; right the plain system glyph.")
             }
             Section {
                 Toggle(L("Alle Bluetooth-Geräte und AirPods-Akku", "All Bluetooth devices and AirPods battery"),

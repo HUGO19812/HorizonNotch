@@ -260,7 +260,14 @@ final class AppSettings: ObservableObject {
             lockScreenTransparency = (storedTransparency == nil || storedTransparency == 0.6) ? 0.85 : storedTransparency!
         }
         islandDesign = IslandDesign(rawValue: defaults.string(forKey: "islandDesign") ?? "") ?? .notch
-        accessoryStyle = AccessoryStyle(rawValue: defaults.string(forKey: "accessoryStyle") ?? "") ?? .model3D
+        // The drawn 3D model was not liked: the glyph is the default now.
+        if defaults.bool(forKey: "accessoryStyleV2") {
+            accessoryStyle = AccessoryStyle(rawValue: defaults.string(forKey: "accessoryStyle") ?? "") ?? .glyph
+        } else {
+            defaults.set(true, forKey: "accessoryStyleV2")
+            defaults.set(AccessoryStyle.glyph.rawValue, forKey: "accessoryStyle")
+            accessoryStyle = .glyph
+        }
         lockGlassStyle = LockGlassStyle(rawValue: defaults.string(forKey: "lockGlassStyle") ?? "") ?? .clear
         lockScreenBackdrop = LockScreenBackdrop(rawValue: defaults.string(forKey: "lockScreenBackdrop") ?? "") ?? .cover
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true

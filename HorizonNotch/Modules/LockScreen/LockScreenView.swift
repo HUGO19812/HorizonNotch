@@ -365,41 +365,54 @@ private struct CraftedGlass: View {
     private var clear: some View {
         ZStack {
             WallpaperPiece()
-            // Lens: magnified copies only along the rim.
-            WallpaperPiece(zoom: 1.28)
-                .brightness(0.04)
-                .mask(rim(width: 34, blur: 12))
-            // Colour fringe: red pushed out, blue pulled in.
-            WallpaperPiece(zoom: 1.34)
-                .colorMultiply(Color(red: 1, green: 0.35, blue: 0.3))
-                .mask(rim(width: 10, blur: 4))
-                .blendMode(.plusLighter)
-                .opacity(0.55)
+            // Lens: a magnified copy only along the rim.
+            WallpaperPiece(zoom: 1.16)
+                .brightness(0.03)
+                .mask(rim(width: 26, blur: 10))
+            // A hint of colour where the glass bends most – subtle.
             WallpaperPiece(zoom: 1.2)
-                .colorMultiply(Color(red: 0.3, green: 0.5, blue: 1))
-                .mask(rim(width: 14, blur: 5))
+                .colorMultiply(Color(red: 1, green: 0.55, blue: 0.5))
+                .mask(rim(width: 5, blur: 3))
                 .blendMode(.plusLighter)
-                .opacity(0.5)
-            // A faint bright edge where the light catches.
-            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.35), .white.opacity(0.03), .white.opacity(0.2)],
+                .opacity(0.18)
+            WallpaperPiece(zoom: 1.12)
+                .colorMultiply(Color(red: 0.5, green: 0.65, blue: 1))
+                .mask(rim(width: 6, blur: 3))
+                .blendMode(.plusLighter)
+                .opacity(0.16)
+            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.28), .white.opacity(0.03), .white.opacity(0.14)],
                                               startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
                 .blendMode(.plusLighter)
         }
         .clipShape(shape)
     }
 
+    /// Like Canopy's frosted card: the picture still recognisable but soft,
+    /// a light grey veil, a bright beam of light falling diagonally across
+    /// the glass from the upper right, and a soft light rim.
     private var frosted: some View {
         ZStack {
             WallpaperPiece()
-                .blur(radius: 22)
-            shape.fill(Color.white.opacity(0.12))
-            // The diagonal sheen across the glass.
-            LinearGradient(stops: [.init(color: .clear, location: 0.25),
-                                   .init(color: .white.opacity(0.16), location: 0.5),
-                                   .init(color: .clear, location: 0.72)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
+                .blur(radius: 11)
+            shape.fill(Color.white.opacity(0.09))
+            // The beam: a wide soft band of light, tilted.
+            GeometryReader { proxy in
+                let w = proxy.size.width, h = proxy.size.height
+                LinearGradient(stops: [.init(color: .clear, location: 0),
+                                       .init(color: .white.opacity(0.32), location: 0.5),
+                                       .init(color: .clear, location: 1)],
+                               startPoint: .leading, endPoint: .trailing)
+                    .frame(width: w * 0.42, height: h * 2.2)
+                    .rotationEffect(.degrees(32))
+                    .position(x: w * 0.6, y: h * 0.5)
+                    .blur(radius: 14)
+            }
+            .blendMode(.plusLighter)
+            // Light gathering along the top and right edges.
+            shape.strokeBorder(Color.white.opacity(0.22), lineWidth: 6)
+                .blur(radius: 6)
                 .blendMode(.plusLighter)
-            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.4), .white.opacity(0.08), .white.opacity(0.25)],
+            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.45), .white.opacity(0.12), .white.opacity(0.3)],
                                               startPoint: .top, endPoint: .bottom), lineWidth: 1)
         }
         .clipShape(shape)

@@ -27,6 +27,8 @@ final class DeviceCardModule: NotchModule {
     let compactWingWidth: CGFloat = 96
 
     @Published private(set) var card: DeviceCard?
+    /// The last card shown, kept so it can fade out instead of vanishing.
+    private(set) var lastCard: DeviceCard?
     private var hideWork: DispatchWorkItem?
 
     var isActive: Bool { card != nil }
@@ -38,6 +40,7 @@ final class DeviceCardModule: NotchModule {
         guard AppSettings.shared.isEnabled("connectivity") else { return }
         let same = self.card?.name == card.name && self.card?.connected == card.connected
         self.card = card
+        lastCard = card
         if same, hideWork != nil { return }
         hideWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
@@ -63,7 +66,7 @@ private struct DeviceCardView: View {
     var inline = false
 
     var body: some View {
-        if let card = module.card {
+        if let card = module.card ?? module.lastCard {
             HStack(spacing: 14) {
                 DeviceImage(card: card)
                     .frame(width: card.connected ? 58 : 44, height: card.connected ? 58 : 44)
@@ -160,16 +163,15 @@ private struct DeviceImage: View {
                 .fill(Color.white.opacity(card.connected ? 0.14 : 0.05))
                 .blur(radius: 14)
                 .scaleEffect(0.9)
-            if AppSettings.shared.accessoryStyle == .model3D && isEarbuds && photo == nil {
-                AirPods3DView()
-                    .opacity(card.connected ? 1 : 0.55)
-            } else if let photo {
+            if let photo, AppSettings.shared.accessoryStyle == .model3D {
                 Image(nsImage: photo)
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
                     .shadow(color: .black.opacity(0.45), radius: 6, y: 4)
-                    .padding(2)
+                    .opacity(card.connected ? 1 : 0.55)
+            } else if AppSettings.shared.accessoryStyle == .model3D && isEarbuds {
+                AirPods3DView()
                     .opacity(card.connected ? 1 : 0.55)
             } else {
                 symbolView
@@ -262,7 +264,16 @@ enum DevicePhotos {
         return .other
     }
 
+    /// A picture the user chose in the settings (any PNG, e.g. a render
+    /// with a transparent background), used for all earbuds.
+    static let customURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/HorizonNotch/device-picture.png")
+
+    static func resetCache() { cache.removeAll() }
+
     private static func assetImage(_ kind: Kind) -> NSImage? {
+        if kind == .pro || kind == .regular || kind == .max,
+           let custom = NSImage(contentsOf: customURL) { return custom }
         let names: [String]
         switch kind {
         case .pro: names = ["AirPodsPro", "AirPods"]
