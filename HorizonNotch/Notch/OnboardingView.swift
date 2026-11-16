@@ -12,79 +12,116 @@ enum OnboardingActions {
     static var accessibilityChanged: () -> Void = {}
 }
 
-/// First launch, right in the notch: "hello" is written out, then one
-/// permission per step – what it is for, a button to allow it, a tick when
-/// it is granted – and finally a short "all set".
+/// First launch, right in the notch on a larger stage: "hello" is
+/// written out, then one page with every permission (Allow beside each),
+/// one to connect Claude Code, and a short "all set". Back, page dots and
+/// Continue along the bottom.
 struct OnboardingView: View {
     let onFinish: () -> Void
 
     private enum Step: Int, CaseIterable {
-        case hello, accessibility, calendar, location, done
+        case hello, permissions, agent, done
     }
 
     @State private var step: Step = .hello
-    @State private var granted: Set<Step> = []
+    @State private var forward = true
+    @State private var granted: Set<String> = []
+    @State private var claudeConnected = ClaudeHooks.isInstalled
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        ZStack {
-            switch step {
-            case .hello:
-                HelloView { go(to: .accessibility) }
-                    .transition(.opacity)
-            case .done:
-                DoneStep(onFinish: onFinish)
-                    .transition(stepTransition)
-            default:
-                PermissionStep(info: info(for: step), granted: granted.contains(step),
-                               allow: { allow(step) }, next: { advance() })
-                    .id(step)
-                    .transition(stepTransition)
+        VStack(spacing: 0) {
+            ZStack {
+                switch step {
+                case .hello:
+                    HelloView { go(.permissions) }
+                case .permissions:
+                    PermissionsPage(granted: granted, allow: allow)
+                        .transition(slide)
+                case .agent:
+                    AgentPage(connected: claudeConnected, connect: connectClaude)
+                        .transition(slide)
+                case .done:
+                    DoneStep()
+                        .transition(slide)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if step != .hello { bottomBar }
         }
-        .overlay(alignment: .bottom) {
-            if step != .hello { progress.padding(.bottom, 2) }
-        }
+        .padding(.horizontal, 6)
+        .padding(.bottom, 4)
         .onAppear(perform: refresh)
         .onReceive(timer) { _ in refresh() }
     }
 
-    private var stepTransition: AnyTransition {
-        .asymmetric(insertion: .opacity.combined(with: .offset(x: 30)),
-                    removal: .opacity.combined(with: .offset(x: -30)))
+    private var slide: AnyTransition {
+        .asymmetric(insertion: .opacity.combined(with: .offset(x: forward ? 40 : -40)),
+                    removal: .opacity.combined(with: .offset(x: forward ? -40 : 40)))
     }
 
-    private var progress: some View {
-        HStack(spacing: 5) {
-            ForEach(Step.allCases.dropFirst(), id: \.rawValue) { item in
-                Capsule()
-                    .fill(Color.white.opacity(item == step ? 0.9 : (item.rawValue < step.rawValue ? 0.45 : 0.18)))
-                    .frame(width: item == step ? 16 : 5, height: 5)
+    private var bottomBar: some View {
+        HStack {
+            Button(L("Zurück", "Back")) { go(Step(rawValue: step.rawValue - 1) ?? .hello) }
+                .buttonStyle(.plain)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 110, alignment: .leading)
+            Spacer()
+            HStack(spacing: 5) {
+                ForEach(Step.allCases, id: \.rawValue) { item in
+                    Capsule()
+                        .fill(Color.white.opacity(item == step ? 1 : 0.3))
+                        .frame(width: item == step ? 18 : 6, height: 6)
+                }
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: step)
+            Spacer()
+            Button {
+                if step == .done { onFinish() } else { go(Step(rawValue: step.rawValue + 1) ?? .done) }
+            } label: {
+                Text(primaryTitle)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(primaryFilled ? .black : .white)
+                    .padding(.horizontal, 16)
+                    .frame(height: 32)
+                    .background(Capsule().fill(primaryFilled ? Color.white : Color.white.opacity(0.14)))
+            }
+            .buttonStyle(PressScaleStyle())
+            .frame(width: 110, alignment: .trailing)
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: step)
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
     }
 
-    private func go(to next: Step) {
+    /// Permissions still missing: "Later" in grey, otherwise "Continue".
+    private var primaryFilled: Bool { !(step == .permissions && granted.count < 3) }
+
+    private var primaryTitle: String {
+        switch step {
+        case .done: return L("Fertig", "Done")
+        case .permissions where granted.count < 3: return L("Später", "Skip for now")
+        default: return L("Weiter", "Continue")
+        }
+    }
+
+    private func go(_ next: Step) {
+        forward = next.rawValue > step.rawValue
         withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) { step = next }
     }
 
-    private func advance() {
-        go(to: Step(rawValue: step.rawValue + 1) ?? .done)
-    }
-
-    private func allow(_ step: Step) {
-        switch step {
-        case .accessibility:
+    private func allow(_ key: String) {
+        switch key {
+        case "accessibility":
             Permissions.requestAccessibility()
             Permissions.openAccessibilitySettings()
-        case .calendar:
+        case "calendar":
             if EKEventStore.authorizationStatus(for: .event) == .notDetermined {
                 OnboardingActions.requestCalendar()
             } else {
                 Permissions.openPrivacySettings("Privacy_Calendars")
             }
-        case .location:
+        case "location":
             if CLLocationManager().authorizationStatus == .notDetermined {
                 OnboardingActions.requestLocation()
             } else {
@@ -95,140 +132,202 @@ struct OnboardingView: View {
         }
     }
 
-    /// Checks the permissions; a step that just got granted moves on by
-    /// itself after a moment.
-    private func refresh() {
-        var now: Set<Step> = []
-        if Permissions.accessibilityGranted { now.insert(.accessibility) }
-        if EKEventStore.authorizationStatus(for: .event) == .fullAccess { now.insert(.calendar) }
-        if Permissions.locationGranted { now.insert(.location) }
-        let fresh = now.subtracting(granted)
-        guard !fresh.isEmpty || now != granted else { return }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { granted = now }
-        if fresh.contains(.accessibility) { OnboardingActions.accessibilityChanged() }
-        if fresh.contains(step) {
-            let current = step
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                if step == current { advance() }
-            }
-        }
+    private func connectClaude() {
+        try? ClaudeHooks.install()
+        withAnimation { claudeConnected = ClaudeHooks.isInstalled }
     }
 
-    private func info(for step: Step) -> PermissionStep.Info {
-        switch step {
-        case .accessibility:
-            return .init(symbol: "accessibility", color: Color(red: 0.25, green: 0.52, blue: 1),
-                         title: L("Bedienungshilfen", "Accessibility"),
-                         text: L("Damit Lautstärke und Helligkeit in der Notch statt in der System-Anzeige erscheinen.",
-                                 "So volume and brightness show in the notch instead of the system overlay."))
-        case .calendar:
-            return .init(symbol: "calendar", color: Color(red: 1, green: 0.32, blue: 0.3),
-                         title: L("Kalender", "Calendar"),
-                         text: L("Für deinen nächsten Termin und den Countdown bis zum Meeting.",
-                                 "For your next event and the countdown to a meeting."))
-        case .location:
-            return .init(symbol: "location.fill", color: Color(red: 0.2, green: 0.75, blue: 0.45),
-                         title: L("Standort", "Location"),
-                         text: L("Für das Wetter dort, wo du gerade bist. Alternativ suchst du später einen Ort.",
-                                 "For the weather where you are. You can also pick a place later."))
-        default:
-            return .init(symbol: "", color: .clear, title: "", text: "")
+    private func refresh() {
+        var now: Set<String> = []
+        if Permissions.accessibilityGranted { now.insert("accessibility") }
+        if EKEventStore.authorizationStatus(for: .event) == .fullAccess { now.insert("calendar") }
+        if Permissions.locationGranted { now.insert("location") }
+        if now.contains("accessibility") && !granted.contains("accessibility") { OnboardingActions.accessibilityChanged() }
+        if now != granted { withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { granted = now } }
+    }
+}
+
+/// Title and subtitle at the top of a setup page.
+private struct PageTitle: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(title).font(.system(size: 19, weight: .bold))
+            Text(subtitle)
+                .font(.system(size: 12.5))
+                .foregroundStyle(.white.opacity(0.55))
+                .multilineTextAlignment(.center)
         }
     }
 }
 
-/// One permission: a coloured tile, what it is for, Allow and Skip.
-private struct PermissionStep: View {
-    struct Info {
-        let symbol: String
-        let color: Color
-        let title: String
-        let text: String
-    }
-
-    let info: Info
-    let granted: Bool
-    let allow: () -> Void
-    let next: () -> Void
+/// One row: a coloured tile, name and what it is for, a button on the right.
+private struct SetupRow<Trailing: View>: View {
+    let symbol: String
+    let colors: [Color]
+    let title: String
+    let detail: String
+    @ViewBuilder let trailing: Trailing
 
     var body: some View {
-        HStack(spacing: 18) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(LinearGradient(colors: [info.color, info.color.opacity(0.7)], startPoint: .top, endPoint: .bottom))
-                Image(systemName: granted ? "checkmark" : info.symbol)
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .frame(width: 62, height: 62)
-            .shadow(color: info.color.opacity(0.45), radius: 12)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(info.title)
-                    .font(.system(size: 16, weight: .bold))
-                Text(info.text)
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 14, weight: .semibold))
+                Text(detail)
                     .font(.system(size: 11.5))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .lineLimit(2)
-                HStack(spacing: 8) {
-                    if granted {
-                        Label(L("Erlaubt", "Allowed"), systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 11.5, weight: .semibold))
-                            .foregroundStyle(Color(red: 0.4, green: 0.85, blue: 0.5))
-                        Spacer(minLength: 0)
-                        pill(L("Weiter", "Next"), filled: true, action: next)
-                    } else {
-                        pill(L("Erlauben", "Allow"), filled: true, action: allow)
-                        pill(L("Später", "Later"), filled: false, action: next)
-                    }
-                }
-                .padding(.top, 4)
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            trailing
         }
-        .padding(.horizontal, 26)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 12)
+        .frame(height: 56)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.06), lineWidth: 1))
+    }
+}
+
+private func pillButton(_ title: String, filled: Bool = true, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        Text(title)
+            .font(.system(size: 12.5, weight: .semibold))
+            .foregroundStyle(filled ? .black : .white)
+            .padding(.horizontal, 16)
+            .frame(height: 30)
+            .background(Capsule().fill(filled ? Color.white : Color.white.opacity(0.14)))
+    }
+    .buttonStyle(PressScaleStyle())
+}
+
+private struct GrantedMark: View {
+    var title = L("Erlaubt", "Allowed")
+
+    var body: some View {
+        Label(title, systemImage: "checkmark.circle.fill")
+            .font(.system(size: 12.5, weight: .semibold))
+            .foregroundStyle(Color(red: 0.4, green: 0.85, blue: 0.5))
+            .transition(.scale.combined(with: .opacity))
+    }
+}
+
+private struct PermissionsPage: View {
+    let granted: Set<String>
+    let allow: (String) -> Void
+
+    private var missing: Int { 3 - granted.count }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            PageTitle(title: L("Zugriff für Horizon Notch", "Give Horizon Notch access"),
+                      subtitle: missing == 0
+                        ? L("Alles erlaubt.", "All set.")
+                        : L("Noch \(missing) offen. Überspringst du, bleiben diese Funktionen aus, bis du sie erlaubst.",
+                            "\(missing) still to allow. Skip, and those features stay off until you do."))
+            VStack(spacing: 8) {
+                row("accessibility", symbol: "accessibility", colors: [Color(red: 0.3, green: 0.6, blue: 1), Color(red: 0.2, green: 0.45, blue: 0.95)],
+                    title: L("Bedienungshilfen", "Accessibility"),
+                    detail: L("Für Lautstärke, Helligkeit und die Medientasten", "For volume, brightness and the media keys"))
+                row("calendar", symbol: "calendar", colors: [Color(red: 1, green: 0.42, blue: 0.4), Color(red: 0.9, green: 0.28, blue: 0.3)],
+                    title: L("Kalender", "Calendars"),
+                    detail: L("Für deinen Tag und den Countdown bis zu Meetings", "To show your day and count down to calls"))
+                row("location", symbol: "location.fill", colors: [Color(red: 0.35, green: 0.8, blue: 0.5), Color(red: 0.2, green: 0.65, blue: 0.4)],
+                    title: L("Standort", "Location"),
+                    detail: L("Für das Wetter dort, wo du bist", "For the weather where you are"))
+            }
+        }
+        .padding(.top, 6)
     }
 
-    private func pill(_ title: String, filled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11.5, weight: .semibold))
-                .foregroundStyle(filled ? .black : .white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 5)
-                .background(Capsule().fill(filled ? Color.white : Color.white.opacity(0.14)))
+    private func row(_ key: String, symbol: String, colors: [Color], title: String, detail: String) -> some View {
+        SetupRow(symbol: symbol, colors: colors, title: title, detail: detail) {
+            if granted.contains(key) {
+                GrantedMark()
+            } else {
+                pillButton(L("Erlauben", "Allow")) { allow(key) }
+            }
         }
-        .buttonStyle(PressScaleStyle())
+    }
+}
+
+/// Connect Claude Code: a little picture of what the notch then shows.
+private struct AgentPage: View {
+    let connected: Bool
+    let connect: () -> Void
+
+    private var installed: Bool {
+        FileManager.default.fileExists(atPath: FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude").path)
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            PageTitle(title: L("Coding-Agent verbinden", "Connect your coding agent"),
+                      subtitle: L("Sieh hier, was er gerade tut, wann er dich braucht und wann er fertig ist.",
+                                  "See here what it's doing, when it needs you, and when it's done."))
+            ZStack(alignment: .top) {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(LinearGradient(colors: [Color(red: 0.42, green: 0.32, blue: 0.68), Color(red: 0.22, green: 0.38, blue: 0.7)],
+                                         startPoint: .leading, endPoint: .trailing))
+                Rectangle().fill(Color.white.opacity(0.15)).frame(height: 16)
+                VStack(spacing: 6) {
+                    HStack {
+                        Text("✳").font(.system(size: 12, weight: .bold)).foregroundStyle(Color(red: 0.85, green: 0.47, blue: 0.34))
+                        Spacer()
+                        Text("1:40").font(.system(size: 12, weight: .bold).monospacedDigit())
+                    }
+                    Text(L("Führt die Tests aus", "Running the tests"))
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                .padding(.horizontal, 18)
+                .frame(width: 280, height: 58)
+                .background(UnevenRoundedRectangle(bottomLeadingRadius: 16, bottomTrailingRadius: 16, style: .continuous)
+                    .fill(Color.black))
+            }
+            .frame(width: 420, height: 92)
+            SetupRow(symbol: "sparkle", colors: [Color(white: 0.25), Color(white: 0.15)],
+                     title: "Claude Code",
+                     detail: installed ? L("Auf diesem Mac gefunden", "Found on this Mac")
+                                       : L("Noch nicht installiert", "Not installed yet")) {
+                if connected {
+                    GrantedMark(title: L("Verbunden", "Connected"))
+                } else {
+                    pillButton(L("Verbinden", "Connect"), action: connect)
+                }
+            }
+            Text(L("Fügt einen Hook neben deinen ein und legt eine Sicherung der Datei an. Nichts verlässt deinen Mac.",
+                   "Adds a hook next to yours and keeps a copy of the file. Nothing leaves your Mac."))
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.45))
+        }
+        .padding(.top, 6)
     }
 }
 
 private struct DoneStep: View {
-    let onFinish: () -> Void
-
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 40))
+                .foregroundStyle(Color(red: 0.4, green: 0.85, blue: 0.5))
             Text(L("Alles bereit", "You're all set"))
-                .font(.system(size: 18, weight: .bold))
-            Text(L("Fahr mit dem Zeiger auf die Notch, um sie zu öffnen. Mit zwei Fingern wischen wechselt die Reiter.",
-                   "Move the pointer onto the notch to open it. Swipe with two fingers to switch tabs."))
-                .font(.system(size: 11.5))
-                .foregroundStyle(.white.opacity(0.6))
+                .font(.system(size: 20, weight: .bold))
+            Text(L("Fahr mit dem Zeiger auf die Notch, um sie zu öffnen. Mit zwei Fingern seitlich wischen wechselt die Seiten.",
+                   "Move the pointer onto the notch to open it. Swipe sideways with two fingers to switch pages."))
+                .font(.system(size: 12.5))
+                .foregroundStyle(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 380)
-            Button(action: onFinish) {
-                Text(L("Fertig", "Done"))
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(.white))
-            }
-            .buttonStyle(PressScaleStyle())
-            .padding(.top, 4)
+                .frame(maxWidth: 420)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

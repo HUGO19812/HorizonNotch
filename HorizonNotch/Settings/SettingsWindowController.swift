@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsTab: String, Hashable {
-    case general, appearance, behavior
+    case general, appearance, behavior, displays
     case tabs, modules
     case music, lyrics, hud, battery, calendar, weather, shelf, connectivity, notifications, downloads, claude, lockScreen
     case permissions, about

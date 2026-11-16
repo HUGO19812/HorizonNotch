@@ -6,7 +6,7 @@ import SwiftUI
 /// pointer (event monitors, no timers) and lets clicks through everywhere
 /// except on the island itself.
 final class NotchWindowController {
-    static let panelSize = CGSize(width: 760, height: 300)
+    static let panelSize = CGSize(width: 760, height: 400)
 
     let model: NotchViewModel
     private let coordinator: NotchCoordinator
@@ -77,6 +77,10 @@ final class NotchWindowController {
             .sink { [weak self] _ in DispatchQueue.main.async { self?.screenConfigurationChanged() } }
             .store(in: &subscriptions)
         settings.$notchHeightAdjust
+            .dropFirst()
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.screenConfigurationChanged() } }
+            .store(in: &subscriptions)
+        settings.$islandDesign
             .dropFirst()
             .sink { [weak self] _ in DispatchQueue.main.async { self?.screenConfigurationChanged() } }
             .store(in: &subscriptions)
