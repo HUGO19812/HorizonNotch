@@ -80,13 +80,13 @@ struct LockScreenView: View {
     private func compact(info: NowPlayingInfo) -> some View {
         LiquidPlayerCard(service: nowPlaying, info: info, lyricsOn: false, showsLyricsButton: false, overWallpaper: true,
                          onLyrics: { state.large = true; state.lyrics = true }) {
-            CoverArt(image: nowPlaying.artwork, cornerRadius: 8)
+            CoverArt(image: nowPlaying.artwork, cornerRadius: 9)
                 .matchedGeometryEffect(id: "cover", in: player)
-                .frame(width: 52, height: 52)
+                .frame(width: 56, height: 56)
                 .onTapGesture { state.large = true }
                 .help(L("Groß anzeigen", "Show large"))
         }
-        .frame(width: 320)
+        .frame(width: 340)
         .transition(.opacity)
     }
 
@@ -234,16 +234,15 @@ private struct StatusRow: View {
     }
 }
 
-/// The player card, laid out like Canopy's: cover, title and artist, a
-/// waveform at the top right, the progress line with times, the three
-/// buttons in the middle and the output device on the right – in clear
-/// Liquid Glass.
+/// The player card, like Canopy's: cover, title and artist, a faint
+/// waveform at the top right, a thin progress line with both times, the
+/// three buttons in the middle and the headphones on the right.
 ///
-/// The lock screen's wallpaper belongs to another process, so glass in
-/// this window would only see an empty backdrop and turn flat grey. The
-/// card therefore lays the matching piece of the wallpaper behind itself
-/// (the lock screen shows the desktop picture); the glass then bends it
-/// at the edges like the real thing.
+/// The glass is hand-made like Canopy's (system glass cannot see the lock
+/// screen's wallpaper, which belongs to another process): the matching
+/// piece of the desktop picture lies behind the card, a slightly magnified
+/// copy along the rim bends it like a lens, and a bright specular edge with
+/// a hint of colour fringe outlines it. Nothing darkens the middle.
 private struct LiquidPlayerCard<Artwork: View>: View {
     @ObservedObject var service: NowPlayingService
     @ObservedObject private var output = AudioOutput.shared
@@ -252,37 +251,37 @@ private struct LiquidPlayerCard<Artwork: View>: View {
     let lyricsOn: Bool
     var showsLyricsButton = true
     /// Over the lock screen's own wallpaper (the small card); the large
-    /// view draws its own backdrop that the glass can see.
+    /// view draws its own backdrop.
     var overWallpaper = false
     let onLyrics: () -> Void
     @ViewBuilder var artwork: Artwork
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 30, style: .continuous)
         let solid = 1 - min(max(settings.lockScreenTransparency, 0), 1)
-        VStack(spacing: 8) {
-            HStack(alignment: .center, spacing: 12) {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 14) {
                 artwork
                 VStack(alignment: Artwork.self == EmptyView.self ? .center : .leading, spacing: 2) {
                     Text(info.title)
                         .font(.system(size: 14, weight: .semibold))
                         .lineLimit(1)
                     Text(info.artist.isEmpty ? (info.appName ?? "") : info.artist)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(.white.opacity(0.7))
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.75))
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: Artwork.self == EmptyView.self ? .center : .leading)
-                .padding(.trailing, 22)
-            }
-            .overlay(alignment: .topTrailing) {
                 Image(systemName: "waveform")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.4))
                     .symbolEffect(.variableColor.iterative, isActive: info.isPlaying)
-                    .padding(.top, 2)
+                    .frame(width: 26)
+                    .frame(maxHeight: .infinity, alignment: .top)
             }
+            .fixedSize(horizontal: false, vertical: true)
             LockProgress(service: service, info: info)
+                .padding(.top, 14)
             HStack(spacing: 0) {
                 Group {
                     if showsLyricsButton {
@@ -293,38 +292,35 @@ private struct LiquidPlayerCard<Artwork: View>: View {
                         Color.clear.frame(height: 34)
                     }
                 }
-                .frame(width: 40, height: 34)
+                .frame(width: 34, height: 34)
                 Spacer(minLength: 0)
-                HStack(spacing: 14) {
-                    LockButton(symbol: "backward.fill", size: 17) { service.send(.previous) }
-                    LockButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 26) { service.send(.togglePlayPause) }
-                    LockButton(symbol: "forward.fill", size: 17) { service.send(.next) }
+                HStack(spacing: 22) {
+                    LockButton(symbol: "backward.fill", size: 16) { service.send(.previous) }
+                    LockButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 25) { service.send(.togglePlayPause) }
+                    LockButton(symbol: "forward.fill", size: 16) { service.send(.next) }
                 }
                 Spacer(minLength: 0)
                 Image(systemName: output.symbol)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .frame(width: 40)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .frame(width: 34, height: 34)
                     .help(output.deviceName)
             }
+            .padding(.top, 10)
         }
         .foregroundStyle(.white)
-        .padding(EdgeInsets(top: 14, leading: 16, bottom: 8, trailing: 16))
+        .padding(EdgeInsets(top: 18, leading: 18, bottom: 14, trailing: 18))
         // A whisper of shadow keeps text readable on bright wallpapers.
-        .shadow(color: .black.opacity(0.22 + solid * 0.2), radius: 2, y: 0.5)
+        .shadow(color: .black.opacity(0.18 + solid * 0.25), radius: 1.5, y: 0.5)
         .background {
             ZStack {
-                if overWallpaper { WallpaperPiece().clipShape(shape) }
-                if #available(macOS 26.0, *) {
+                if overWallpaper && Wallpaper.shared.image != nil {
+                    CraftedGlass(shape: shape)
+                } else if #available(macOS 26.0, *) {
                     Color.clear.glassEffect(.clear, in: shape)
                 } else {
-                    shape.fill(.ultraThinMaterial).opacity(0.15 + solid * 0.5)
-                    shape.fill(LinearGradient(colors: [.white.opacity(0.1), .white.opacity(0.02)],
-                                              startPoint: .top, endPoint: .bottom))
-                    shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.7), .white.opacity(0.08),
-                                                               .white.opacity(0.1), .white.opacity(0.45)],
-                                                      startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
-                        .blendMode(.plusLighter)
+                    shape.fill(.ultraThinMaterial).opacity(0.4)
+                    GlassRim(shape: shape)
                 }
                 if solid > 0 {
                     shape.fill(Color.black.opacity(solid * 0.25))
@@ -335,10 +331,60 @@ private struct LiquidPlayerCard<Artwork: View>: View {
     }
 }
 
+/// Clear glass made by hand over the wallpaper piece behind the card.
+private struct CraftedGlass: View {
+    let shape: RoundedRectangle
+
+    var body: some View {
+        ZStack {
+            // The wallpaper itself: the middle stays perfectly clear.
+            WallpaperPiece()
+                .clipShape(shape)
+            // Lens: a magnified copy, only along the rim, bends the picture
+            // at the edge the way thick glass does.
+            WallpaperPiece(zoom: 1.18)
+                .brightness(0.06)
+                .clipShape(shape)
+                .mask {
+                    shape.strokeBorder(Color.white, lineWidth: 16)
+                        .blur(radius: 7)
+                }
+            // A breath of light in the glass body, brighter at the top.
+            shape.fill(LinearGradient(colors: [.white.opacity(0.07), .white.opacity(0.0), .white.opacity(0.04)],
+                                      startPoint: .top, endPoint: .bottom))
+            GlassRim(shape: shape)
+        }
+        .compositingGroup()
+    }
+}
+
+/// The bright specular edge with a faint blue/orange fringe.
+private struct GlassRim: View {
+    let shape: RoundedRectangle
+
+    var body: some View {
+        ZStack {
+            shape.strokeBorder(AngularGradient(colors: [.blue.opacity(0.5), .clear, .orange.opacity(0.45), .clear,
+                                                        .purple.opacity(0.4), .clear, .blue.opacity(0.5)],
+                                               center: .center), lineWidth: 2)
+                .blur(radius: 1.2)
+            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.85), .white.opacity(0.15), .white.opacity(0.05),
+                                                       .white.opacity(0.55)],
+                                              startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.1)
+            shape.strokeBorder(Color.white.opacity(0.18), lineWidth: 4)
+                .blur(radius: 3)
+        }
+        .blendMode(.plusLighter)
+    }
+}
+
 /// The part of the desktop picture that lies exactly behind this view
 /// (the panel covers the whole screen, so window coordinates are screen
 /// coordinates).
 private struct WallpaperPiece: View {
+    /// > 1 magnifies around the view's centre (the lens along the rim).
+    var zoom: CGFloat = 1
+
     var body: some View {
         GeometryReader { proxy in
             if let wallpaper = Wallpaper.shared.image {
@@ -350,7 +396,10 @@ private struct WallpaperPiece: View {
                     .aspectRatio(contentMode: .fill)
                     .frame(width: screen.width, height: screen.height)
                     .clipped()
-                    .offset(x: -frame.minX, y: -frame.minY)
+                    .scaleEffect(zoom, anchor: .topLeading)
+                    .frame(width: screen.width * zoom, height: screen.height * zoom, alignment: .topLeading)
+                    .offset(x: frame.width / 2 - zoom * (frame.minX + frame.width / 2),
+                            y: frame.height / 2 - zoom * (frame.minY + frame.height / 2))
             }
         }
         .allowsHitTesting(false)
@@ -394,11 +443,11 @@ private struct LockProgress: View {
                     .frame(width: 36, alignment: .leading)
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.22))
-                        Capsule().fill(Color.white.opacity(0.9))
+                        Capsule().fill(Color.white.opacity(0.25))
+                        Capsule().fill(Color.white.opacity(0.85))
                             .frame(width: proxy.size.width * CGFloat(fraction))
                     }
-                    .frame(height: dragValue == nil ? 5 : 8)
+                    .frame(height: dragValue == nil ? 3.5 : 7)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
                     .gesture(DragGesture(minimumDistance: 0)
@@ -415,8 +464,8 @@ private struct LockProgress: View {
                 Text("-" + time(max(0, info.duration - position)))
                     .frame(width: 40, alignment: .trailing)
             }
-            .font(.system(size: 10.5, weight: .medium).monospacedDigit())
-            .foregroundStyle(.white.opacity(0.55))
+            .font(.system(size: 10, weight: .medium).monospacedDigit())
+            .foregroundStyle(.white.opacity(0.7))
         }
     }
 
