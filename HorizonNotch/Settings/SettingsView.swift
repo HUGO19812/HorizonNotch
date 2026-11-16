@@ -1187,6 +1187,16 @@ private struct ClaudeSettings: View {
                     }
                 }
                 if let error { Text(error).font(.callout).foregroundStyle(.red) }
+                LabeledContent(L("Letztes Ereignis von Claude Code", "Last event from Claude Code")) {
+                    HStack(spacing: 10) {
+                        if let last = UserDefaults.standard.object(forKey: "claudeLastEvent") as? Date {
+                            Text(last, style: .relative).foregroundStyle(.secondary)
+                        } else {
+                            Text(L("noch keines", "none yet")).foregroundStyle(.orange)
+                        }
+                        Button(L("Notch testen", "Test the notch")) { ClaudeHooks.sendTest() }
+                    }
+                }
             } header: {
                 Text(L("Status in der Notch", "Status in the notch"))
             } footer: {

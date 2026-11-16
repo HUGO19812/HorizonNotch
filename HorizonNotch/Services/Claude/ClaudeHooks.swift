@@ -28,6 +28,28 @@ enum ClaudeHooks {
 
     private static var command: String { "\"\(scriptURL.path)\"" }
 
+    static let testSessionID = "horizon-notch-test"
+
+    /// Plays a short fake session (working → done) through the event
+    /// folder, exactly the way the hooks deliver it.
+    static func sendTest() {
+        try? FileManager.default.createDirectory(at: eventFolder, withIntermediateDirectories: true)
+        func post(_ name: String, after delay: Double) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                let event: [String: Any] = ["session_id": testSessionID, "hook_event_name": name,
+                                            "cwd": "/Horizon Notch Test", "tool_name": "Bash",
+                                            "tool_input": ["description": L("Test der Verbindung", "Testing the connection")]]
+                guard let data = try? JSONSerialization.data(withJSONObject: event) else { return }
+                let stamp = Int(Date().timeIntervalSince1970)
+                try? data.write(to: eventFolder.appendingPathComponent("\(stamp)-test-\(name).json"))
+            }
+        }
+        post("UserPromptSubmit", after: 0)
+        post("PreToolUse", after: 0.3)
+        post("Stop", after: 4)
+        post("SessionEnd", after: 9)
+    }
+
     static var isInstalled: Bool {
         hasEntries && FileManager.default.isExecutableFile(atPath: scriptURL.path)
     }
