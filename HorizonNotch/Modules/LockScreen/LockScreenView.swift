@@ -169,14 +169,12 @@ private struct GlassClock: View {
                     .foregroundStyle(glass)
                     .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
                 Text(context.date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                    .font(.system(size: screenHeight * 0.12, weight: .heavy, design: .serif))
-                    .monospacedDigit()
+                    .font(.system(size: screenHeight * 0.12, weight: .bold, design: .serif))
                     .foregroundStyle(glass)
                     // Bright rim on top, a darker edge below: thick glass.
                     .overlay {
                         Text(context.date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                            .font(.system(size: screenHeight * 0.12, weight: .heavy, design: .serif))
-                            .monospacedDigit()
+                            .font(.system(size: screenHeight * 0.12, weight: .bold, design: .serif))
                             .foregroundStyle(LinearGradient(colors: [.white.opacity(0.75), .clear, .clear, .white.opacity(0.25)],
                                                             startPoint: .top, endPoint: .bottom))
                             .blendMode(.plusLighter)
@@ -185,7 +183,7 @@ private struct GlassClock: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, screenHeight * 0.07)
+        .padding(.top, screenHeight * 0.078)
         .allowsHitTesting(false)
     }
 

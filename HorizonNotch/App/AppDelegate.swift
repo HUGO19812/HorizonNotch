@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let calculator = CalculatorModule()
     let claude = ClaudeCodeModule()
     let downloads = DownloadProgressModule()
+    let devices = DeviceCardModule()
     let connectivity = EventModule(id: "connectivity", title: ("Verbindungen", "Connectivity"),
                                    symbol: "dot.radiowaves.left.and.right")
     let notifications = EventModule(id: "notifications", title: ("Benachrichtigungen", "Notifications"),
@@ -57,8 +58,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.register(claude)
         coordinator.register(downloads)
         coordinator.register(connectivity)
+        coordinator.register(devices)
         coordinator.register(notifications)
-        connectivityMonitor = ConnectivityMonitor { [weak self] in self?.connectivity.post($0) }
+        connectivityMonitor = ConnectivityMonitor(post: { [weak self] in self?.connectivity.post($0) },
+                                                  device: { [weak self] in self?.devices.show($0) })
         downloadWatcher = DownloadWatcher { [weak self] in self?.notifications.post($0) }
         lockScreen = LockScreenController(nowPlaying: nowPlaying, lyrics: media.lyrics)
         LockScreenSources.weather = weather.service
@@ -119,7 +122,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "expand": self?.notchController?.expand()
             case "collapse": self?.notchController?.collapse()
             case "hud": self?.hud.debugShow()
-            case "bluetooth": SideHUDController.shared.show(device: .init(symbol: "airpodspro", battery: 0.72, connected: true))
+            case "bluetooth": self?.devices.show(DeviceCard(name: "AirPods Pro", symbol: "airpodspro", connected: true,
+                                                            left: 85, right: 80, caseLevel: 60, single: nil))
             case "plug": self?.battery.debugShow(.pluggedIn)
             case "low": self?.battery.debugShow(.low(9))
             case "peek": self?.media.debugPeek()
