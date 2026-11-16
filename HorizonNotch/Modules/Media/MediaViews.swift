@@ -118,26 +118,28 @@ struct MediaExpandedView: View {
                     .frame(width: 232)
                     .transition(.opacity)
                 } else {
-                    HStack(alignment: .center, spacing: 16) {
-                        VStack(spacing: 6) {
-                            cover(info, size: settings.showSource ? 80 : 92, radius: 14)
-                            if settings.showSource {
-                                SourceLabel(info: info)
-                                    .frame(width: 80)
-                            }
-                        }
-                        VStack(alignment: .leading, spacing: 6) {
+                    // Like Pro Notch: large cover with a glow, the titles,
+                    // the source app top right, a full-width progress bar,
+                    // big buttons in the middle and the output on the right.
+                    HStack(alignment: .center, spacing: 20) {
+                        cover(info, size: 98, radius: 16)
+                        VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .top) {
-                                TitleBlock(info: info, titleSize: 14)
+                                TitleBlock(info: info, titleSize: 16)
                                     .matchedGeometryEffect(id: "title", in: player, properties: .position, anchor: .topLeading)
                                 Spacer(minLength: 8)
-                                AudioVisualizerView(color: NSColor(visualizerColor(cover: service.accent, theme: theme)), isPlaying: info.isPlaying, barCount: 5)
-                                    .frame(width: 26, height: 16)
-                                    .padding(.top, 2)
+                                HStack(spacing: 10) {
+                                    ControlButton(symbol: "quote.bubble", size: 13, active: settings.showLyrics) {
+                                        settings.showLyrics.toggle()
+                                    }
+                                    .help(L("Songtext", "Lyrics"))
+                                    SourceIcon(info: info)
+                                }
+                                .offset(y: -6)
                             }
                             ProgressScrubber(service: service, info: info)
                                 .matchedGeometryEffect(id: "progress", in: player)
-                            MediaControls(service: service, info: info, compact: false)
+                            ProControls(service: service, info: info)
                                 .matchedGeometryEffect(id: "controls", in: player)
                         }
                     }
@@ -181,6 +183,56 @@ private struct SourceLabel: View {
                 .lineLimit(1)
         }
         .help(L("Quelle", "Source"))
+    }
+}
+
+/// The app that plays, as its icon (top right of the player).
+private struct SourceIcon: View {
+    let info: NowPlayingInfo
+
+    var body: some View {
+        Group {
+            if let bundle = info.bundleID,
+               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                    .resizable()
+                    .frame(width: 22, height: 22)
+            } else {
+                Image(systemName: "music.note")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(width: 22, height: 22)
+            }
+        }
+        .help(info.appName ?? L("Quelle", "Source"))
+    }
+}
+
+/// Back, play/pause and forward large in the middle, the output device on
+/// the right – like Pro Notch.
+private struct ProControls: View {
+    @ObservedObject var service: NowPlayingService
+    @ObservedObject private var output = AudioOutput.shared
+    let info: NowPlayingInfo
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: 30, height: 1)
+            Spacer(minLength: 0)
+            HStack(spacing: 18) {
+                ControlButton(symbol: "backward.fill", size: 19) { service.send(.previous) }
+                ControlButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 25) {
+                    service.send(.togglePlayPause)
+                }
+                ControlButton(symbol: "forward.fill", size: 19) { service.send(.next) }
+            }
+            Spacer(minLength: 0)
+            Image(systemName: output.symbol)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 30)
+                .help(output.deviceName)
+        }
     }
 }
 
@@ -398,7 +450,7 @@ private struct ProgressScrubber: View {
                         Capsule().fill(service.accent.opacity(0.95))
                             .frame(width: proxy.size.width * fraction)
                     }
-                    .frame(height: dragValue == nil ? 4 : 7)
+                    .frame(height: dragValue == nil ? 6 : 9)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
                     .gesture(DragGesture(minimumDistance: 0)
@@ -419,7 +471,7 @@ private struct ProgressScrubber: View {
                     Spacer()
                     Text(info.duration > 0 ? "-" + Self.format(max(0, info.duration - position)) : "")
                 }
-                .font(.system(size: 10, weight: .medium).monospacedDigit())
+                .font(.system(size: 11, weight: .semibold).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.45))
             }
         }

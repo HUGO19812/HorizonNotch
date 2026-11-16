@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import SwiftUI
 
@@ -22,14 +23,14 @@ final class DeviceCardModule: NotchModule {
     var title: String { L("Geräte verbinden", "Device connections") }
     let symbol = "airpodspro"
     let priority = ModulePriority.notification + 1
-    let compactWingWidth: CGFloat = 110
+    let compactWingWidth: CGFloat = 112
 
     @Published private(set) var card: DeviceCard?
     private var hideWork: DispatchWorkItem?
 
     var isActive: Bool { card != nil }
     var isPeeking: Bool { card != nil }
-    var peekHeight: CGFloat { card?.connected == true ? 112 : 70 }
+    var peekHeight: CGFloat { card?.connected == true ? 116 : 60 }
 
     /// Shows the card, or updates it in place (battery arriving later).
     func show(_ card: DeviceCard) {
@@ -57,30 +58,21 @@ private struct DeviceCardView: View {
 
     var body: some View {
         if let card = module.card {
-            HStack(spacing: 22) {
-                Image(systemName: card.symbol)
-                    .font(.system(size: card.connected ? 62 : 38, weight: .regular))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.white)
-                    .frame(width: card.connected ? 104 : 60)
-                    .background {
-                        // Soft violet glow behind the device, like Pro Notch.
-                        Circle()
-                            .fill(Color(red: 0.55, green: 0.4, blue: 1).opacity(card.connected ? 0.35 : 0.15))
-                            .blur(radius: 22)
-                            .frame(width: 90, height: 90)
-                    }
-                    .opacity(card.connected ? 1 : 0.6)
-                VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .center, spacing: 26) {
+                DeviceImage(card: card)
+                    .frame(width: card.connected ? 118 : 70, height: card.connected ? 118 : 60)
+                    // Reaches up beside the notch, like Pro Notch's picture.
+                    .offset(y: card.connected ? -16 : -8)
+                VStack(alignment: .leading, spacing: 2) {
                     Text(card.name)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 19, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(card.connected ? L("Verbunden", "Connected") : L("Getrennt", "Disconnected"))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.5))
                     if card.connected {
-                        HStack(spacing: 12) {
+                        HStack(spacing: 14) {
                             if let left = card.left { BatteryRing(label: "L", percent: left) }
                             if let right = card.right { BatteryRing(label: "R", percent: right) }
                             if let box = card.caseLevel { BatteryRing(symbol: "rectangle.portrait.fill", percent: box) }
@@ -88,16 +80,54 @@ private struct DeviceCardView: View {
                                 BatteryRing(symbol: "battery.100", percent: single)
                             }
                         }
-                        .padding(.top, 4)
+                        .padding(.top, 8)
                     }
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 4)
+            .padding(.leading, 30)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .transition(.opacity)
             .animation(.easeInOut(duration: 0.3), value: card)
+        }
+    }
+}
+
+/// The device large and light grey with depth, on a soft violet glow.
+private struct DeviceImage: View {
+    let card: DeviceCard
+
+    /// The charging case for AirPods (like the photo), else the device.
+    private var symbol: String {
+        let candidates: [String]
+        let name = card.name.lowercased()
+        if name.contains("airpods pro") {
+            candidates = ["airpods.pro.chargingcase.wireless.fill", "airpodspro.chargingcase.wireless.fill", card.symbol]
+        } else if name.contains("airpods max") {
+            candidates = ["airpods.max", "airpodsmax", card.symbol]
+        } else if name.contains("airpods") {
+            candidates = ["airpods.chargingcase.wireless.fill", "airpods.chargingcase.fill", card.symbol]
+        } else {
+            candidates = [card.symbol]
+        }
+        return candidates.first { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil } ?? "headphones"
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color(red: 0.5, green: 0.36, blue: 1).opacity(card.connected ? 0.32 : 0.12))
+                .blur(radius: 26)
+                .scaleEffect(0.85)
+            Image(systemName: symbol)
+                .resizable()
+                .scaledToFit()
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(LinearGradient(colors: [Color(white: 0.97), Color(white: 0.72)],
+                                                startPoint: .top, endPoint: .bottom))
+                .shadow(color: .black.opacity(0.5), radius: 8, y: 5)
+                .padding(10)
+                .opacity(card.connected ? 1 : 0.55)
         }
     }
 }
@@ -126,21 +156,21 @@ private struct BatteryRing: View {
     var body: some View {
         VStack(spacing: 3) {
             ZStack {
-                Circle().stroke(Color.white.opacity(0.14), lineWidth: 3.5)
+                Circle().stroke(Color.white.opacity(0.14), lineWidth: 4)
                 Circle()
                     .trim(from: 0, to: CGFloat(percent) / 100)
-                    .stroke(color, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                    .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 if let label {
-                    Text(label).font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                    Text(label).font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
                 } else if let symbol {
-                    Image(systemName: symbol).font(.system(size: 9, weight: .semibold)).foregroundStyle(.white)
+                    Image(systemName: symbol).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
                 }
             }
-            .frame(width: 28, height: 28)
+            .frame(width: 34, height: 34)
             Text("\(percent)%")
-                .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.75))
+                .font(.system(size: 13, weight: .bold).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.8))
         }
     }
 }
