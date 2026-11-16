@@ -91,7 +91,7 @@ final class ScreenSaverController {
         if state.lyrics, let info = nowPlaying.info { lyrics.load(for: info) }
         let window = self.window ?? makeWindow()
         // Built when shown and dropped when hidden: no updates in between.
-        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics, state: state))
+        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics, state: state, drawsClock: true))
         host.sizingOptions = []
         window.contentView = host
         window.setFrame(screen.frame, display: true)

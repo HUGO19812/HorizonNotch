@@ -30,6 +30,9 @@ struct LockScreenView: View {
     @ObservedObject var nowPlaying: NowPlayingService
     @ObservedObject var lyrics: LyricsService
     @ObservedObject var state: LockScreenState
+    /// The screen saver draws its own clock; on the lock screen the system
+    /// clock stays the only one.
+    var drawsClock = false
     @ObservedObject private var settings = AppSettings.shared
     @StateObject private var hiRes = HiResArtwork()
     @Namespace private var player
@@ -47,8 +50,10 @@ struct LockScreenView: View {
                              style: settings.lockScreenBackdrop)
                         .transition(.opacity)
                     // The backdrop covers the system clock: draw our own.
-                    GlassClock(screenHeight: size.height, tint: nowPlaying.artwork != nil ? nowPlaying.accent : nil)
-                        .transition(.opacity)
+                    if drawsClock {
+                        GlassClock(screenHeight: size.height, tint: nowPlaying.artwork != nil ? nowPlaying.accent : nil)
+                            .transition(.opacity)
+                    }
                     large(info: info, size: size)
                 } else {
                     if settings.lockScreenStatusRow {
@@ -171,17 +176,17 @@ private struct GlassClock: View {
     var body: some View {
         TimelineView(.everyMinute) { context in
             VStack(spacing: 0) {
-                Text(context.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().locale(appLocale)))
-                    .font(.system(size: screenHeight * 0.026, weight: .semibold, design: .serif))
+                Text(context.date.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(appLocale)))
+                    .font(.system(size: screenHeight * 0.024, weight: .semibold))
                     .foregroundStyle(glass)
                     .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
                 Text(context.date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                    .font(.system(size: screenHeight * 0.12, weight: .bold, design: .serif))
+                    .font(.system(size: screenHeight * 0.12, weight: .semibold))
                     .foregroundStyle(glass)
                     // Bright rim on top, a darker edge below: thick glass.
                     .overlay {
                         Text(context.date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                            .font(.system(size: screenHeight * 0.12, weight: .bold, design: .serif))
+                            .font(.system(size: screenHeight * 0.12, weight: .semibold))
                             .foregroundStyle(LinearGradient(colors: [.white.opacity(0.75), .clear, .clear, .white.opacity(0.25)],
                                                             startPoint: .top, endPoint: .bottom))
                             .blendMode(.plusLighter)
@@ -314,16 +319,17 @@ private struct LiquidPlayerCard<Artwork: View>: View {
         .shadow(color: .black.opacity(0.18 + solid * 0.25), radius: 1.5, y: 0.5)
         .background {
             ZStack {
+                // Transparency slider: 100 % = perfectly clear glass, lower
+                // values frost and shade it more and more.
                 if overWallpaper && Wallpaper.shared.image != nil {
-                    CraftedGlass(shape: shape)
+                    CraftedGlass(shape: shape, frost: solid)
                 } else if #available(macOS 26.0, *) {
-                    Color.clear.glassEffect(.clear, in: shape)
+                    Color.clear.glassEffect(solid > 0.4 ? .regular : .clear, in: shape)
                 } else {
-                    shape.fill(.ultraThinMaterial).opacity(0.4)
-                    GlassRim(shape: shape)
+                    shape.fill(.ultraThinMaterial).opacity(0.2 + solid * 0.8)
                 }
                 if solid > 0 {
-                    shape.fill(Color.black.opacity(solid * 0.25))
+                    shape.fill(Color.black.opacity(solid * 0.35))
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: solid)
@@ -334,16 +340,20 @@ private struct LiquidPlayerCard<Artwork: View>: View {
 /// Clear glass made by hand over the wallpaper piece behind the card.
 private struct CraftedGlass: View {
     let shape: RoundedRectangle
+    /// 0 = clear, 1 = fully frosted.
+    var frost: Double = 0
 
     var body: some View {
         ZStack {
-            // The wallpaper itself: the middle stays perfectly clear.
+            // The wallpaper itself: clear, or frosted by the slider.
             WallpaperPiece()
+                .blur(radius: frost * 22)
                 .clipShape(shape)
             // Lens: a magnified copy, only along the rim, bends the picture
             // at the edge the way thick glass does.
-            WallpaperPiece(zoom: 1.18)
-                .brightness(0.06)
+            WallpaperPiece(zoom: 1.12)
+                .blur(radius: frost * 22)
+                .brightness(0.04)
                 .clipShape(shape)
                 .mask {
                     shape.strokeBorder(Color.white, lineWidth: 16)
@@ -352,31 +362,11 @@ private struct CraftedGlass: View {
             // A breath of light in the glass body, brighter at the top.
             shape.fill(LinearGradient(colors: [.white.opacity(0.07), .white.opacity(0.0), .white.opacity(0.04)],
                                       startPoint: .top, endPoint: .bottom))
-            GlassRim(shape: shape)
         }
         .compositingGroup()
     }
 }
 
-/// The bright specular edge with a faint blue/orange fringe.
-private struct GlassRim: View {
-    let shape: RoundedRectangle
-
-    var body: some View {
-        ZStack {
-            shape.strokeBorder(AngularGradient(colors: [.blue.opacity(0.5), .clear, .orange.opacity(0.45), .clear,
-                                                        .purple.opacity(0.4), .clear, .blue.opacity(0.5)],
-                                               center: .center), lineWidth: 2)
-                .blur(radius: 1.2)
-            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.85), .white.opacity(0.15), .white.opacity(0.05),
-                                                       .white.opacity(0.55)],
-                                              startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.1)
-            shape.strokeBorder(Color.white.opacity(0.18), lineWidth: 4)
-                .blur(radius: 3)
-        }
-        .blendMode(.plusLighter)
-    }
-}
 
 /// The part of the desktop picture that lies exactly behind this view
 /// (the panel covers the whole screen, so window coordinates are screen

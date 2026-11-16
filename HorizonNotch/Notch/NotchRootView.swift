@@ -116,16 +116,20 @@ private struct IslandBackground: View {
     var body: some View {
         switch style {
         case .glass:
-            // Clear glass like Canopy: the desktop shows through, bent and
-            // brightened at the edges. Text stays readable by its shadow.
-            if #available(macOS 26.0, *) {
-                Color.clear.glassEffect(.clear, in: shape)
-            } else {
-                shape.fill(.ultraThinMaterial).opacity(0.35)
-                    .overlay(shape.fill(LinearGradient(colors: [.white.opacity(0.1), .white.opacity(0.02)],
-                                                       startPoint: .top, endPoint: .bottom)))
-                    .overlay(shape.stroke(LinearGradient(colors: [.white.opacity(0.6), .white.opacity(0.1), .white.opacity(0.35)],
-                                                         startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
+            // Clear, hand-made glass like Canopy's (system glass frosts and
+            // greys the desktop): the desktop shows through untouched, only
+            // the rim catches the light. Text stays readable by its shadow.
+            ZStack {
+                shape.fill(LinearGradient(colors: [.white.opacity(0.06), .white.opacity(0.015)],
+                                          startPoint: .top, endPoint: .bottom))
+                // Soft light just inside the edge: the glass's thickness.
+                shape.stroke(Color.white.opacity(0.22), lineWidth: 8)
+                    .blur(radius: 6)
+                    .mask(shape)
+                // Specular rim, brightest at the bottom corners.
+                shape.stroke(LinearGradient(colors: [.white.opacity(0.15), .white.opacity(0.35), .white.opacity(0.8)],
+                                            startPoint: .top, endPoint: .bottom), lineWidth: 1.2)
+                    .mask(shape)
             }
         case .tinted:
             // Black at the top so the island still grows out of the notch.
