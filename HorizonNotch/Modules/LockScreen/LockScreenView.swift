@@ -236,10 +236,10 @@ private struct LockControls<Header: View>: View {
     }
 }
 
-/// The player card in the style chosen under Settings → Lock Screen:
-/// a liquid-chrome texture, clear Liquid Glass (both without a border), or
-/// the classic frosted glass with a shiny rim. The transparency slider
-/// fades the texture or the frosting; text stays readable on all of them.
+/// The player card in the style chosen under Settings → Lock Screen. All
+/// styles are see-through Liquid Glass without a border; the chrome look
+/// comes from light inside the glass, not from a rim. The transparency
+/// slider adds frosting and shade for readability.
 private struct GlassCard<Content: View>: View {
     @ObservedObject private var settings = AppSettings.shared
     @ViewBuilder var content: Content
@@ -253,12 +253,10 @@ private struct GlassCard<Content: View>: View {
             .padding(.vertical, 16)
             .background {
                 Group {
-                    if let texture = style.texture {
-                        ChromeFill(texture: texture, shape: shape, solid: solid)
-                    } else if style == .clearGlass {
-                        ClearGlassFill(shape: shape, solid: solid)
-                    } else {
+                    if style == .classic {
                         ClassicGlassFill(shape: shape, solid: solid)
+                    } else {
+                        LiquidGlassFill(style: style, shape: shape, solid: solid)
                     }
                 }
                 .animation(.easeInOut(duration: 0.25), value: solid)
@@ -266,57 +264,74 @@ private struct GlassCard<Content: View>: View {
             .overlay {
                 if style == .classic { ClassicRim(shape: shape) }
             }
-            .shadow(color: .black.opacity(style == .clearGlass ? 0.18 : 0.35), radius: 20, y: 10)
+            .shadow(color: .black.opacity(style == .smoke ? 0.35 : 0.2), radius: 20, y: 10)
             .animation(.easeInOut(duration: 0.3), value: style)
     }
 }
 
-/// Liquid chrome: the texture fills the card, darkened towards the
-/// buttons so white text stays readable; with more transparency the
-/// wallpaper shows through.
-private struct ChromeFill: View {
-    let texture: String
+/// See-through glass: the system Liquid Glass (macOS 26+, a thin material
+/// before) with a tint, plus light inside it – a soft glow from the upper
+/// left and, for chrome and prism, reflections along the rounded edge that
+/// fade inwards like light running through thick glass.
+private struct LiquidGlassFill: View {
+    let style: LockScreenCardStyle
     let shape: RoundedRectangle
     let solid: Double
 
-    var body: some View {
-        ZStack {
-            shape.fill(.ultraThinMaterial)
-            // Overlay on a clear view so the picture fills the card without
-            // making it larger.
-            Color.clear.overlay {
-                Image(texture)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            }
-            .clipped()
-            .opacity(0.45 + 0.55 * solid)
-            LinearGradient(colors: [.black.opacity(0.32), .black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
+    private var tint: Color {
+        switch style {
+        case .blue: return Color(red: 0.05, green: 0.45, blue: 0.75).opacity(0.35)
+        case .smoke: return Color.black.opacity(0.45)
+        default: return .clear
         }
-        .clipShape(shape)
     }
-}
-
-/// Clear Liquid Glass with soft light instead of a rim: brighter at the
-/// upper left, a faint caustic at the lower right.
-private struct ClearGlassFill: View {
-    let shape: RoundedRectangle
-    let solid: Double
 
     var body: some View {
         ZStack {
+            // Frosting from the transparency slider.
             shape.fill(.ultraThinMaterial).opacity(solid * 0.8)
-            shape.fill(Color.black.opacity(0.08 + solid * 0.2))
+            shape.fill(Color.black.opacity(0.06 + solid * 0.22))
             if #available(macOS 26.0, *) {
-                Color.clear.glassEffect(.clear, in: shape)
+                Color.clear.glassEffect(.clear.tint(tint), in: shape)
             } else {
                 shape.fill(.ultraThinMaterial).opacity(0.4)
+                shape.fill(tint)
             }
-            shape.fill(RadialGradient(colors: [.white.opacity(0.22), .clear], center: .topLeading,
-                                      startRadius: 0, endRadius: 260))
-            shape.fill(RadialGradient(colors: [.white.opacity(0.10), .clear], center: .bottomTrailing,
+            // Soft light from the upper left, a weaker one at the lower right.
+            shape.fill(RadialGradient(colors: [.white.opacity(style == .smoke ? 0.12 : 0.2), .clear],
+                                      center: .topLeading, startRadius: 0, endRadius: 280))
+            shape.fill(RadialGradient(colors: [.white.opacity(0.08), .clear], center: .bottomTrailing,
                                       startRadius: 0, endRadius: 200))
+            if style == .chrome { EdgeReflections(shape: shape, colors: Self.chrome, strength: 0.9) }
+            if style == .prism { EdgeReflections(shape: shape, colors: Self.prism, strength: 0.6) }
+            if style == .blue { EdgeReflections(shape: shape, colors: Self.ocean, strength: 0.5) }
         }
+    }
+
+    /// Bright and dark streaks around the edge like a polished chrome tube.
+    private static let chrome: [Color] = [.white, .clear, .white.opacity(0.6), .black.opacity(0.5), .clear,
+                                          .white, .clear, .black.opacity(0.4), .white.opacity(0.7), .white]
+    private static let prism: [Color] = [.cyan, .clear, .purple, .white, .clear, .pink, .clear, .blue, .cyan]
+    private static let ocean: [Color] = [.white, .clear, Color(red: 0.6, green: 0.85, blue: 1), .clear,
+                                         .orange.opacity(0.6), .clear, .white]
+}
+
+/// Light caught in the curved edge of the glass: a wide, blurred band
+/// inside the outline (never a line on it), strongest at the edge and
+/// fading towards the middle.
+private struct EdgeReflections: View {
+    let shape: RoundedRectangle
+    let colors: [Color]
+    let strength: Double
+
+    var body: some View {
+        shape
+            .strokeBorder(AngularGradient(colors: colors, center: .center, angle: .degrees(-35)), lineWidth: 14)
+            .blur(radius: 7)
+            .clipShape(shape)
+            .opacity(strength)
+            .blendMode(.plusLighter)
+            .allowsHitTesting(false)
     }
 }
 

@@ -70,7 +70,7 @@ private let settingsGroups: [SettingsGroup] = [
         SettingsEntry(tab: .claude, de: "Claude Code", en: "Claude Code", symbol: "sparkle",
                       keywords: "Hooks Token Verbrauch usage KI AI"),
         SettingsEntry(tab: .lockScreen, de: "Sperrbildschirm", en: "Lock Screen", symbol: "lock.display",
-                      keywords: "Design Chrom chrome Glas glass Karte card Ozean Graphit Prisma Horizont gesperrt locked Player Musik music Cover Lyrics Songtext Bildschirmschoner screen saver screensaver"),
+                      keywords: "Design Chrom chrome Glas glass Flüssigglas liquid Karte card Ozean Rauchglas Prisma gesperrt locked Player Musik music Cover Lyrics Songtext Bildschirmschoner screen saver screensaver"),
     ]),
     SettingsGroup(de: "System", en: "System", entries: [
         SettingsEntry(tab: .permissions, de: "Berechtigungen", en: "Permissions", symbol: "lock.shield",

@@ -72,34 +72,30 @@ enum LockScreenBackdrop: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-/// Background of the lock screen player card.
+/// Look of the lock screen player card. All are see-through Liquid Glass
+/// without a border; they differ in tint and in the light inside the glass.
 enum LockScreenCardStyle: String, CaseIterable, Identifiable {
-    /// Liquid chrome textures (Assets: Chrome*), no border.
-    case ocean, graphite, prism, horizon
-    /// Clear Liquid Glass without a border.
-    case clearGlass
+    /// Clear glass, soft light from the upper left.
+    case clear
+    /// Clear glass with chrome-like reflections along its curved edge.
+    case chrome
+    /// Glass tinted ocean blue.
+    case blue
+    /// Dark smoked glass.
+    case smoke
+    /// Clear glass with faint rainbow caustics.
+    case prism
     /// The earlier frosted glass with a shiny rim.
     case classic
     var id: String { rawValue }
 
-    /// Asset name of the chrome texture, nil for the glass styles.
-    var texture: String? {
-        switch self {
-        case .ocean: return "ChromeOcean"
-        case .graphite: return "ChromeGraphite"
-        case .prism: return "ChromePrism"
-        case .horizon: return "ChromeHorizon"
-        case .clearGlass, .classic: return nil
-        }
-    }
-
     var title: String {
         switch self {
-        case .ocean: return L("Ozean-Chrom", "Ocean chrome")
-        case .graphite: return L("Graphit-Chrom", "Graphite chrome")
-        case .prism: return L("Prisma", "Prism")
-        case .horizon: return L("Horizont", "Horizon")
-        case .clearGlass: return L("Klares Flüssigglas", "Clear liquid glass")
+        case .clear: return L("Klares Flüssigglas", "Clear liquid glass")
+        case .chrome: return L("Chrom-Glas", "Chrome glass")
+        case .blue: return L("Ozean-Glas", "Ocean glass")
+        case .smoke: return L("Rauchglas", "Smoked glass")
+        case .prism: return L("Prisma-Glas", "Prism glass")
         case .classic: return L("Klassisch (mit Rand)", "Classic (with rim)")
         }
     }
@@ -250,7 +246,7 @@ final class AppSettings: ObservableObject {
         lockScreenWidgets = defaults.object(forKey: "lockScreenWidgets") as? Bool ?? true
         lockScreenStart = LockScreenStart(rawValue: defaults.string(forKey: "lockScreenStart") ?? "") ?? .compact
         lockScreenTransparency = defaults.object(forKey: "lockScreenTransparency") as? Double ?? 0.6
-        lockScreenCardStyle = LockScreenCardStyle(rawValue: defaults.string(forKey: "lockScreenCardStyle") ?? "") ?? .ocean
+        lockScreenCardStyle = LockScreenCardStyle(rawValue: defaults.string(forKey: "lockScreenCardStyle") ?? "") ?? .chrome
         lockScreenBackdrop = LockScreenBackdrop(rawValue: defaults.string(forKey: "lockScreenBackdrop") ?? "") ?? .tinted
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true
