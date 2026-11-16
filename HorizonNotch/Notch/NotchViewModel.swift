@@ -78,8 +78,11 @@ final class NotchViewModel: ObservableObject {
                                 bottomRadius: attached ? 13 : notch.height / 2,
                                 visible: true)
         case .expanded:
-            return IslandLayout(bodySize: CGSize(width: Self.expandedWidth,
-                                                 height: notch.height + Self.expandedContentHeight),
+            // The first-launch setup gets a larger stage.
+            let width = showHello ? max(Self.expandedWidth, 600) : Self.expandedWidth
+            let height = showHello ? 330 : Self.expandedContentHeight
+            return IslandLayout(bodySize: CGSize(width: width,
+                                                 height: notch.height + height),
                                 earRadius: attached ? 14 : 0,
                                 topRadius: attached ? 0 : 26,
                                 bottomRadius: CGFloat(AppSettings.shared.islandCornerRadius),

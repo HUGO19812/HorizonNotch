@@ -223,6 +223,9 @@ private struct ExpandedContent: View {
         VStack(spacing: 0) {
             header
                 .frame(height: model.geometry.notchSize.height)
+                // The setup has its own layout below the notch.
+                .opacity(model.showHello ? 0 : 1)
+                .allowsHitTesting(!model.showHello)
                 .onAppear(perform: refreshInfos)
                 .onReceive(infoChanges) { refreshInfos() }
                 .onChange(of: settings.headerLiveInfo) { refreshInfos() }

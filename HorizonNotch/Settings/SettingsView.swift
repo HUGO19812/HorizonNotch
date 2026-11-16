@@ -3,6 +3,7 @@ import Combine
 import CoreLocation
 import EventKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One page in the settings sidebar, with words the search finds it by
 /// (the settings on that page, in German and English).
@@ -38,6 +39,8 @@ private let settingsGroups: [SettingsGroup] = [
     SettingsGroup(de: "", en: "", entries: [
         SettingsEntry(tab: .general, de: "Allgemein", en: "General", symbol: "gearshape",
                       keywords: "Anmeldung starten Autostart login Sprache language Bildschirm display screen Monitor Verzögerung hover delay Öffnen open Reiter tab Vollbild full screen fullscreen Film movie video ausblenden hide Trackpad Klick haptic Haptik"),
+        SettingsEntry(tab: .displays, de: "Bildschirme", en: "Displays", symbol: "display",
+                      keywords: "Bildschirm display screen Monitor Notch Dynamic Island Design Kapsel capsule Höhe angleichen match height Vollbild full screen fullscreen ausblenden hide"),
         SettingsEntry(tab: .appearance, de: "Darstellung", en: "Appearance", symbol: "paintbrush",
                       keywords: "Notch Höhe angleichen match height Stil style Glas glass Hintergrundfarbe background colour color Rand border Akzentfarbe accent Farbig coloured Visualizer Größe size Breite width Eckenradius corner radius Schatten shadow Schrift font fett bold Reiter tabs Punkte dots Reihenfolge order Module modules einschalten ausschalten enable disable"),
     ]),
@@ -214,6 +217,8 @@ struct SettingsView: View {
         case .general:
             GeneralSettings()
             BehaviorSettings()
+        case .displays:
+            DisplaySettings()
         case .appearance:
             AppearanceSettings()
             TabSettings(coordinator: appDelegate.coordinator)
@@ -699,6 +704,29 @@ private struct GeneralSettings: View {
                     Text("English").tag(AppLanguage.en)
                 }
             }
+        }
+    }
+}
+
+/// Which screen, notch or Dynamic Island, and how the island fits it.
+private struct DisplaySettings: View {
+    @ObservedObject private var settings = AppSettings.shared
+
+    var body: some View {
+        // Only the sections: the settings window puts them in one form.
+        Group {
+            Section {
+                HStack(spacing: 18) {
+                    DesignOption(design: .notch, selection: $settings.islandDesign)
+                    DesignOption(design: .dynamicIsland, selection: $settings.islandDesign)
+                }
+                .padding(.vertical, 4)
+            } header: {
+                Text("Design")
+            } footer: {
+                note("Die Notch hängt an der Oberkante und wächst aus dem Kameragehäuse. Die Dynamic Island schwebt knapp darunter als Kapsel wie beim iPhone und ist nur dort mit der Kante verbunden, wo die Kamera sitzt.",
+                     "The notch hangs from the top edge, growing out of the camera housing. The Dynamic Island floats just below the edge, a capsule as on iPhone, joined to the edge only where the camera sits.")
+            }
             Section {
                 Picker(L("Bildschirm", "Display"), selection: $settings.displayID) {
                     Text(L("Automatisch", "Automatic")).tag(UInt32(0))
@@ -710,6 +738,97 @@ private struct GeneralSettings: View {
                 note("Automatisch nimmt den Bildschirm mit Notch, sonst den Hauptbildschirm. Ohne Notch erscheint eine schwebende Kapsel.",
                      "Automatic picks the display with a notch, otherwise the main display. Without a notch a floating capsule appears.")
             }
+            Section {
+                ValueSlider(title: L("Höhe an Notch angleichen", "Match notch height"), value: $settings.notchHeightAdjust,
+                            range: -8...4, step: 0.5, format: "%+.1f pt")
+            } footer: {
+                note("Feinabstimmung, falls die geschlossene Island nicht genau so hoch ist wie die Kamera-Aussparung.",
+                     "Fine-tuning in case the closed island is not exactly as tall as the camera housing.")
+            }
+            Section {
+                Toggle(L("Im Vollbild ausblenden", "Hide in full screen"), isOn: $settings.hideInFullscreen)
+            } footer: {
+                note("Schaust du einen Film oder nutzt eine App im Vollbild, verschwindet die Island. Lautstärke- und Helligkeitsanzeigen erscheinen trotzdem kurz.",
+                     "While you watch a film or use an app in full screen, the island disappears. Volume and brightness overlays still show briefly.")
+            }
+        }
+    }
+}
+
+/// A small picture of the design with a radio mark below.
+private struct DesignOption: View {
+    let design: IslandDesign
+    @Binding var selection: IslandDesign
+
+    var body: some View {
+        let selected = design == selection
+        Button { selection = design } label: {
+            VStack(spacing: 10) {
+                ZStack(alignment: .top) {
+                    LinearGradient(colors: [Color(red: 0.95, green: 0.55, blue: 0.5), Color(red: 0.55, green: 0.35, blue: 0.95),
+                                            Color(red: 0.4, green: 0.65, blue: 0.95)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                    Rectangle().fill(Color.white.opacity(0.18)).frame(height: 14)
+                    if design == .notch { notchPicture } else { islandPicture }
+                }
+                .frame(height: 118)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(selected ? Color.accentColor : Color.white.opacity(0.1), lineWidth: selected ? 3 : 1))
+                HStack(spacing: 6) {
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(selected ? Color.accentColor : .secondary)
+                    Text(design == .notch ? "Notch" : "Dynamic Island")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .animation(.easeInOut(duration: 0.2), value: selected)
+    }
+
+    private var tile: some View {
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .fill(LinearGradient(colors: [.pink, .purple, .blue], startPoint: .top, endPoint: .bottom))
+    }
+
+    private var notchPicture: some View {
+        HStack(spacing: 12) {
+            tile.frame(width: 38, height: 38)
+            VStack(alignment: .leading, spacing: 6) {
+                Capsule().fill(Color.white.opacity(0.85)).frame(width: 80, height: 5)
+                Capsule().fill(Color.white.opacity(0.4)).frame(width: 52, height: 4)
+                HStack(spacing: 8) {
+                    ForEach(0..<3, id: \.self) { _ in Circle().fill(Color.white.opacity(0.7)).frame(width: 5, height: 5) }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 78)
+        .background(UnevenRoundedRectangle(bottomLeadingRadius: 16, bottomTrailingRadius: 16, style: .continuous)
+            .fill(Color.black))
+        .padding(.horizontal, 10)
+    }
+
+    private var islandPicture: some View {
+        ZStack(alignment: .top) {
+            Rectangle().fill(Color.black).frame(width: 60, height: 8)
+            HStack {
+                tile.frame(width: 12, height: 12)
+                Spacer()
+                HStack(spacing: 2) {
+                    ForEach([5.0, 9, 6, 8], id: \.self) { height in
+                        Capsule().fill(Color.pink).frame(width: 2, height: height)
+                    }
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(width: 150, height: 22)
+            .background(Capsule().fill(Color.black))
+            .padding(.top, 4)
         }
     }
 }
@@ -768,8 +887,6 @@ private struct AppearanceSettings: View {
                             range: 140...200, step: 5, format: "%.0f pt")
                 ValueSlider(title: L("Eckenradius", "Corner radius"), value: $settings.islandCornerRadius,
                             range: 16...48, step: 1, format: "%.0f pt")
-                ValueSlider(title: L("Höhe an Notch angleichen", "Match notch height"), value: $settings.notchHeightAdjust,
-                            range: -8...4, step: 0.5, format: "%+.1f pt")
             }
             Section(L("Schrift & Symbole", "Text & icons")) {
                 Picker(L("Schriftart", "Font"), selection: $settings.fontDesign) {
@@ -827,12 +944,6 @@ private struct BehaviorSettings: View {
                 note("Der erste Reiter ist standardmäßig Musik. Die Reihenfolge stellst du unter „Reiter“ ein.",
                      "The first tab is Music by default. Change the order under “Tabs”.")
             }
-            Section {
-                Toggle(L("Im Vollbild ausblenden", "Hide in full screen"), isOn: $settings.hideInFullscreen)
-            } footer: {
-                note("Schaust du einen Film oder nutzt eine App im Vollbild, verschwindet die Island. Lautstärke- und Helligkeitsanzeigen erscheinen trotzdem kurz.",
-                     "While you watch a film or use an app in full screen, the island disappears. Volume and brightness overlays still show briefly.")
-            }
             HapticSection()
         }
     }
@@ -846,10 +957,12 @@ private struct ModuleRow: Identifiable {
     let symbol: String
 }
 
-/// Order and visibility of the tabs at the top of the open island.
+/// Order and visibility of the pages in the open island: one tile per
+/// page (symbol, name, switch) in a row; drag a tile to move it.
 private struct TabSettings: View {
     let coordinator: NotchCoordinator
     @ObservedObject private var settings = AppSettings.shared
+    @State private var dragging: String?
 
     private var rows: [ModuleRow] {
         let order = settings.moduleOrder
@@ -867,36 +980,96 @@ private struct TabSettings: View {
         // Only the sections: the settings window puts them in one form.
         Group {
             Section {
-                List {
-                    ForEach(rows) { row in
-                        HStack(spacing: 10) {
-                            Image(systemName: "line.3.horizontal")
-                                .foregroundStyle(.tertiary)
-                            Image(systemName: row.symbol)
-                                .frame(width: 22)
-                                .foregroundStyle(.secondary)
-                            Toggle(row.title, isOn: Binding(
-                                get: { !settings.hiddenTabs.contains(row.id) },
-                                set: { visible in
-                                    if visible { settings.hiddenTabs.remove(row.id) } else { settings.hiddenTabs.insert(row.id) }
-                                }))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(rows) { row in
+                            tile(row)
+                                .onDrag {
+                                    dragging = row.id
+                                    return NSItemProvider(object: row.id as NSString)
+                                }
+                                .onDrop(of: [.text], delegate: TileDrop(target: row.id, rows: rows.map(\.id),
+                                                                       dragging: $dragging, settings: settings))
                         }
                     }
-                    .onMove { from, to in
-                        var ids = rows.map(\.id)
-                        ids.move(fromOffsets: from, toOffset: to)
-                        settings.moduleOrder = ids
-                    }
+                    .padding(10)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: rows.map(\.id))
                 }
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 230)
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.black.opacity(0.18)))
             } header: {
-                Text(L("Reiter", "Tabs"))
+                HStack {
+                    Text(L("In der geöffneten Notch", "In the open notch"))
+                    Spacer()
+                    Button(L("Standard-Reihenfolge", "Default order")) { settings.moduleOrder = [] }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.accentColor)
+                }
             } footer: {
-                note("Ziehen zum Sortieren, Schalter blendet einen Reiter aus. Ausgeblendete Module laufen weiter, z. B. zeigt ein laufender Timer trotzdem seinen Countdown neben der Notch.",
-                     "Drag to reorder; the switch hides a tab. Hidden modules keep working, e.g. a running timer still shows its countdown next to the notch.")
+                note("Zieh eine Kachel an die gewünschte Stelle; ihr Schalter entscheidet, ob die Notch die Seite überhaupt hat. In der geöffneten Notch liegen sie von links nach rechts in dieser Reihenfolge – mit zwei Fingern seitlich wischen oder die Punkte anklicken. Ausgeschaltete Seiten werden übersprungen und laufen im Hintergrund weiter (ein Timer zeigt z. B. trotzdem seinen Countdown).",
+                     "Drag a tile to where you want it; its switch decides whether the notch has the page at all. In the open notch they lie left to right in this order – swipe sideways with two fingers, or click the dots. A page switched off is skipped and keeps working in the background (a timer still shows its countdown, for example).")
             }
         }
+    }
+
+    private func tile(_ row: ModuleRow) -> some View {
+        let visible = !settings.hiddenTabs.contains(row.id)
+        let always = row.id == "media"
+        return VStack(spacing: 8) {
+            Image(systemName: row.symbol)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(always ? AnyShapeStyle(LinearGradient(colors: [.pink, .purple], startPoint: .top, endPoint: .bottom))
+                                 : AnyShapeStyle(Color.accentColor.opacity(0.35))))
+            Text(row.title)
+                .font(.system(size: 11.5, weight: .semibold))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .frame(height: 30)
+            if always {
+                Text(L("Immer an", "Always on"))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(height: 22)
+            } else {
+                Toggle("", isOn: Binding(
+                    get: { visible },
+                    set: { on in
+                        if on { settings.hiddenTabs.remove(row.id) } else { settings.hiddenTabs.insert(row.id) }
+                    }))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .frame(height: 22)
+            }
+        }
+        .padding(.vertical, 12)
+        .frame(width: 92)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.07)))
+    }
+}
+
+/// Moves the dragged tile to where it hovers, live.
+private struct TileDrop: DropDelegate {
+    let target: String
+    let rows: [String]
+    @Binding var dragging: String?
+    let settings: AppSettings
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging, dragging != target,
+              let from = rows.firstIndex(of: dragging), let to = rows.firstIndex(of: target) else { return }
+        var ids = rows
+        ids.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        settings.moduleOrder = ids
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        return true
     }
 }
 

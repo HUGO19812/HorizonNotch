@@ -12,7 +12,21 @@ struct NotchGeometry: Equatable {
     static let virtualSize = CGSize(width: 180, height: 32)
 
     init(screen: NSScreen) {
-        if screen.safeAreaInsets.top > 0,
+        let island = AppSettings.shared.islandDesign == .dynamicIsland
+        if island, screen.safeAreaInsets.top > 0,
+           let left = screen.auxiliaryTopLeftArea,
+           let right = screen.auxiliaryTopRightArea {
+            // A floating capsule a little below the edge that still covers
+            // the camera: the hardware notch above joins it in the middle.
+            let width = screen.frame.width - left.width - right.width
+            notchSize = CGSize(width: width + 20, height: screen.safeAreaInsets.top - 2)
+            hasNotch = false
+            topInset = 4
+        } else if island {
+            notchSize = Self.virtualSize
+            hasNotch = false
+            topInset = 6
+        } else if screen.safeAreaInsets.top > 0,
            let left = screen.auxiliaryTopLeftArea,
            let right = screen.auxiliaryTopRightArea {
             let width = screen.frame.width - left.width - right.width
