@@ -48,7 +48,7 @@ struct AirPods3DView: NSViewRepresentable {
         let camera = SCNNode()
         camera.camera = SCNCamera()
         camera.camera?.fieldOfView = 30
-        camera.position = SCNVector3(0, 0.1, 5.2)
+        camera.position = SCNVector3(0, 0.05, 4.3)
         scene.rootNode.addChildNode(camera)
 
         let key = SCNNode()

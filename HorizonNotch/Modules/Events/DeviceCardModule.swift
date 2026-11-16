@@ -24,14 +24,14 @@ final class DeviceCardModule: NotchModule {
     var title: String { L("Geräte verbinden", "Device connections") }
     let symbol = "airpodspro"
     let priority = ModulePriority.notification + 1
-    let compactWingWidth: CGFloat = 112
+    let compactWingWidth: CGFloat = 96
 
     @Published private(set) var card: DeviceCard?
     private var hideWork: DispatchWorkItem?
 
     var isActive: Bool { card != nil }
     var isPeeking: Bool { card != nil }
-    var peekHeight: CGFloat { card?.connected == true ? 116 : 60 }
+    var peekHeight: CGFloat { card?.connected == true ? 74 : 58 }
 
     /// Shows the card, or updates it in place (battery arriving later).
     func show(_ card: DeviceCard) {
@@ -54,47 +54,73 @@ final class DeviceCardModule: NotchModule {
     func transientView() -> AnyView { AnyView(DeviceCardView(module: self, inline: true)) }
 }
 
+/// A slim live activity under the notch: the device (3D model or glyph)
+/// on a soft glow on the left, name and "Connected" in the middle, one
+/// battery ring with the level on the right.
 private struct DeviceCardView: View {
     @ObservedObject var module: DeviceCardModule
-    /// Inside the open island: covers the page instead of reaching up
-    /// beside the notch.
+    /// Inside the open island (centred on the page).
     var inline = false
 
     var body: some View {
         if let card = module.card {
-            HStack(alignment: .center, spacing: 26) {
+            HStack(spacing: 14) {
                 DeviceImage(card: card)
-                    .frame(width: card.connected ? (inline ? 104 : 118) : 70,
-                           height: card.connected ? (inline ? 104 : 118) : 60)
-                    // Reaches up beside the notch, like Pro Notch's picture.
-                    .offset(y: inline ? 0 : (card.connected ? -16 : -8))
+                    .frame(width: card.connected ? 58 : 44, height: card.connected ? 58 : 44)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(card.name)
-                        .font(.system(size: 19, weight: .bold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
+                        .truncationMode(.middle)
                     Text(card.connected ? L("Verbunden", "Connected") : L("Getrennt", "Disconnected"))
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.5))
-                    if card.connected {
-                        HStack(spacing: 14) {
-                            if let left = card.left { BatteryRing(label: "L", percent: left) }
-                            if let right = card.right { BatteryRing(label: "R", percent: right) }
-                            if let box = card.caseLevel { BatteryRing(symbol: "rectangle.portrait.fill", percent: box) }
-                            if card.left == nil, card.right == nil, let single = card.single {
-                                BatteryRing(symbol: "battery.100", percent: single)
-                            }
-                        }
-                        .padding(.top, 8)
-                    }
                 }
-                Spacer(minLength: 0)
+                Spacer(minLength: 8)
+                if card.connected, let level = level(card) {
+                    LevelRing(percent: level)
+                }
             }
-            .padding(.leading, 30)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .padding(.horizontal, inline ? 26 : 14)
+            .frame(maxWidth: inline ? 380 : .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
             .transition(.opacity)
             .animation(.easeInOut(duration: 0.3), value: card)
         }
+    }
+
+    /// The buds' level (the lower one), else the device's own.
+    private func level(_ card: DeviceCard) -> Int? {
+        switch (card.left, card.right) {
+        case let (l?, r?): return min(l, r)
+        case let (l?, nil): return l
+        case let (nil, r?): return r
+        default: return card.single
+        }
+    }
+}
+
+/// A thin ring with the percentage inside, green / orange / red.
+private struct LevelRing: View {
+    let percent: Int
+
+    private var color: Color {
+        percent <= 20 ? .red : (percent <= 40 ? .orange : Color(red: 0.3, green: 0.85, blue: 0.45))
+    }
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.white.opacity(0.12), lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: CGFloat(percent) / 100)
+                .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text("\(percent)")
+                .font(.system(size: 11, weight: .bold).monospacedDigit())
+                .foregroundStyle(.white)
+        }
+        .frame(width: 34, height: 34)
     }
 }
 
@@ -131,9 +157,9 @@ private struct DeviceImage: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(Color(red: 0.5, green: 0.36, blue: 1).opacity(card.connected ? 0.38 : 0.12))
-                .blur(radius: 26)
-                .scaleEffect(0.85)
+                .fill(Color.white.opacity(card.connected ? 0.14 : 0.05))
+                .blur(radius: 14)
+                .scaleEffect(0.9)
             if AppSettings.shared.accessoryStyle == .model3D && isEarbuds && photo == nil {
                 AirPods3DView()
                     .opacity(card.connected ? 1 : 0.55)
@@ -142,9 +168,8 @@ private struct DeviceImage: View {
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
-                    .shadow(color: Color(red: 0.55, green: 0.4, blue: 1).opacity(0.45), radius: 14)
-                    .shadow(color: .black.opacity(0.45), radius: 8, y: 6)
-                    .padding(4)
+                    .shadow(color: .black.opacity(0.45), radius: 6, y: 4)
+                    .padding(2)
                     .opacity(card.connected ? 1 : 0.55)
             } else {
                 symbolView
@@ -159,8 +184,8 @@ private struct DeviceImage: View {
             .symbolRenderingMode(.hierarchical)
             .foregroundStyle(LinearGradient(colors: [Color(white: 0.97), Color(white: 0.72)],
                                             startPoint: .top, endPoint: .bottom))
-            .shadow(color: .black.opacity(0.5), radius: 8, y: 5)
-            .padding(10)
+            .shadow(color: .black.opacity(0.5), radius: 5, y: 3)
+            .padding(8)
             .opacity(card.connected ? 1 : 0.55)
     }
 }
@@ -221,7 +246,9 @@ enum DevicePhotos {
         let kind = kind(of: deviceName)
         let key = "\(kind)"
         if let cached = cache[key] { return cached }
-        let found = assetImage(kind) ?? systemImage(kind)
+        // Only pictures added to the asset catalogue: macOS's own device
+        // icons are flat glyphs on a tile and looked out of place.
+        let found = assetImage(kind)
         cache[key] = found
         return found
     }

@@ -141,7 +141,11 @@ private struct IslandBackground: View {
             // Before macOS 26 a hand-made glass over the desktop picture.
             ZStack {
                 if #available(macOS 26.0, *) {
-                    Color.clear.glassEffect(.clear, in: shape)
+                    // AppKit's own clear glass (NSGlassEffectView): it
+                    // refracts the windows behind without the grey veil
+                    // SwiftUI's glass gets in this always-inactive panel.
+                    ClearGlassView(cornerRadius: shape.bottomRadius)
+                        .padding(.horizontal, shape.earRadius)
                 } else if wallpaper.image != nil {
                     ZStack {
                         WallpaperPiece(windowOrigin: windowOrigin)
@@ -739,5 +743,21 @@ extension AnyTransition {
                                  identity: PageSlide(offset: 0, blur: 0, opacity: 1, scale: 1)),
             removal: .modifier(active: PageSlide(offset: -50 * d, blur: 10, opacity: 0, scale: 0.94),
                                identity: PageSlide(offset: 0, blur: 0, opacity: 1, scale: 1)))
+    }
+}
+
+@available(macOS 26.0, *)
+private struct ClearGlassView: NSViewRepresentable {
+    var cornerRadius: CGFloat
+
+    func makeNSView(context: Context) -> NSGlassEffectView {
+        let view = NSGlassEffectView()
+        view.style = .clear
+        view.cornerRadius = cornerRadius
+        return view
+    }
+
+    func updateNSView(_ view: NSGlassEffectView, context: Context) {
+        view.cornerRadius = cornerRadius
     }
 }
