@@ -35,6 +35,8 @@ protocol NotchModule: ObservableObject where ObjectWillChangePublisher == Observ
     var isPeeking: Bool { get }
     /// Extra height below the notch while peeking.
     var peekHeight: CGFloat { get }
+    /// Coloured glow under the closed island (e.g. Claude needs you).
+    var compactGlow: Color? { get }
 
     func compactLeading() -> AnyView
     func compactTrailing() -> AnyView
@@ -66,6 +68,7 @@ extension NotchModule {
     func expandedView() -> AnyView { AnyView(EmptyView()) }
     var isPeeking: Bool { false }
     var peekHeight: CGFloat { 0 }
+    var compactGlow: Color? { nil }
     func peekView() -> AnyView { AnyView(EmptyView()) }
     var headerInfo: HeaderInfo? { nil }
     /// Both wings side by side, each as wide as next to the notch – the

@@ -61,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         connectivityMonitor = ConnectivityMonitor { [weak self] in self?.connectivity.post($0) }
         downloadWatcher = DownloadWatcher { [weak self] in self?.notifications.post($0) }
         lockScreen = LockScreenController(nowPlaying: nowPlaying, lyrics: media.lyrics)
+        LockScreenSources.weather = weather.service
         screenSaver = ScreenSaverController(nowPlaying: nowPlaying, lyrics: media.lyrics)
         coordinator.register(battery)
         coordinator.register(privacy)
@@ -91,7 +92,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if !AppSettings.shared.onboardingDone {
-            showSettings(tab: .permissions)
+            // Say hello in the notch first; "Get Started" opens the setup.
+            controller.model.showHello = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { controller.expand() }
+            NotificationCenter.default.addObserver(forName: .helloFinished, object: nil, queue: .main) { [weak self, weak controller] _ in
+                controller?.model.showHello = false
+                controller?.collapse()
+                self?.showSettings(tab: .permissions)
+            }
         }
         #if DEBUG
         installDebugHooks()
@@ -101,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     #if DEBUG
     /// Lets scripts drive the island while developing:
     /// `notifyutil` is not enough here, so post a distributed notification
-    /// named "horizonnotch.debug" with object "expand", "collapse", "hud",
+    /// named "horizonnotch.debug" with object "expand", "collapse", "hud", "bluetooth",
     /// "plug", "low", "event", "download", "timer", "peek", "lock", "unlock" or
     /// "page:<module id>".
     private func installDebugHooks() {
@@ -111,6 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "expand": self?.notchController?.expand()
             case "collapse": self?.notchController?.collapse()
             case "hud": self?.hud.debugShow()
+            case "bluetooth": SideHUDController.shared.show(device: .init(symbol: "airpodspro", battery: 0.72, connected: true))
             case "plug": self?.battery.debugShow(.pluggedIn)
             case "low": self?.battery.debugShow(.low(9))
             case "peek": self?.media.debugPeek()

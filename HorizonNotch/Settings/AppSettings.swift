@@ -117,6 +117,8 @@ final class AppSettings: ObservableObject {
     @Published var connectivityFocus: Bool { didSet { defaults.set(connectivityFocus, forKey: "connectivityFocus") } }
     @Published var notifyDownloads: Bool { didSet { defaults.set(notifyDownloads, forKey: "notifyDownloads") } }
     @Published var lockScreenWidgets: Bool { didSet { defaults.set(lockScreenWidgets, forKey: "lockScreenWidgets") } }
+    /// Weather, battery and headphones under the lock screen clock.
+    @Published var lockScreenStatusRow: Bool { didSet { defaults.set(lockScreenStatusRow, forKey: "lockScreenStatusRow") } }
     @Published var lockScreenStart: LockScreenStart { didSet { defaults.set(lockScreenStart.rawValue, forKey: "lockScreenStart") } }
     /// How see-through the lock screen player card is (0 = solid glass, 1 = almost invisible).
     @Published var lockScreenTransparency: Double { didSet { defaults.set(lockScreenTransparency, forKey: "lockScreenTransparency") } }
@@ -143,9 +145,13 @@ final class AppSettings: ObservableObject {
     @Published var hiddenTabs: Set<String> { didSet { defaults.set(Array(hiddenTabs), forKey: "hiddenTabs") } }
     @Published var hudShowPercent: Bool { didSet { defaults.set(hudShowPercent, forKey: "hudShowPercent") } }
     @Published var hudStyle: HUDStyle { didSet { defaults.set(hudStyle.rawValue, forKey: "hudStyle") } }
+    /// Where a Bluetooth device connecting or disconnecting shows.
+    @Published var connectionStyle: HUDStyle { didSet { defaults.set(connectionStyle.rawValue, forKey: "connectionStyle") } }
     @Published var hudBarColor: HUDBarColor { didSet { defaults.set(hudBarColor.rawValue, forKey: "hudBarColor") } }
     @Published var musicGesture: MusicGesture { didSet { defaults.set(musicGesture.rawValue, forKey: "musicGesture") } }
     @Published var keepAwakeIcon: Bool { didSet { defaults.set(keepAwakeIcon, forKey: "keepAwakeIcon") } }
+    /// Stay awake switches itself off after this many hours; 0 = no limit.
+    @Published var keepAwakeLimitHours: Int { didSet { defaults.set(keepAwakeLimitHours, forKey: "keepAwakeLimitHours") } }
     @Published var batteryInHeader: Bool { didSet { defaults.set(batteryInHeader, forKey: "batteryInHeader") } }
     @Published var batteryShowPercent: Bool { didSet { defaults.set(batteryShowPercent, forKey: "batteryShowPercent") } }
     @Published var showSource: Bool { didSet { defaults.set(showSource, forKey: "showSource") } }
@@ -210,9 +216,10 @@ final class AppSettings: ObservableObject {
         connectivityFocus = defaults.bool(forKey: "connectivityFocus")
         notifyDownloads = defaults.bool(forKey: "notifyDownloads")
         lockScreenWidgets = defaults.object(forKey: "lockScreenWidgets") as? Bool ?? true
+        lockScreenStatusRow = defaults.object(forKey: "lockScreenStatusRow") as? Bool ?? true
         lockScreenStart = LockScreenStart(rawValue: defaults.string(forKey: "lockScreenStart") ?? "") ?? .compact
         lockScreenTransparency = defaults.object(forKey: "lockScreenTransparency") as? Double ?? 0.6
-        lockScreenBackdrop = LockScreenBackdrop(rawValue: defaults.string(forKey: "lockScreenBackdrop") ?? "") ?? .tinted
+        lockScreenBackdrop = LockScreenBackdrop(rawValue: defaults.string(forKey: "lockScreenBackdrop") ?? "") ?? .cover
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true
         screenSaverEnabled = defaults.bool(forKey: "screenSaverEnabled")
@@ -227,9 +234,11 @@ final class AppSettings: ObservableObject {
         hiddenTabs = Set(defaults.stringArray(forKey: "hiddenTabs") ?? [])
         hudShowPercent = defaults.bool(forKey: "hudShowPercent")
         hudStyle = HUDStyle(rawValue: defaults.string(forKey: "hudStyle") ?? "") ?? .notch
+        connectionStyle = HUDStyle(rawValue: defaults.string(forKey: "connectionStyle") ?? "") ?? .notch
         hudBarColor = HUDBarColor(rawValue: defaults.string(forKey: "hudBarColor") ?? "") ?? .colorful
         musicGesture = MusicGesture(rawValue: defaults.string(forKey: "musicGesture") ?? "") ?? .track
         keepAwakeIcon = defaults.object(forKey: "keepAwakeIcon") as? Bool ?? true
+        keepAwakeLimitHours = defaults.object(forKey: "keepAwakeLimitHours") as? Int ?? 0
         batteryInHeader = defaults.object(forKey: "batteryInHeader") as? Bool ?? true
         batteryShowPercent = defaults.object(forKey: "batteryShowPercent") as? Bool ?? true
         showSource = defaults.object(forKey: "showSource") as? Bool ?? true

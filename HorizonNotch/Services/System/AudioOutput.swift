@@ -28,26 +28,45 @@ final class AudioOutput: ObservableObject {
 
     // MARK: - Volume
 
-    var canSetVolume: Bool {
-        var address = volumeAddress
-        var settable: DarwinBoolean = false
-        guard AudioObjectHasProperty(deviceID, &address) else { return false }
-        return AudioObjectIsPropertySettable(deviceID, &address, &settable) == noErr && settable.boolValue
-    }
+    /// When this is false the volume keys go to macOS, which then shows its
+    /// own overlay – so look for every way the device takes a volume.
+    var canSetVolume: Bool { !volumeAddresses.isEmpty }
 
     var volume: Float {
         get {
-            var address = volumeAddress
+            guard var address = volumeAddresses.first else { return 0 }
             var value = Float32(0)
             var size = UInt32(MemoryLayout<Float32>.size)
             AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value)
             return value
         }
         set {
-            var address = volumeAddress
             var value = Float32(min(max(newValue, 0), 1))
-            AudioObjectSetPropertyData(deviceID, &address, 0, nil, UInt32(MemoryLayout<Float32>.size), &value)
+            for var address in volumeAddresses {
+                AudioObjectSetPropertyData(deviceID, &address, 0, nil, UInt32(MemoryLayout<Float32>.size), &value)
+            }
         }
+    }
+
+    /// The virtual main volume, or – for devices without one, e.g. some
+    /// Bluetooth headsets in the first moments after connecting – the left
+    /// and right channel volumes.
+    private var volumeAddresses: [AudioObjectPropertyAddress] {
+        if deviceID == kAudioObjectUnknown { refreshDevice() }
+        var main = volumeAddress
+        if isSettable(&main) { return [main] }
+        return [UInt32(1), 2].compactMap { channel in
+            var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyVolumeScalar,
+                                                     mScope: kAudioDevicePropertyScopeOutput,
+                                                     mElement: channel)
+            return isSettable(&address) ? address : nil
+        }
+    }
+
+    private func isSettable(_ address: inout AudioObjectPropertyAddress) -> Bool {
+        var settable: DarwinBoolean = false
+        guard AudioObjectHasProperty(deviceID, &address) else { return false }
+        return AudioObjectIsPropertySettable(deviceID, &address, &settable) == noErr && settable.boolValue
     }
 
     var isMuted: Bool {

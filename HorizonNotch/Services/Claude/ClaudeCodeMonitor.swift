@@ -21,6 +21,10 @@ final class ClaudeCodeMonitor: ObservableObject {
         var activity: Activity
         var turnStarted: Date?
         var updated: Date
+        /// What Claude is doing right now, e.g. "Editing router.ts".
+        var detail: String?
+        /// The end of Claude's last answer, shown when a turn is done.
+        var summary: String?
     }
 
     @Published private(set) var sessions: [Session] = []
@@ -93,18 +97,24 @@ final class ClaudeCodeMonitor: ObservableObject {
         case "UserPromptSubmit":
             session.activity = .working(tool: nil)
             session.turnStarted = Date()
+            session.detail = L("Denkt nach", "Thinking")
+            session.summary = nil
         case "PreToolUse":
-            session.activity = .working(tool: event["tool_name"] as? String)
+            let tool = event["tool_name"] as? String
+            session.activity = .working(tool: tool)
+            session.detail = Self.describe(tool: tool, input: event["tool_input"] as? [String: Any])
             if session.turnStarted == nil { session.turnStarted = Date() }
         case "Notification":
             session.activity = .waiting(event["message"] as? String ?? L("Wartet auf dich", "Waiting for you"))
         case "Stop":
             session.activity = .done
             session.turnStarted = nil
+            session.summary = nil
             turnFinished.send()
+            if let path = event["transcript_path"] as? String { loadSummary(from: path, for: id) }
             let work = DispatchWorkItem { [weak self] in self?.setActivity(.idle, for: id) }
             doneTimers[id] = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: work)
         default:
             break
         }
@@ -114,6 +124,81 @@ final class ClaudeCodeMonitor: ObservableObject {
             sessions.append(session)
         }
         scheduleCleanup()
+    }
+
+    // MARK: - Describing the work
+
+    /// A short line like Pro Notch's: "Editing router.ts", "Run the tests".
+    static func describe(tool: String?, input: [String: Any]?) -> String? {
+        guard let tool else { return nil }
+        let input = input ?? [:]
+        let file = (input["file_path"] as? String ?? input["notebook_path"] as? String)
+            .map { URL(fileURLWithPath: $0).lastPathComponent }
+        switch tool {
+        case "Edit", "MultiEdit", "NotebookEdit":
+            return file.map { L("Bearbeitet ", "Editing ") + $0 } ?? L("Bearbeitet Dateien", "Editing files")
+        case "Write":
+            return file.map { L("Schreibt ", "Writing ") + $0 } ?? L("Schreibt eine Datei", "Writing a file")
+        case "Read":
+            return file.map { L("Liest ", "Reading ") + $0 } ?? L("Liest Dateien", "Reading files")
+        case "Bash":
+            if let description = input["description"] as? String, !description.isEmpty { return description }
+            let command = (input["command"] as? String ?? "").split(separator: " ").prefix(3).joined(separator: " ")
+            return command.isEmpty ? L("Führt einen Befehl aus", "Running a command") : command
+        case "Grep", "Glob":
+            if let pattern = input["pattern"] as? String { return L("Sucht ", "Searching ") + pattern }
+            return L("Sucht im Code", "Searching the code")
+        case "WebFetch":
+            let host = (input["url"] as? String).flatMap { URL(string: $0)?.host }
+            return host.map { L("Lädt ", "Fetching ") + $0 } ?? L("Lädt eine Seite", "Fetching a page")
+        case "WebSearch":
+            return (input["query"] as? String).map { L("Sucht im Web: ", "Searching the web: ") + $0 }
+        case "Task", "Agent":
+            return (input["description"] as? String) ?? L("Startet einen Agenten", "Starting an agent")
+        case "TodoWrite":
+            return L("Plant die nächsten Schritte", "Planning the next steps")
+        default:
+            return tool.hasPrefix("mcp__") ? tool.split(separator: "_").last.map(String.init) : tool
+        }
+    }
+
+    /// The last sentence Claude wrote, read from the end of its transcript
+    /// in the background ("All 42 router tests pass now.").
+    private func loadSummary(from path: String, for id: String) {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let handle = FileHandle(forReadingAtPath: path) else { return }
+            defer { try? handle.close() }
+            let size = (try? handle.seekToEnd()) ?? 0
+            try? handle.seek(toOffset: size > 65_536 ? size - 65_536 : 0)
+            guard let data = try? handle.readToEnd(), let text = String(data: data, encoding: .utf8) else { return }
+            var summary: String?
+            for line in text.split(separator: "\n").reversed() {
+                guard let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                      json["type"] as? String == "assistant",
+                      let message = json["message"] as? [String: Any],
+                      let content = message["content"] as? [[String: Any]] else { continue }
+                let texts = content.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
+                guard let last = texts.last?.trimmingCharacters(in: .whitespacesAndNewlines), !last.isEmpty else { continue }
+                summary = Self.lastSentence(of: last)
+                break
+            }
+            guard let summary else { return }
+            DispatchQueue.main.async {
+                guard let self, let index = self.sessions.firstIndex(where: { $0.id == id }) else { return }
+                self.sessions[index].summary = summary
+            }
+        }
+    }
+
+    private static func lastSentence(of text: String) -> String {
+        let plain = text.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
+        let lines = plain.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let line = lines.last ?? plain
+        var sentences: [String] = []
+        line.enumerateSubstrings(in: line.startIndex..., options: .bySentences) { sentence, _, _, _ in
+            if let sentence = sentence?.trimmingCharacters(in: .whitespaces), !sentence.isEmpty { sentences.append(sentence) }
+        }
+        return sentences.first ?? line
     }
 
     private func setActivity(_ activity: Activity, for id: String) {

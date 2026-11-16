@@ -30,7 +30,7 @@ final class HUDModule: NotchModule {
 
     /// In the side-bar style the island stays as it is.
     var isActive: Bool { visible && settings.hudStyle == .notch }
-    private let sideHUD = SideHUDController()
+    private let sideHUD = SideHUDController.shared
     var tapIsRunning: Bool { tap.isRunning }
 
     init() {
