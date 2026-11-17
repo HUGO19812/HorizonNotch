@@ -362,25 +362,33 @@ private struct CraftedGlass: View {
         .compositingGroup()
     }
 
+    /// Bands from the middle out to the rim, each a little more magnified:
+    /// together they bend the picture more and more towards the edge, like
+    /// a thick lens (Canopy's distortion).
+    private static let lensBands: [(width: CGFloat, zoom: CGFloat)] = [
+        (90, 1.04), (64, 1.09), (46, 1.15), (32, 1.22), (21, 1.3), (12, 1.4),
+    ]
+
     private var clear: some View {
         ZStack {
             WallpaperPiece()
-            // Lens: a magnified copy only along the rim.
-            WallpaperPiece(zoom: 1.16)
-                .brightness(0.03)
-                .mask(rim(width: 26, blur: 10))
-            // A hint of colour where the glass bends most – subtle.
-            WallpaperPiece(zoom: 1.2)
+            ForEach(Self.lensBands.indices, id: \.self) { index in
+                let band = Self.lensBands[index]
+                WallpaperPiece(zoom: band.zoom)
+                    .mask(rim(width: band.width, blur: band.width * 0.35))
+            }
+            // A hint of colour where the glass bends most.
+            WallpaperPiece(zoom: 1.46)
                 .colorMultiply(Color(red: 1, green: 0.55, blue: 0.5))
-                .mask(rim(width: 5, blur: 3))
-                .blendMode(.plusLighter)
-                .opacity(0.18)
-            WallpaperPiece(zoom: 1.12)
-                .colorMultiply(Color(red: 0.5, green: 0.65, blue: 1))
                 .mask(rim(width: 6, blur: 3))
                 .blendMode(.plusLighter)
-                .opacity(0.16)
-            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.28), .white.opacity(0.03), .white.opacity(0.14)],
+                .opacity(0.2)
+            WallpaperPiece(zoom: 1.34)
+                .colorMultiply(Color(red: 0.5, green: 0.65, blue: 1))
+                .mask(rim(width: 8, blur: 3))
+                .blendMode(.plusLighter)
+                .opacity(0.18)
+            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.3), .white.opacity(0.03), .white.opacity(0.15)],
                                               startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
                 .blendMode(.plusLighter)
         }
