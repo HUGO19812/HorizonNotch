@@ -314,19 +314,6 @@ private struct ExpandedContent: View {
                 }
                 Spacer(minLength: 0)
                 HeaderStatus()
-                Button {
-                    // NSApp.delegate is SwiftUI's adaptor, not AppDelegate, so
-                    // ask through a notification.
-                    NotificationCenter.default.post(name: .openSettings, object: nil)
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.5))
-                        .frame(width: 22, height: 20)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(L("Einstellungen", "Settings"))
             }
             .frame(width: wing, alignment: .trailing)
         }
@@ -354,18 +341,7 @@ private struct ExpandedContent: View {
             Spacer(minLength: gap)
             HStack(spacing: 10) {
                 Spacer(minLength: 0)
-                HeaderStatus(alwaysShowCup: true, alwaysGrouped: true)
-                Button {
-                    NotificationCenter.default.post(name: .openSettings, object: nil)
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.55))
-                        .frame(width: 22, height: 20)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(L("Einstellungen", "Settings"))
+                HeaderStatus(alwaysShowCup: true)
             }
             .frame(width: wing, alignment: .trailing)
         }
@@ -374,10 +350,10 @@ private struct ExpandedContent: View {
 
     /// Room the status icons and the gear take on the right wing.
     private var statusReserve: CGFloat {
-        var width: CGFloat = 22 + 8 // gear
+        var width: CGFloat = 0
         if settings.keepAwakeIcon { width += 16 + 8 }
         if settings.batteryInHeader && PowerSource.shared.state.hasBattery {
-            width += 22 + 8 + (settings.batteryShowPercent ? 34 : 0)
+            width += 30 + 8
         }
         if settings.headerStatusGroup && HeaderStatus.hasContent { width += HeaderStatus.groupPadding * 2 }
         return width
@@ -618,7 +594,8 @@ private struct HeaderStatus: View {
     }
 
     var body: some View {
-        let grouped = alwaysGrouped || (settings.headerStatusGroup && Self.hasContent)
+        // Clean like iOS: no capsule around the icons any more.
+        let grouped = alwaysGrouped
         icons
             .padding(.horizontal, grouped ? Self.groupPadding : 0)
             .frame(height: grouped ? 22 : nil)
@@ -631,12 +608,12 @@ private struct HeaderStatus: View {
     }
 
     private var icons: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             if settings.keepAwakeIcon || alwaysShowCup {
                 Button { awake.toggle() } label: {
-                    Image(systemName: awake.isOn ? "cup.and.heat.waves.fill" : "cup.and.saucer")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(awake.isOn ? theme.tint(.orange) : .white.opacity(0.4))
+                    Image(systemName: awake.isOn ? "cup.and.heat.waves.fill" : "cup.and.saucer.fill")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(awake.isOn ? theme.tint(.orange) : .white.opacity(0.35))
                         .frame(height: 20)
                         .contentShape(Rectangle())
                 }

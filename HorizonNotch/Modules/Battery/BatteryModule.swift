@@ -172,23 +172,15 @@ struct HeaderBattery: View {
         let state = power.state
         if state.hasBattery, settings.batteryInHeader {
             Button { showDetails.toggle() } label: {
-                HStack(spacing: 4) {
-                    if settings.batteryShowPercent {
-                        Text("\(state.percent) %")
-                            .font(.system(size: 10, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(.white.opacity(0.7))
+                HStack(spacing: 3) {
+                    // iOS 26/27 style: the level as a number inside the battery.
+                    PhoneBattery(percent: state.percent, showNumber: settings.batteryShowPercent,
+                                 fill: color(state))
+                    if state.isCharging || state.isPluggedIn {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.85))
                     }
-                    BatteryGlyph(fraction: Double(state.percent) / 100, color: color(state))
-                        .frame(width: 22, height: 10)
-                        .overlay {
-                            if state.isCharging || state.isPluggedIn {
-                                Image(systemName: "bolt.fill")
-                                    .font(.system(size: 7, weight: .black))
-                                    .foregroundStyle(.white)
-                                    .shadow(color: .black, radius: 1)
-                                    .offset(x: -1)
-                            }
-                        }
                 }
                 .frame(height: 20)
                 .contentShape(Rectangle())
@@ -202,6 +194,41 @@ struct HeaderBattery: View {
         if state.isPluggedIn { return theme.tint(.green) }
         if state.percent <= 20 { return theme.tint(.red) }
         return .white
+    }
+}
+
+/// The battery as on iPhone since iOS 26: a rounded body, filled to the
+/// level, the percentage cut out of it in bold, a small cap on the right.
+struct PhoneBattery: View {
+    let percent: Int
+    var showNumber = true
+    var fill: Color = .white
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 4.3, style: .continuous)
+        HStack(spacing: 1.2) {
+            ZStack(alignment: .leading) {
+                shape.fill(Color.white.opacity(0.32))
+                GeometryReader { proxy in
+                    Rectangle()
+                        .fill(fill)
+                        .frame(width: proxy.size.width * CGFloat(min(max(percent, 0), 100)) / 100)
+                }
+                if showNumber {
+                    Text("\(percent)")
+                        .font(.system(size: 9.5, weight: .bold, design: .rounded).monospacedDigit())
+                        .frame(maxWidth: .infinity)
+                        // Cut out of the battery, like the system's.
+                        .blendMode(.destinationOut)
+                }
+            }
+            .clipShape(shape)
+            .compositingGroup()
+            .frame(width: 26, height: 12.5)
+            Capsule()
+                .fill(Color.white.opacity(0.32))
+                .frame(width: 1.6, height: 4.5)
+        }
     }
 }
 
