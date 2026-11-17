@@ -83,7 +83,7 @@ struct LockScreenView: View {
 
     /// Small glass card above "Touch ID or Enter Password".
     private func compact(info: NowPlayingInfo) -> some View {
-        LiquidPlayerCard(service: nowPlaying, info: info, lyricsOn: false, showsLyricsButton: false, overWallpaper: true,
+        LiquidPlayerCard(service: nowPlaying, info: info, lyricsOn: false, overWallpaper: true,
                          onLyrics: { state.large = true; state.lyrics = true }) {
             CoverArt(image: nowPlaying.artwork, cornerRadius: 9)
                 .matchedGeometryEffect(id: "cover", in: player)
