@@ -842,7 +842,6 @@ private struct AppearanceSettings: View {
             Section {
                 TilePicker(title: L("Stil der Island", "Island style"), selection: $settings.appearance, options: [
                     TileOption(value: IslandAppearance.black, title: L("Schwarz", "Black"), symbol: "circle.fill"),
-                    TileOption(value: IslandAppearance.glass, title: L("Glas", "Glass"), symbol: "drop.fill"),
                     TileOption(value: IslandAppearance.tinted, title: L("Farbig", "Tinted"), symbol: "paintpalette.fill"),
                 ])
                 if settings.appearance == .tinted {
@@ -855,8 +854,8 @@ private struct AppearanceSettings: View {
             } header: {
                 Text(L("Hintergrund", "Background"))
             } footer: {
-                note("Glas nutzt ab macOS 26 Liquid Glass, davor ein Material. Geschlossen ist die Island immer schwarz, damit sie mit der Notch verschmilzt.",
-                     "Glass uses Liquid Glass on macOS 26+, a material before. Closed, the island is always black so it blends with the notch.")
+                note("Geschlossen ist die Island immer schwarz, damit sie mit der Notch verschmilzt.",
+                     "Closed, the island is always black so it blends with the notch.")
             }
             Section {
                 Picker(L("Akzentfarbe", "Accent colour"), selection: $settings.accentMode) {

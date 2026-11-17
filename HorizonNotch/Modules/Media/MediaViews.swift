@@ -118,31 +118,33 @@ struct MediaExpandedView: View {
                     .frame(width: 232)
                     .transition(.opacity)
                 } else {
-                    // Like Pro Notch: large cover with a glow, the titles,
-                    // the source app top right, a full-width progress bar,
-                    // big buttons in the middle and the output on the right.
-                    HStack(alignment: .center, spacing: 20) {
-                        cover(info, size: 98, radius: 16)
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(alignment: .top) {
-                                TitleBlock(info: info, titleSize: 16)
-                                    .matchedGeometryEffect(id: "title", in: player, properties: .position, anchor: .topLeading)
-                                Spacer(minLength: 8)
-                                HStack(spacing: 10) {
-                                    ControlButton(symbol: "quote.bubble", size: 13, active: settings.showLyrics) {
-                                        settings.showLyrics.toggle()
-                                    }
-                                    .help(L("Songtext", "Lyrics"))
-                                    SourceIcon(info: info)
-                                }
-                                .offset(y: -6)
+                    // Like Canopy: cover, title and artist, the visualizer
+                    // top right (a click shows the lyrics), the progress bar
+                    // with both times beside it, and heart – back – play –
+                    // forward – output spread across the width.
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .center, spacing: 14) {
+                            cover(info, size: 60, radius: 13)
+                            TitleBlock(info: info, titleSize: 17)
+                                .matchedGeometryEffect(id: "title", in: player, properties: .position, anchor: .topLeading)
+                            Spacer(minLength: 8)
+                            Button { settings.showLyrics.toggle() } label: {
+                                AudioVisualizerView(color: NSColor(service.artwork != nil ? service.accent : .white),
+                                                    isPlaying: info.isPlaying)
+                                    .frame(width: 26, height: 18)
+                                    .contentShape(Rectangle())
                             }
-                            ProgressScrubber(service: service, info: info)
-                                .matchedGeometryEffect(id: "progress", in: player)
-                            ProControls(service: service, info: info)
-                                .matchedGeometryEffect(id: "controls", in: player)
+                            .buttonStyle(.plain)
+                            .help(L("Songtext", "Lyrics"))
+                            .frame(maxHeight: .infinity, alignment: .top)
                         }
+                        .fixedSize(horizontal: false, vertical: true)
+                        ProgressScrubber(service: service, info: info, inline: true)
+                            .matchedGeometryEffect(id: "progress", in: player)
+                        CanopyControls(service: service, info: info)
+                            .matchedGeometryEffect(id: "controls", in: player)
                     }
+                    .padding(.top, 2)
                     .transition(.opacity)
                 }
                 if settings.showLyrics {
@@ -238,6 +240,45 @@ private struct ProControls: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.5))
                 .frame(width: 30)
+                .help(output.deviceName)
+        }
+    }
+}
+
+/// Heart, back, play/pause, forward and the output device, spread evenly
+/// across the width – like Canopy.
+private struct CanopyControls: View {
+    @ObservedObject var service: NowPlayingService
+    @ObservedObject private var output = AudioOutput.shared
+    let info: NowPlayingInfo
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button { service.toggleLike() } label: {
+                Image(systemName: service.liked ? "heart.fill" : "heart")
+                    .font(.system(size: 21, weight: .semibold))
+                    .foregroundStyle(service.liked ? Color(red: 0.98, green: 0.33, blue: 0.47) : .white.opacity(0.85))
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 44, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PressScaleStyle())
+            .opacity(service.canLike ? 1 : 0.3)
+            .disabled(!service.canLike)
+            .help(service.canLike ? L("Favorit", "Favourite") : L("Nur mit Apple Music", "Only with Apple Music"))
+            Spacer(minLength: 0)
+            ControlButton(symbol: "backward.fill", size: 22) { service.send(.previous) }
+            Spacer(minLength: 0)
+            ControlButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 30) {
+                service.send(.togglePlayPause)
+            }
+            Spacer(minLength: 0)
+            ControlButton(symbol: "forward.fill", size: 22) { service.send(.next) }
+            Spacer(minLength: 0)
+            Image(systemName: output.symbol)
+                .font(.system(size: 19, weight: .regular))
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 44, height: 40)
                 .help(output.deviceName)
         }
     }
@@ -443,6 +484,8 @@ private struct NothingPlayingView: View {
 private struct ProgressScrubber: View {
     @ObservedObject var service: NowPlayingService
     let info: NowPlayingInfo
+    /// Times left and right of the bar (Canopy) instead of below it.
+    var inline = false
     @State private var dragValue: Double?
 
     var body: some View {
@@ -452,37 +495,48 @@ private struct ProgressScrubber: View {
         TimelineView(.periodic(from: .now, by: info.isPlaying && dragValue == nil ? 0.5 : 3600)) { context in
             let duration = max(info.duration, 0.01)
             let position = dragValue ?? info.elapsed(at: context.date)
-            VStack(spacing: 3) {
-                GeometryReader { proxy in
-                    let fraction = CGFloat(min(max(position / duration, 0), 1))
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.18))
-                        Capsule().fill(service.accent.opacity(0.95))
-                            .frame(width: proxy.size.width * fraction)
+            let bar = GeometryReader { proxy in
+                let fraction = CGFloat(min(max(position / duration, 0), 1))
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.18))
+                    Capsule().fill(inline ? Color.white.opacity(0.5) : service.accent.opacity(0.95))
+                        .frame(width: proxy.size.width * fraction)
+                }
+                .frame(height: dragValue == nil ? (inline ? 7 : 6) : 10)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        guard info.duration > 0 else { return }
+                        let x = min(max(gesture.location.x / proxy.size.width, 0), 1)
+                        dragValue = Double(x) * info.duration
                     }
-                    .frame(height: dragValue == nil ? 6 : 9)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle())
-                    .gesture(DragGesture(minimumDistance: 0)
-                        .onChanged { gesture in
-                            guard info.duration > 0 else { return }
-                            let x = min(max(gesture.location.x / proxy.size.width, 0), 1)
-                            dragValue = Double(x) * info.duration
-                        }
-                        .onEnded { _ in
-                            if let value = dragValue { service.seek(to: value) }
-                            dragValue = nil
-                        })
-                    .animation(.easeOut(duration: 0.15), value: dragValue == nil)
-                }
-                .frame(height: 12)
-                HStack {
+                    .onEnded { _ in
+                        if let value = dragValue { service.seek(to: value) }
+                        dragValue = nil
+                    })
+                .animation(.easeOut(duration: 0.15), value: dragValue == nil)
+            }
+            .frame(height: 12)
+            if inline {
+                HStack(spacing: 12) {
                     Text(Self.format(position))
-                    Spacer()
-                    Text(info.duration > 0 ? "-" + Self.format(max(0, info.duration - position)) : "")
+                    bar
+                    Text(info.duration > 0 ? Self.format(max(0, info.duration - position)) : "")
                 }
-                .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                .font(.system(size: 12, weight: .semibold).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.45))
+            } else {
+                VStack(spacing: 3) {
+                    bar
+                    HStack {
+                        Text(Self.format(position))
+                        Spacer()
+                        Text(info.duration > 0 ? "-" + Self.format(max(0, info.duration - position)) : "")
+                    }
+                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.45))
+                }
             }
         }
     }

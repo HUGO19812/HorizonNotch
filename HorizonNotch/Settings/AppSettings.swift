@@ -231,7 +231,9 @@ final class AppSettings: ObservableObject {
 
     private init() {
         language = AppLanguage(rawValue: defaults.string(forKey: "language") ?? "") ?? .system
-        appearance = IslandAppearance(rawValue: defaults.string(forKey: "appearance") ?? "") ?? .black
+        // The glass style is gone; a stored glass falls back to black.
+        let storedAppearance = IslandAppearance(rawValue: defaults.string(forKey: "appearance") ?? "") ?? .black
+        appearance = storedAppearance == .glass ? .black : storedAppearance
         hoverDelay = defaults.object(forKey: "hoverDelay") as? Double ?? 0.12
         animationSpeed = defaults.object(forKey: "animationSpeed") as? Double ?? 1.0
         displayID = UInt32(defaults.integer(forKey: "displayID"))

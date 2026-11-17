@@ -10,6 +10,11 @@ final class NowPlayingService: ObservableObject {
     /// Vivid colour taken from the cover, used for the visualizer.
     @Published private(set) var accent: Color = .white
     @Published private(set) var usingFallback = false
+    /// The heart: whether the current song is a favourite (Music only –
+    /// other players offer no way to read or set it).
+    @Published private(set) var liked = false
+    private var likedTitle = ""
+    var canLike: Bool { info?.bundleID == "com.apple.Music" }
 
     /// A seek from the island the player has not confirmed yet. Right after
     /// seeking, players still report the old position once or twice; those
@@ -80,6 +85,30 @@ final class NowPlayingService: ObservableObject {
         bridge.send("shuffle \(current.isShuffling ? 1 : 3)")
     }
 
+    func toggleLike() {
+        guard canLike else { return }
+        let new = !liked
+        liked = new
+        Self.runScript("tell application \"Music\" to set favorited of current track to \(new)")
+    }
+
+    /// Reads the heart for a new song in the background.
+    private func refreshLiked() {
+        guard let info, info.title != likedTitle else { return }
+        likedTitle = info.title
+        guard canLike else { liked = false; return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let result = Self.runScript("tell application \"Music\" to get favorited of current track")
+            DispatchQueue.main.async { self?.liked = result == "true" }
+        }
+    }
+
+    @discardableResult
+    private static func runScript(_ source: String) -> String? {
+        var error: NSDictionary?
+        return NSAppleScript(source: source)?.executeAndReturnError(&error).stringValue
+    }
+
     func openPlayerApp() {
         guard let bundle = info?.bundleID,
               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) else { return }
@@ -136,5 +165,6 @@ final class NowPlayingService: ObservableObject {
             }
         }
         if updated != info { info = updated }
+        refreshLiked()
     }
 }
