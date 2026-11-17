@@ -122,20 +122,23 @@ struct MediaExpandedView: View {
                     // top right (a click shows the lyrics), the progress bar
                     // with both times beside it, and heart – back – play –
                     // forward – output spread across the width.
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .center, spacing: 14) {
-                            cover(info, size: 60, radius: 13)
+                            cover(info, size: 58, radius: 13)
                             TitleBlock(info: info, titleSize: 17)
                                 .matchedGeometryEffect(id: "title", in: player, properties: .position, anchor: .topLeading)
                             Spacer(minLength: 8)
-                            Button { settings.showLyrics.toggle() } label: {
+                            // Visualizer, lyrics button and the playing app.
+                            HStack(spacing: 10) {
                                 AudioVisualizerView(color: NSColor(service.artwork != nil ? service.accent : .white),
                                                     isPlaying: info.isPlaying)
-                                    .frame(width: 26, height: 18)
-                                    .contentShape(Rectangle())
+                                    .frame(width: 24, height: 16)
+                                ControlButton(symbol: "quote.bubble", size: 13, active: settings.showLyrics) {
+                                    settings.showLyrics.toggle()
+                                }
+                                .help(L("Songtext", "Lyrics"))
+                                if settings.showSource { SourceIcon(info: info) }
                             }
-                            .buttonStyle(.plain)
-                            .help(L("Songtext", "Lyrics"))
                             .frame(maxHeight: .infinity, alignment: .top)
                         }
                         .fixedSize(horizontal: false, vertical: true)
@@ -145,6 +148,9 @@ struct MediaExpandedView: View {
                             .matchedGeometryEffect(id: "controls", in: player)
                     }
                     .padding(.top, 2)
+                    // Room between the buttons and the island's edge.
+                    .padding(.bottom, 8)
+                    .padding(.horizontal, 6)
                     .transition(.opacity)
                 }
                 if settings.showLyrics {
@@ -256,10 +262,10 @@ private struct CanopyControls: View {
         HStack(spacing: 0) {
             Button { service.toggleLike() } label: {
                 Image(systemName: service.liked ? "heart.fill" : "heart")
-                    .font(.system(size: 21, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(service.liked ? Color(red: 0.98, green: 0.33, blue: 0.47) : .white.opacity(0.85))
                     .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 44, height: 40)
+                    .frame(width: 38, height: 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(PressScaleStyle())
@@ -267,18 +273,18 @@ private struct CanopyControls: View {
             .disabled(!service.canLike)
             .help(service.canLike ? L("Favorit", "Favourite") : L("Nur mit Apple Music", "Only with Apple Music"))
             Spacer(minLength: 0)
-            ControlButton(symbol: "backward.fill", size: 22) { service.send(.previous) }
+            ControlButton(symbol: "backward.fill", size: 18) { service.send(.previous) }
             Spacer(minLength: 0)
-            ControlButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 30) {
+            ControlButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 24) {
                 service.send(.togglePlayPause)
             }
             Spacer(minLength: 0)
-            ControlButton(symbol: "forward.fill", size: 22) { service.send(.next) }
+            ControlButton(symbol: "forward.fill", size: 18) { service.send(.next) }
             Spacer(minLength: 0)
             Image(systemName: output.symbol)
-                .font(.system(size: 19, weight: .regular))
+                .font(.system(size: 16, weight: .regular))
                 .foregroundStyle(.white.opacity(0.5))
-                .frame(width: 44, height: 40)
+                .frame(width: 38, height: 32)
                 .help(output.deviceName)
         }
     }
