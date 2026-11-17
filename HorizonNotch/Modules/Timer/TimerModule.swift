@@ -92,7 +92,7 @@ final class TimerModule: NotchModule {
             pausedRemaining = max(1, paused + seconds)
             runLength = max(runLength + seconds, pausedRemaining ?? 1)
         } else {
-            duration = min(max(60, duration + seconds), 24 * 3600)
+            duration = min(max(1, duration + seconds), 24 * 3600)
         }
     }
 
@@ -250,15 +250,20 @@ private struct TimerExpandedView: View {
             VStack(spacing: 10) {
                 TimelineView(.animation(minimumInterval: 1, paused: !isRunning)) { context in
                     let digits = timerDigits(module, at: context.date)
+                    let characters = Array(digits)
                     HStack(spacing: 6) {
-                        ForEach(Array(digits.enumerated()), id: \.offset) { _, character in
-                            if character == ":" {
+                        ForEach(characters.indices, id: \.self) { index in
+                            if characters[index] == ":" {
                                 Text(":")
                                     .font(.system(size: 34, weight: .bold, design: .rounded))
                                     .foregroundStyle(.white.opacity(0.45))
                                     .offset(y: -3)
                             } else {
-                                FlipTile(character: character, size: digits.count > 5 ? .medium : .large)
+                                FlipTile(character: characters[index], size: digits.count > 5 ? .medium : .large)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { tapDigit(at: index, in: characters) }
+                                    .help(module.mode == .timer ? L("Klick: +1 an dieser Stelle · ⌥-Klick: −1",
+                                                                    "Click: +1 at this place · ⌥-click: −1") : "")
                             }
                         }
                     }
@@ -348,6 +353,19 @@ private struct TimerExpandedView: View {
         }
         .padding(2)
         .background(Capsule().fill(Color.white.opacity(0.08)))
+    }
+
+    /// A click on a digit adds one at its place: seconds +1, tens of
+    /// seconds +10, minutes +60 and so on; with ⌥ it subtracts.
+    private func tapDigit(at index: Int, in characters: [Character]) {
+        guard module.mode == .timer, !module.finished else { return }
+        // Seconds per step of each place, counted from the right.
+        let places: [TimeInterval] = [1, 10, 60, 600, 3600, 36000]
+        let digitsAfter = characters[(index + 1)...].filter { $0 != ":" }.count
+        guard digitsAfter < places.count else { return }
+        let step = places[digitsAfter]
+        let sign: TimeInterval = NSEvent.modifierFlags.contains(.option) ? -1 : 1
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { module.adjust(by: sign * step) }
     }
 
     private func primaryAction() {
