@@ -2,9 +2,9 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// Countdown timer and stopwatch. Running clocks are drawn with
-/// Text(timerInterval:)/.timer, which SwiftUI updates itself, and the end of
-/// a countdown is one scheduled work item – nothing polls.
+/// Countdown timer and stopwatch, shown as a flip clock. The digits are
+/// redrawn once a second only while a clock runs, and the end of a
+/// countdown is one scheduled work item – nothing polls.
 final class TimerModule: NotchModule {
     enum Mode: String { case timer, stopwatch }
 
@@ -13,7 +13,7 @@ final class TimerModule: NotchModule {
     let symbol = "timer"
     let priority = ModulePriority.timer
     let hasExpandedContent = true
-    let compactWingWidth: CGFloat = 58
+    let compactWingWidth: CGFloat = 66
 
     @Published var mode: Mode = .timer
     /// Length chosen for the next countdown.
@@ -153,6 +153,20 @@ func formatClock(_ seconds: TimeInterval) -> String {
 
 // MARK: - Compact
 
+/// The digits to show right now: countdown left, paused time, stopwatch,
+/// or the chosen length while idle.
+private func timerDigits(_ module: TimerModule, at date: Date) -> String {
+    if module.mode == .stopwatch || module.stopwatchStart != nil && module.endDate == nil && module.pausedRemaining == nil {
+        let elapsed = module.stopwatchStart.map { date.timeIntervalSince($0) } ?? module.stopwatchPaused ?? 0
+        return TimerModule.clock(elapsed)
+    }
+    if module.finished { return "0:00" }
+    if let end = module.endDate { return formatClock(max(0, end.timeIntervalSince(date))) }
+    if let paused = module.pausedRemaining { return formatClock(paused) }
+    return formatClock(module.duration)
+}
+
+/// Left of the notch: the minutes as two small flip tiles (a bell when done).
 private struct TimerCompactLeading: View {
     @ObservedObject var module: TimerModule
     @Environment(\.islandTheme) private var theme
@@ -161,22 +175,19 @@ private struct TimerCompactLeading: View {
         Group {
             if module.finished {
                 Image(systemName: "bell.fill")
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.tint(.orange))
                     .symbolEffect(.bounce, options: .repeating)
-            } else if module.timerRunning || module.pausedRemaining != nil {
-                Image(systemName: module.timerRunning ? "timer" : "pause.fill")
-                    .foregroundStyle(theme.tint(.orange))
             } else {
-                Image(systemName: "stopwatch")
-                    .foregroundStyle(theme.tint(.cyan))
+                CompactTiles(module: module, part: .leading)
             }
         }
-        .font(.system(size: 12, weight: .semibold))
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 12)
     }
 }
 
+/// Right of the notch: the seconds as flip tiles ("Done" when finished).
 private struct TimerCompactTrailing: View {
     @ObservedObject var module: TimerModule
     @Environment(\.islandTheme) private var theme
@@ -184,71 +195,133 @@ private struct TimerCompactTrailing: View {
     var body: some View {
         Group {
             if module.finished {
-                Text(L("Fertig", "Done")).foregroundStyle(theme.tint(.orange))
-            } else if let end = module.endDate {
-                Text(timerInterval: Date()...end, countsDown: true)
+                Text(L("Fertig", "Done"))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.tint(.orange))
-            } else if let paused = module.pausedRemaining {
-                Text(formatClock(paused)).foregroundStyle(theme.tint(.orange).opacity(0.6))
-            } else if let start = module.stopwatchStart {
-                Text(start, style: .timer).foregroundStyle(theme.tint(.cyan))
+            } else {
+                CompactTiles(module: module, part: .trailing)
             }
         }
-        .font(.system(size: 12, weight: .semibold).monospacedDigit())
-        .lineLimit(1)
-        .multilineTextAlignment(.trailing)
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.trailing, 12)
     }
 }
 
+/// "08 | 15": minutes left of the notch, seconds right of it (hours join
+/// the minutes when there are any).
+private struct CompactTiles: View {
+    enum Part { case leading, trailing }
+    @ObservedObject var module: TimerModule
+    let part: Part
+
+    var body: some View {
+        let running = module.timerRunning || module.stopwatchRunning
+        TimelineView(.animation(minimumInterval: 1, paused: !running)) { context in
+            let pieces = timerDigits(module, at: context.date).split(separator: ":").map(String.init)
+            let text = part == .leading ? pieces.dropLast().joined(separator: ":") : (pieces.last ?? "")
+            HStack(spacing: 2) {
+                ForEach(Array(text.enumerated()), id: \.offset) { _, character in
+                    FlipTile(character: character, size: .compact)
+                }
+            }
+            .opacity(module.pausedRemaining != nil || module.stopwatchPaused != nil ? 0.55 : 1)
+        }
+    }
+}
+
 // MARK: - Expanded
 
-/// A progress ring with the time on the left; mode switch, presets and the
-/// controls on the right. Orange for the timer, cyan for the stopwatch.
+/// Like a station clock: every digit on its own flip card, flipping as it
+/// changes. Pause/resume and cancel on the right; presets below while idle.
 private struct TimerExpandedView: View {
     @ObservedObject var module: TimerModule
     @Environment(\.islandTheme) private var theme
     @Namespace private var modeSwitch
 
     private var tint: Color { theme.tint(module.mode == .timer ? .orange : .cyan) }
+    private var isRunning: Bool { module.mode == .timer ? module.timerRunning : module.stopwatchRunning }
+    private var isPaused: Bool {
+        module.mode == .timer ? module.pausedRemaining != nil : module.stopwatchPaused != nil
+    }
+    private var isIdle: Bool { !isRunning && !isPaused && !(module.mode == .timer && module.finished) }
 
     var body: some View {
-        HStack(spacing: 24) {
-            TimerRing(module: module, tint: tint)
-                .frame(width: 122, height: 122)
-            VStack(alignment: .leading, spacing: 12) {
-                modePicker
-                if module.mode == .timer {
+        HStack(alignment: .center, spacing: 20) {
+            VStack(spacing: 10) {
+                TimelineView(.animation(minimumInterval: 1, paused: !isRunning)) { context in
+                    let digits = timerDigits(module, at: context.date)
                     HStack(spacing: 6) {
-                        ForEach([1, 5, 10, 25], id: \.self) { minutes in
-                            Chip(title: "\(minutes) min", selected: !module.timerRunning && module.pausedRemaining == nil
-                                    && module.duration == TimeInterval(minutes * 60)) {
-                                module.setDuration(minutes: minutes)
+                        ForEach(Array(digits.enumerated()), id: \.offset) { _, character in
+                            if character == ":" {
+                                Text(":")
+                                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.45))
+                                    .offset(y: -3)
+                            } else {
+                                FlipTile(character: character, size: digits.count > 5 ? .medium : .large)
                             }
                         }
-                        Chip(title: "−1") { module.adjust(by: -60) }
-                        Chip(title: "+1") { module.adjust(by: 60) }
                     }
-                } else {
-                    Text(L("Läuft weiter, auch wenn die Island zu ist.", "Keeps running while the island is closed."))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.5))
-                        .frame(height: 26)
+                    .opacity(isPaused ? 0.6 : 1)
                 }
-                HStack(spacing: 10) {
-                    PrimaryButton(title: primaryTitle, symbol: primarySymbol, tint: tint) {
+                caption
+                    .frame(height: 24)
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 12) {
+                modePicker
+                HStack(spacing: 12) {
+                    // Pause / resume (start while idle).
+                    RoundAction(symbol: isRunning ? "pause.fill" : "play.fill", size: 46, fill: tint, foreground: .black) {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { primaryAction() }
                     }
-                    RoundAction(symbol: "arrow.counterclockwise") {
+                    .help(isRunning ? L("Pause", "Pause") : (isPaused ? L("Weiter", "Resume") : L("Start", "Start")))
+                    // Cancel.
+                    RoundAction(symbol: "xmark", size: 46) {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                             if module.mode == .timer { module.resetTimer() } else { module.resetStopwatch() }
                         }
                     }
+                    .help(L("Abbrechen", "Cancel"))
+                    .opacity(isIdle ? 0.35 : 1)
+                    .disabled(isIdle)
                 }
             }
-            Spacer(minLength: 0)
         }
+    }
+
+    /// Presets while idle; otherwise what is happening.
+    @ViewBuilder
+    private var caption: some View {
+        if module.mode == .timer && isIdle {
+            HStack(spacing: 6) {
+                ForEach([1, 5, 10, 25], id: \.self) { minutes in
+                    Chip(title: "\(minutes) min", selected: module.duration == TimeInterval(minutes * 60)) {
+                        module.setDuration(minutes: minutes)
+                    }
+                }
+                Chip(title: "−1") { module.adjust(by: -60) }
+                Chip(title: "+1") { module.adjust(by: 60) }
+            }
+        } else {
+            Text(statusText)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.5))
+                .lineLimit(1)
+        }
+    }
+
+    private var statusText: String {
+        if module.mode == .stopwatch {
+            return isRunning ? L("Stoppuhr läuft", "Stopwatch running")
+                : (isPaused ? L("Pausiert", "Paused") : L("Stoppuhr", "Stopwatch"))
+        }
+        if module.finished { return L("Zeit ist um", "Time's up") }
+        if let end = module.endDate {
+            return L("Läuft · bis ", "Running · until ") + end.formatted(date: .omitted, time: .shortened)
+        }
+        return isPaused ? L("Pausiert", "Paused") : ""
     }
 
     private var modePicker: some View {
@@ -261,7 +334,7 @@ private struct TimerExpandedView: View {
                     Text(mode == .timer ? L("Timer", "Timer") : L("Stoppuhr", "Stopwatch"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(selected ? .black : .white.opacity(0.65))
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 11)
                         .padding(.vertical, 5)
                         .background {
                             if selected {
@@ -277,18 +350,6 @@ private struct TimerExpandedView: View {
         .background(Capsule().fill(Color.white.opacity(0.08)))
     }
 
-    private var isRunning: Bool { module.mode == .timer ? module.timerRunning : module.stopwatchRunning }
-    private var isPaused: Bool {
-        module.mode == .timer ? module.pausedRemaining != nil : module.stopwatchPaused != nil
-    }
-
-    private var primaryTitle: String {
-        if isRunning { return L("Pause", "Pause") }
-        return isPaused ? L("Weiter", "Resume") : L("Start", "Start")
-    }
-
-    private var primarySymbol: String { isRunning ? "pause.fill" : "play.fill" }
-
     private func primaryAction() {
         if module.mode == .timer {
             if module.timerRunning { module.pauseTimer() } else { module.startTimer() }
@@ -298,60 +359,39 @@ private struct TimerExpandedView: View {
     }
 }
 
-/// Ring that empties as the countdown runs (or sweeps once a minute for the
-/// stopwatch), with the time in the middle.
-private struct TimerRing: View {
-    @ObservedObject var module: TimerModule
-    let tint: Color
+/// One flip card: a dark tile with a lighter upper half, a hairline across
+/// the middle and the digit, which rolls over when it changes.
+private struct FlipTile: View {
+    enum Size {
+        case compact, medium, large
+        var width: CGFloat { switch self { case .compact: 12; case .medium: 44; case .large: 56 } }
+        var height: CGFloat { switch self { case .compact: 19; case .medium: 62; case .large: 74 } }
+        var font: CGFloat { switch self { case .compact: 12; case .medium: 40; case .large: 50 } }
+        var radius: CGFloat { switch self { case .compact: 3.5; case .medium: 9; case .large: 11 } }
+    }
+
+    let character: Character
+    let size: Size
 
     var body: some View {
-        let running = module.mode == .timer ? module.timerRunning : module.stopwatchRunning
-        TimelineView(.animation(minimumInterval: 1.0 / 20, paused: !running)) { context in
-            let (progress, time, caption) = values(at: context.date)
-            ZStack {
-                Circle().stroke(Color.white.opacity(0.1), lineWidth: 7)
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(tint, style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .shadow(color: tint.opacity(0.5), radius: 6)
-                VStack(spacing: 2) {
-                    Text(time)
-                        .font(.system(size: time.count > 5 ? 20 : 26, weight: .semibold, design: .rounded).monospacedDigit())
-                        .contentTransition(.numericText())
-                    Text(caption)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.5))
-                }
+        let shape = RoundedRectangle(cornerRadius: size.radius, style: .continuous)
+        ZStack {
+            shape.fill(Color(white: 0.11))
+            VStack(spacing: 0) {
+                Color(white: 0.15)
+                Color.clear
             }
+            .clipShape(shape)
+            Text(String(character))
+                .font(.system(size: size.font, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(.white)
+                .contentTransition(.numericText(countsDown: true))
+            Rectangle()
+                .fill(Color.black)
+                .frame(height: size == .compact ? 0.5 : 1.5)
         }
-    }
-
-    private func values(at date: Date) -> (Double, String, String) {
-        if module.mode == .stopwatch {
-            let elapsed = module.stopwatchStart.map { date.timeIntervalSince($0) } ?? module.stopwatchPaused ?? 0
-            let caption = module.stopwatchRunning ? L("läuft", "running")
-                : (module.stopwatchPaused != nil ? L("pausiert", "paused") : L("Stoppuhr", "Stopwatch"))
-            return (elapsed.truncatingRemainder(dividingBy: 60) / 60, formatStopwatch(elapsed), caption)
-        }
-        if module.finished { return (0, "0:00", L("Zeit ist um", "Time's up")) }
-        let total = max(module.runLength, 1)
-        if let end = module.endDate {
-            let remaining = max(0, end.timeIntervalSince(date))
-            return (remaining / total, formatClock(remaining),
-                    L("bis ", "until ") + end.formatted(date: .omitted, time: .shortened))
-        }
-        if let paused = module.pausedRemaining {
-            return (paused / total, formatClock(paused), L("pausiert", "paused"))
-        }
-        return (1, formatClock(module.duration), L("Timer", "Timer"))
-    }
-
-    private func formatStopwatch(_ seconds: TimeInterval) -> String {
-        let total = Int(seconds)
-        let tenths = Int((seconds - Double(total)) * 10)
-        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
-        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d,%d", m, s, tenths)
+        .frame(width: size.width, height: size.height)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: character)
     }
 }
 
@@ -374,38 +414,21 @@ private struct Chip: View {
     }
 }
 
-private struct PrimaryButton: View {
-    let title: String
-    let symbol: String
-    let tint: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(title, systemImage: symbol)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.black)
-                .contentTransition(.symbolEffect(.replace))
-                .padding(.horizontal, 18)
-                .frame(height: 34)
-                .background(Capsule().fill(tint))
-                .contentShape(Capsule())
-        }
-        .buttonStyle(PressScaleStyle())
-    }
-}
-
 private struct RoundAction: View {
     let symbol: String
+    var size: CGFloat = 34
+    var fill: Color = Color.white.opacity(0.14)
+    var foreground: Color = .white
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 34, height: 34)
-                .background(Circle().fill(Color.white.opacity(0.14)))
+                .font(.system(size: size * 0.38, weight: .bold))
+                .foregroundStyle(foreground)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: size, height: size)
+                .background(Circle().fill(fill))
                 .contentShape(Circle())
         }
         .buttonStyle(PressScaleStyle())
