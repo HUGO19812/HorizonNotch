@@ -1418,7 +1418,7 @@ private struct ConnectivitySettings: View {
                                 if let custom = customPicture {
                                     Image(nsImage: custom).resizable().scaledToFit()
                                 } else {
-                                    AirPods3DView(spinning: false)
+                                    AirPodsPairView(spinning: false)
                                 }
                             })),
                         StageItem(value: AccessoryStyle.glyph, picture: AnyView(

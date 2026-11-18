@@ -171,7 +171,7 @@ private struct DeviceImage: View {
                     .shadow(color: .black.opacity(0.45), radius: 6, y: 4)
                     .opacity(card.connected ? 1 : 0.55)
             } else if AppSettings.shared.accessoryStyle == .model3D && isEarbuds {
-                AirPods3DView()
+                AirPodsPairView()
                     .opacity(card.connected ? 1 : 0.55)
             } else {
                 symbolView
