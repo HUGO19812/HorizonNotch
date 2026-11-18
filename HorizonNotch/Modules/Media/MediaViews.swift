@@ -257,8 +257,23 @@ private struct CanopyControls: View {
     @ObservedObject var service: NowPlayingService
     @ObservedObject private var output = AudioOutput.shared
     let info: NowPlayingInfo
+    /// The buttons give way to a volume bar after a click on the output.
+    @State private var showVolume = false
 
     var body: some View {
+        ZStack {
+            if showVolume {
+                VolumeRow(close: { withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showVolume = false } })
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            } else {
+                buttons
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+        }
+        .frame(height: 32)
+    }
+
+    private var buttons: some View {
         HStack(spacing: 0) {
             Button { service.toggleLike() } label: {
                 Image(systemName: service.liked ? "heart.fill" : "heart")
@@ -281,11 +296,96 @@ private struct CanopyControls: View {
             Spacer(minLength: 0)
             ControlButton(symbol: "forward.fill", size: 18) { service.send(.next) }
             Spacer(minLength: 0)
-            Image(systemName: output.symbol)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(.white.opacity(0.5))
-                .frame(width: 38, height: 32)
-                .help(output.deviceName)
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showVolume = true }
+            } label: {
+                Image(systemName: output.symbol)
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(width: 38, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PressScaleStyle())
+            .help(L("Lautstärke – \(output.deviceName)", "Volume – \(output.deviceName)"))
+        }
+    }
+}
+
+/// Speaker (click = mute), a bar to drag or scroll, the level, and a
+/// close button. Closes by itself after a few quiet seconds.
+private struct VolumeRow: View {
+    let close: () -> Void
+    @ObservedObject private var output = AudioOutput.shared
+    @State private var level: Double = Double(AudioOutput.shared.volume)
+    @State private var muted = AudioOutput.shared.isMuted
+    @State private var lastTouch = Date()
+    @State private var dragging = false
+    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button {
+                muted.toggle()
+                AudioOutput.shared.isMuted = muted
+                lastTouch = Date()
+            } label: {
+                Image(systemName: speaker)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 26)
+            }
+            .buttonStyle(.plain)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.18))
+                    Capsule().fill(Color.white.opacity(muted ? 0.35 : 0.9))
+                        .frame(width: proxy.size.width * level)
+                }
+                .frame(height: dragging ? 10 : 7)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        dragging = true
+                        set(Double(min(max(gesture.location.x / proxy.size.width, 0), 1)))
+                    }
+                    .onEnded { _ in dragging = false })
+                .animation(.easeOut(duration: 0.15), value: dragging)
+            }
+            .frame(height: 20)
+            Text("\(Int((level * 100).rounded()))")
+                .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.55))
+                .frame(width: 28, alignment: .trailing)
+            Button(action: close) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(width: 24, height: 24)
+                    .background(Circle().fill(Color.white.opacity(0.1)))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 6)
+        .onReceive(tick) { _ in
+            if !dragging && Date().timeIntervalSince(lastTouch) > 4 { close() }
+        }
+        .help(output.deviceName)
+    }
+
+    private var speaker: String {
+        if muted || level == 0 { return "speaker.slash.fill" }
+        return level < 0.34 ? "speaker.wave.1.fill" : (level < 0.67 ? "speaker.wave.2.fill" : "speaker.wave.3.fill")
+    }
+
+    private func set(_ value: Double) {
+        level = value
+        lastTouch = Date()
+        AudioOutput.shared.volume = Float(value)
+        if muted && value > 0 {
+            muted = false
+            AudioOutput.shared.isMuted = false
         }
     }
 }

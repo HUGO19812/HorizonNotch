@@ -152,6 +152,12 @@ final class AppSettings: ObservableObject {
     /// How see-through the lock screen player card is (0 = solid glass, 1 = almost invisible).
     @Published var lockScreenTransparency: Double { didSet { defaults.set(lockScreenTransparency, forKey: "lockScreenTransparency") } }
     /// Background once the cover is shown large.
+    /// Progress of large copies (Finder) next to the notch.
+    @Published var notifyCopies: Bool { didSet { defaults.set(notifyCopies, forKey: "notifyCopies") } }
+    /// Short notice when rain starts soon where you are.
+    @Published var weatherRainAlert: Bool { didSet { defaults.set(weatherRainAlert, forKey: "weatherRainAlert") } }
+    /// Reminders (to-dos) on the calendar page.
+    @Published var calendarShowReminders: Bool { didSet { defaults.set(calendarShowReminders, forKey: "calendarShowReminders") } }
     @Published var islandDesign: IslandDesign { didSet { defaults.set(islandDesign.rawValue, forKey: "islandDesign") } }
     @Published var accessoryStyle: AccessoryStyle { didSet { defaults.set(accessoryStyle.rawValue, forKey: "accessoryStyle") } }
     @Published var lockGlassStyle: LockGlassStyle { didSet { defaults.set(lockGlassStyle.rawValue, forKey: "lockGlassStyle") } }
@@ -261,6 +267,9 @@ final class AppSettings: ObservableObject {
             defaults.set(true, forKey: "lockScreenTransparencyV2")
             lockScreenTransparency = (storedTransparency == nil || storedTransparency == 0.6) ? 0.85 : storedTransparency!
         }
+        notifyCopies = defaults.object(forKey: "notifyCopies") as? Bool ?? true
+        weatherRainAlert = defaults.object(forKey: "weatherRainAlert") as? Bool ?? true
+        calendarShowReminders = defaults.object(forKey: "calendarShowReminders") as? Bool ?? true
         islandDesign = IslandDesign(rawValue: defaults.string(forKey: "islandDesign") ?? "") ?? .notch
         // The drawn 3D model was not liked: the glyph is the default now.
         if defaults.bool(forKey: "accessoryStyleV2") {

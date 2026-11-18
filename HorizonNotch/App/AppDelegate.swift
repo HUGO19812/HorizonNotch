@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 extension Notification.Name {
@@ -15,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let timer = TimerModule()
     let shelf = ShelfModule()
     let clipboard = ClipboardModule()
+    private var rainSubscription: AnyCancellable?
+    private var lastRainNotice: Date?
     let calendar = CalendarModule()
     let weather = WeatherModule()
     let calculator = CalculatorModule()
@@ -67,6 +70,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         downloadWatcher = DownloadWatcher { [weak self] in self?.notifications.post($0) }
         lockScreen = LockScreenController(nowPlaying: nowPlaying, lyrics: media.lyrics)
         LockScreenSources.weather = weather.service
+        // "Rain in 15 min" as a short notice, once per shower.
+        weather.service.activateForAlerts()
+        rainSubscription = weather.service.$report
+            .compactMap { $0?.rainStart }
+            .removeDuplicates()
+            .sink { [weak self] start in
+                guard let self, AppSettings.shared.weatherRainAlert else { return }
+                if let last = self.lastRainNotice, abs(last.timeIntervalSince(start)) < 3 * 3600 { return }
+                self.lastRainNotice = start
+                let minutes = max(5, Int(start.timeIntervalSinceNow / 60 / 5) * 5)
+                self.notifications.post(IslandEvent(symbol: "cloud.rain.fill", tint: .cyan,
+                                                    title: L("Regen in \(minutes) Min.", "Rain in \(minutes) min"),
+                                                    detail: L("Schirm nicht vergessen", "Take an umbrella"),
+                                                    duration: 6))
+            }
         screenSaver = ScreenSaverController(nowPlaying: nowPlaying, lyrics: media.lyrics)
         coordinator.register(battery)
         coordinator.register(privacy)

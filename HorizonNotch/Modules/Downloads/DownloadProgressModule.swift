@@ -13,6 +13,8 @@ final class DownloadProgressModule: NotchModule {
         var name: String
         var fraction: Double
         var indeterminate: Bool
+        /// A Finder copy rather than a download.
+        var isCopy = false
     }
 
     let id = "downloads"
@@ -24,6 +26,9 @@ final class DownloadProgressModule: NotchModule {
     @Published private(set) var items: [Item] = []
 
     private var subscriber: Any?
+    /// Finder copies anywhere in the home folder and on external drives.
+    private var copySubscribers: [Any] = []
+    private var copySubscription: AnyCancellable?
     private var observations: [ObjectIdentifier: NSKeyValueObservation] = [:]
     private var subscription: AnyCancellable?
     private let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
@@ -33,6 +38,38 @@ final class DownloadProgressModule: NotchModule {
     init() {
         subscription = AppSettings.shared.$notifyDownloads
             .sink { [weak self] on in DispatchQueue.main.async { on ? self?.start() : self?.stop() } }
+        copySubscription = AppSettings.shared.$notifyCopies
+            .sink { [weak self] on in DispatchQueue.main.async { on ? self?.startCopies() : self?.stopCopies() } }
+    }
+
+    /// Finder publishes the progress of every copy for the target file –
+    /// the pie on the file's icon. Only copies are taken from here; the
+    /// Downloads folder has its own subscriber.
+    private func startCopies() {
+        guard copySubscribers.isEmpty else { return }
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        for root in [home, URL(fileURLWithPath: "/Volumes")] {
+            let token = Progress.addSubscriber(forFileURL: root) { [weak self] progress in
+                // Only large copies (over 20 MB): small ones finish at once.
+                guard let self, Self.isCopy(progress), progress.totalUnitCount > 20_000_000,
+                      !(progress.fileURL?.path.hasPrefix(self.folder.path) ?? false) else { return nil }
+                self.track(progress, isCopy: true)
+                return { [weak self] in
+                    DispatchQueue.main.async { self?.untrack(progress) }
+                }
+            }
+            copySubscribers.append(token)
+        }
+    }
+
+    private func stopCopies() {
+        copySubscribers.forEach { Progress.removeSubscriber($0) }
+        copySubscribers.removeAll()
+        items.removeAll { $0.isCopy }
+    }
+
+    private static func isCopy(_ progress: Progress) -> Bool {
+        progress.fileOperationKind == .copying || progress.fileOperationKind == .duplicating
     }
 
     private func start() {
@@ -52,7 +89,7 @@ final class DownloadProgressModule: NotchModule {
         items.removeAll()
     }
 
-    private func track(_ progress: Progress) {
+    private func track(_ progress: Progress, isCopy: Bool = false) {
         let key = ObjectIdentifier(progress)
         // Throttle: fractionCompleted can change hundreds of times a second.
         var lastUpdate = Date.distantPast
@@ -63,7 +100,8 @@ final class DownloadProgressModule: NotchModule {
             let item = Item(id: key,
                             name: Self.displayName(progress.fileURL),
                             fraction: progress.fractionCompleted,
-                            indeterminate: progress.isIndeterminate)
+                            indeterminate: progress.isIndeterminate,
+                            isCopy: isCopy)
             DispatchQueue.main.async { self?.update(item) }
         }
         DispatchQueue.main.async { self.observations[key] = observation }
@@ -114,11 +152,12 @@ private struct DownloadLeading: View {
                 Circle().stroke(Color.white.opacity(0.2), lineWidth: 2.5)
                 Circle()
                     .trim(from: 0, to: item?.indeterminate == false ? item?.fraction ?? 0 : 0.25)
-                    .stroke(theme.tint(.blue), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .stroke(item?.isCopy == true ? theme.tint(.green) : theme.tint(.blue),
+                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .animation(.easeOut(duration: 0.3), value: item?.fraction)
-                Image(systemName: "arrow.down")
-                    .font(.system(size: 7, weight: .black))
+                Image(systemName: item?.isCopy == true ? "doc.on.doc.fill" : "arrow.down")
+                    .font(.system(size: item?.isCopy == true ? 6 : 7, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 17, height: 17)
@@ -147,7 +186,7 @@ private struct DownloadTrailing: View {
             if let item = module.items.first {
                 Text(item.indeterminate ? "…" : "\(Int((item.fraction * 100).rounded())) %")
                     .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(theme.tint(.blue))
+                    .foregroundStyle(item.isCopy ? theme.tint(.green) : theme.tint(.blue))
                     .contentTransition(.numericText())
             }
         }

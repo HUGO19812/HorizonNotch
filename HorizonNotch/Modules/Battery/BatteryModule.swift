@@ -25,6 +25,11 @@ final class BatteryModule: NotchModule {
     private static let lowThresholds = [20, 10, 5]
 
     var isActive: Bool { event != nil }
+    /// When the charger is connected, a bar with the level and the time
+    /// until full hangs below the wings.
+    var isPeeking: Bool { event == .pluggedIn }
+    var peekHeight: CGFloat { 30 }
+    func peekView() -> AnyView { AnyView(ChargingProgress(module: self)) }
 
     init() {
         state = power.state
@@ -37,7 +42,7 @@ final class BatteryModule: NotchModule {
         guard new.hasBattery else { return }
         if new.isPluggedIn && !old.isPluggedIn {
             warned.removeAll()
-            present(.pluggedIn, for: 3.2)
+            present(.pluggedIn, for: 5)
         } else if !new.isPluggedIn && old.isPluggedIn {
             present(.unplugged, for: 2.6)
         } else if !new.isPluggedIn,
@@ -101,6 +106,45 @@ private struct BatteryLeading: View {
         .onAppear {
             withAnimation(.easeInOut(duration: 0.8).repeatCount(3, autoreverses: true)) { glow = true }
         }
+    }
+}
+
+/// Level bar filling up in green, and "full in 1 h 20 min" beside it.
+private struct ChargingProgress: View {
+    @ObservedObject var module: BatteryModule
+    @Environment(\.islandTheme) private var theme
+
+    var body: some View {
+        let state = module.state
+        HStack(spacing: 10) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.15))
+                    Capsule()
+                        .fill(LinearGradient(colors: [theme.tint(.green).opacity(0.7), theme.tint(.green)],
+                                             startPoint: .leading, endPoint: .trailing))
+                        .frame(width: proxy.size.width * CGFloat(state.percent) / 100)
+                        .shadow(color: theme.tint(.green).opacity(0.6), radius: 4)
+                }
+            }
+            .frame(height: 6)
+            Text(remaining(state))
+                .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.7))
+                .fixedSize()
+        }
+        .padding(.horizontal, 12)
+        .frame(maxHeight: .infinity)
+    }
+
+    private func remaining(_ state: PowerSource.State) -> String {
+        if state.percent >= 100 { return L("Voll", "Full") }
+        guard state.isCharging, let minutes = state.minutesRemaining, minutes > 0 else {
+            return L("Wird berechnet …", "Calculating …")
+        }
+        let time = minutes >= 60 ? L("\(minutes / 60) Std. \(minutes % 60) Min.", "\(minutes / 60) h \(minutes % 60) min")
+                                 : L("\(minutes) Min.", "\(minutes) min")
+        return L("Voll in \(time)", "Full in \(time)")
     }
 }
 

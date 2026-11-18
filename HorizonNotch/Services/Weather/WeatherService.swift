@@ -46,6 +46,8 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
         var allHours: [Hour]
         var days: [Day]
         var fetched: Date
+        /// When rain starts within the next two hours, if it is dry now.
+        var rainStart: Date? = nil
 
         /// Every hour of the given day, for the scrollable hour row.
         func hours(on day: Date) -> [Hour] {
@@ -94,12 +96,22 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
             .store(in: &subscriptions)
     }
 
+    /// For the rain notice: keep the forecast fresh in the background, but
+    /// only with a place that needs no new permission.
+    func activateForAlerts() {
+        let located = settings.weatherUsesLocation ? Permissions.locationGranted
+                                                   : (settings.weatherCoordinate != nil || !settings.weatherCity.isEmpty)
+        guard settings.weatherRainAlert, located else { return }
+        activate()
+    }
+
     /// Called when the weather page appears.
     func activate() {
         if !activated {
             activated = true
             resolveLocation()
-            refreshTimer = Timer.scheduledTimer(withTimeInterval: 30 * 60, repeats: true) { [weak self] _ in self?.fetch() }
+            // Every 15 min, so a rain notice comes in time.
+            refreshTimer = Timer.scheduledTimer(withTimeInterval: 15 * 60, repeats: true) { [weak self] _ in self?.fetch() }
             refreshTimer?.tolerance = 120
         } else {
             refreshIfStale()
@@ -230,6 +242,8 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
             URLQueryItem(name: "longitude", value: String(format: "%.3f", coordinate.longitude)),
             URLQueryItem(name: "current", value: "temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m"),
             URLQueryItem(name: "hourly", value: "temperature_2m,weather_code,is_day,precipitation_probability"),
+            URLQueryItem(name: "minutely_15", value: "precipitation"),
+            URLQueryItem(name: "forecast_minutely_15", value: "12"),
             URLQueryItem(name: "daily", value: "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max"),
             URLQueryItem(name: "wind_speed_unit", value: settings.useFahrenheit ? "mph" : "kmh"),
             URLQueryItem(name: "forecast_days", value: String(Self.forecastDays)),
@@ -281,9 +295,14 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
                 let precipitation_probability_max: [Int?]?
                 let wind_speed_10m_max: [Double?]?
             }
+            struct Minutely: Decodable {
+                let time: [Double]
+                let precipitation: [Double?]
+            }
             let current: Current
             let hourly: Hourly
             let daily: Daily
+            let minutely_15: Minutely?
         }
         guard let response = try? JSONDecoder().decode(Response.self, from: data) else { return nil }
         let now = Date()
@@ -326,7 +345,19 @@ final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegat
                       hours: Array(hours),
                       allHours: allHours,
                       days: days,
-                      fetched: now)
+                      fetched: now,
+                      rainStart: rainStart(response.minutely_15.map { ($0.time, $0.precipitation) }, now: now))
+    }
+}
+
+extension WeatherService {
+    /// The first quarter hour within two hours with real rain (≥ 0.2 mm),
+    /// but only if the current quarter hour is dry.
+    static func rainStart(_ slots: ([Double], [Double?])?, now: Date) -> Date? {
+        guard let (times, amounts) = slots else { return nil }
+        let pairs = zip(times, amounts).map { (Date(timeIntervalSince1970: $0), $1 ?? 0) }
+        guard let current = pairs.last(where: { $0.0 <= now }), current.1 < 0.1 else { return nil }
+        return pairs.first { $0.0 > now && $0.0 < now.addingTimeInterval(2 * 3600) && $0.1 >= 0.2 }?.0
     }
 }
 

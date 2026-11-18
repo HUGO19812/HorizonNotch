@@ -24,6 +24,9 @@ final class CalendarModule: NotchModule {
     @Published private(set) var events: [EKEvent] = []
     /// The meeting that is about to start or just started.
     @Published private(set) var imminent: EKEvent?
+    /// Open reminders (to-dos) with or without a due date.
+    @Published private(set) var reminders: [EKReminder] = []
+    @Published private(set) var reminderAccess: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .reminder)
 
     private let store = EKEventStore()
     private let settings = AppSettings.shared
@@ -48,7 +51,68 @@ final class CalendarModule: NotchModule {
             .dropFirst(4)
             .sink { [weak self] in DispatchQueue.main.async { self?.reload() } }
             .store(in: &subscriptions)
+        settings.$calendarShowReminders.dropFirst()
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.reloadReminders() } }
+            .store(in: &subscriptions)
         reload()
+    }
+
+    // MARK: - Reminders
+
+    var hasReminderAccess: Bool { reminderAccess == .fullAccess }
+
+    func requestReminderAccess() {
+        store.requestFullAccessToReminders { [weak self] _, _ in
+            DispatchQueue.main.async {
+                self?.reminderAccess = EKEventStore.authorizationStatus(for: .reminder)
+                self?.reloadReminders()
+            }
+        }
+    }
+
+    func reloadReminders() {
+        reminderAccess = EKEventStore.authorizationStatus(for: .reminder)
+        guard settings.calendarShowReminders, hasReminderAccess else {
+            reminders = []
+            return
+        }
+        let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: nil)
+        store.fetchReminders(matching: predicate) { [weak self] found in
+            let sorted = (found ?? []).sorted { a, b in
+                let da = a.dueDateComponents?.date ?? .distantFuture
+                let db = b.dueDateComponents?.date ?? .distantFuture
+                return da != db ? da < db : (a.creationDate ?? .distantPast) < (b.creationDate ?? .distantPast)
+            }
+            DispatchQueue.main.async { self?.reminders = sorted }
+        }
+    }
+
+    /// To-dos for a day: due that day, plus (on today) overdue and undated ones.
+    func reminders(on day: Date) -> [EKReminder] {
+        let calendar = Calendar.current
+        let isToday = calendar.isDateInToday(day)
+        return reminders.filter { reminder in
+            guard let due = reminder.dueDateComponents.flatMap({ calendar.date(from: $0) }) else { return isToday }
+            if calendar.isDate(due, inSameDayAs: day) { return true }
+            return isToday && due < calendar.startOfDay(for: day)
+        }
+    }
+
+    func complete(_ reminder: EKReminder) {
+        reminder.isCompleted = true
+        try? store.save(reminder, commit: true)
+        reminders.removeAll { $0.calendarItemIdentifier == reminder.calendarItemIdentifier }
+    }
+
+    func addReminder(_ title: String, on day: Date) {
+        let text = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, hasReminderAccess, let list = store.defaultCalendarForNewReminders() else { return }
+        let reminder = EKReminder(eventStore: store)
+        reminder.title = text
+        reminder.calendar = list
+        reminder.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day], from: day)
+        try? store.save(reminder, commit: true)
+        reloadReminders()
     }
 
     #if DEBUG
@@ -87,6 +151,7 @@ final class CalendarModule: NotchModule {
     }
 
     func reload() {
+        reloadReminders()
         access = EKEventStore.authorizationStatus(for: .event)
         guard hasAccess else {
             events = []
@@ -235,7 +300,14 @@ private struct CalendarPage: View {
                     }
                 }
                 .frame(height: 50)
-                DayEvents(module: module, day: day)
+                HStack(alignment: .top, spacing: 12) {
+                    DayEvents(module: module, day: day)
+                    if settings.calendarShowReminders {
+                        Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1)
+                        TodoColumn(module: module, day: day)
+                            .frame(width: 190)
+                    }
+                }
             }
         }
     }
@@ -266,6 +338,103 @@ private struct DayCell: View {
                 .background(Circle().fill(isToday ? Color.accentColor : .clear))
         }
         .modifier(DayCellBackground(isSelected: isSelected, isToday: isToday))
+    }
+}
+
+/// The day's to-dos from Reminders beside the events: a circle to tick
+/// one off, and a line to add a new one for that day.
+private struct TodoColumn: View {
+    @ObservedObject var module: CalendarModule
+    let day: Date
+    @State private var newTitle = ""
+    @State private var done: Set<String> = []
+    @FocusState private var typing: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(L("To-dos", "To-dos"))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.55))
+                Spacer()
+                let count = module.reminders(on: day).count
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 10, weight: .bold).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.4))
+                }
+            }
+            if !module.hasReminderAccess {
+                Button(L("Erinnerungen erlauben", "Allow Reminders")) { module.requestReminderAccess() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                Spacer(minLength: 0)
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(module.reminders(on: day), id: \.calendarItemIdentifier) { reminder in
+                            row(reminder)
+                        }
+                    }
+                }
+                HStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.45))
+                    TextField(L("Neues To-do", "New to-do"), text: $newTitle)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11.5))
+                        .focused($typing)
+                        .onSubmit {
+                            module.addReminder(newTitle, on: day)
+                            newTitle = ""
+                        }
+                        .onTapGesture {
+                            // The island panel only takes typing when asked to.
+                            NotificationCenter.default.post(name: .islandWantsKeyboard, object: nil)
+                            typing = true
+                        }
+                }
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.white.opacity(0.07)))
+            }
+        }
+    }
+
+    private func row(_ reminder: EKReminder) -> some View {
+        let id = reminder.calendarItemIdentifier
+        let ticked = done.contains(id)
+        let overdue = reminder.dueDateComponents.flatMap { Calendar.current.date(from: $0) }
+            .map { $0 < Calendar.current.startOfDay(for: Date()) } ?? false
+        return Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { _ = done.insert(id) }
+            // Let the tick show a moment before the row goes.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                withAnimation { module.complete(reminder) }
+                done.remove(id)
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: ticked ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(ticked ? Color.green : Color(cgColor: reminder.calendar.cgColor).opacity(0.9))
+                    .contentTransition(.symbolEffect(.replace))
+                Text(reminder.title ?? "")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(ticked ? 0.4 : 0.9))
+                    .strikethrough(ticked)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if overdue {
+                    Circle().fill(Color.red).frame(width: 5, height: 5)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(overdue ? L("Überfällig", "Overdue") : "")
     }
 }
 
