@@ -97,6 +97,15 @@ final class AudioLevelMeter {
             silentBuffers = 0
         }
 
+        // Bigger chunks: about 47 deliveries a second instead of ~94 – the
+        // views draw at 30 fps, so nothing visible is lost, but the CPU
+        // wakes half as often. The smoothing below is scaled by time.
+        var frames = UInt32(1024)
+        var bufferAddress = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyBufferFrameSize,
+                                                       mScope: kAudioObjectPropertyScopeGlobal,
+                                                       mElement: kAudioObjectPropertyElementMain)
+        AudioObjectSetPropertyData(aggregate, &bufferAddress, 0, nil, UInt32(MemoryLayout<UInt32>.size), &frames)
+
         var proc: AudioDeviceIOProcID?
         let status = AudioDeviceCreateIOProcIDWithBlock(&proc, aggregate, queue) { [weak self] _, input, _, _, _ in
             self?.analyse(input)
@@ -153,26 +162,31 @@ final class AudioLevelMeter {
             energy[3] += high * high
             total += x * x
         }
-        silentBuffers = silent ? silentBuffers + 1 : 0
+        // The constants below were tuned for 512-frame buffers; scaled so
+        // the meter feels the same whatever size Core Audio delivers.
+        let steps = Float(frames) / 512
+        func ease(_ rate: Float) -> Float { 1 - pow(1 - rate, steps) }
+        func decay(_ factor: Float) -> Float { pow(factor, steps) }
+        silentBuffers = silent ? silentBuffers + frames : 0
 
         var normalised: [Float] = [0, 0, 0, 0]
         for i in 0..<4 {
             let rms = (energy[i] / Float(frames)).squareRoot()
-            peaks[i] = Swift.max(rms, peaks[i] * 0.997, 0.002)
+            peaks[i] = Swift.max(rms, peaks[i] * decay(0.997), 0.002)
             let value = Swift.min(1, rms / peaks[i])
             // Quick to rise, slower to fall, like a level meter.
-            smoothed[i] += (value - smoothed[i]) * (value > smoothed[i] ? 0.6 : 0.15)
+            smoothed[i] += (value - smoothed[i]) * ease(value > smoothed[i] ? 0.6 : 0.15)
             normalised[i] = smoothed[i]
         }
         let rms = (total / Float(frames)).squareRoot()
-        levelPeak = Swift.max(rms, levelPeak * 0.997, 0.002)
+        levelPeak = Swift.max(rms, levelPeak * decay(0.997), 0.002)
         let loudness = Swift.min(1, rms / levelPeak)
-        level += (loudness - level) * (loudness > level ? 0.6 : 0.15)
-        average += (level - average) * 0.03
+        level += (loudness - level) * ease(loudness > level ? 0.6 : 0.15)
+        average += (level - average) * ease(0.03)
         let rise = (level - average * 1.25) / Swift.max(average, 0.05)
-        beat = Swift.max(beat * 0.86, Swift.min(1, Swift.max(0, rise)))
+        beat = Swift.max(beat * decay(0.86), Swift.min(1, Swift.max(0, rise)))
 
-        let next = Levels(bands: normalised, level: level, beat: beat, hasSignal: silentBuffers < 40)
+        let next = Levels(bands: normalised, level: level, beat: beat, hasSignal: silentBuffers < 40 * 512)
         lock.withLock { current = next }
     }
 

@@ -13,7 +13,7 @@ struct AirPodsPairView: View {
     var body: some View {
         if let buds = SystemBudImages.pair {
             if spinning {
-                TimelineView(.animation) { context in
+                TimelineView(.animation(minimumInterval: 1 / 30)) { context in
                     pair(buds, swing: sin(context.date.timeIntervalSinceReferenceDate * 2 * .pi / 6))
                 }
             } else {
