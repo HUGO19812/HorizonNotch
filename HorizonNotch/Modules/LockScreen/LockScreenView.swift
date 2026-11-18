@@ -338,9 +338,14 @@ private struct LiquidPlayerCard<Artwork: View>: View {
                     // of the lock screen picture lies right behind it (a
                     // little larger, for what the rim bends in from outside).
                     ZStack {
-                        WallpaperPiece()
-                            .padding(-16)
-                            .mask(RoundedRectangle(cornerRadius: 44, style: .continuous).padding(-16).blur(radius: 6))
+                        // The still picture, at once; the live wallpaper on
+                        // top as soon as it draws (moving, dynamic).
+                        ZStack {
+                            WallpaperPiece()
+                            LiveWallpaperPiece()
+                        }
+                        .padding(-16)
+                        .mask(RoundedRectangle(cornerRadius: 44, style: .continuous).padding(-16).blur(radius: 6))
                         Color.clear.glassEffect(frosted ? .regular : .clear, in: shape)
                     }
                 } else if overWallpaper && Wallpaper.shared.image != nil {

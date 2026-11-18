@@ -21,7 +21,10 @@ enum ClaudeHooks {
     dir="$HOME/Library/Application Support/HorizonNotch/claude-events"
     mkdir -p "$dir" || exit 0
     tmp="$dir/.$$.tmp"
-    cat > "$tmp" && mv "$tmp" "$dir/$(date +%s)-$$.json"
+    # The app Claude runs in (Terminal, iTerm, VS Code, Claude …) rides along
+    # in the file name, for the island's "open" button.
+    app=$(printf '%s' "${__CFBundleIdentifier:-}" | tr -cd 'A-Za-z0-9.-')
+    cat > "$tmp" && mv "$tmp" "$dir/$(date +%s)-$$@$app.json"
     exit 0
 
     """

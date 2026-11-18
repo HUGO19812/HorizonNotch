@@ -195,6 +195,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "timer":
                 self?.timer.setDuration(minutes: 1)
                 self?.timer.startTimer()
+            case let command? where command.hasPrefix("render:"):
+                // render:<module id>:<path> – the page as a PNG, to check layouts.
+                let parts = command.split(separator: ":", maxSplits: 2).map(String.init)
+                guard parts.count == 3, let module = self?.coordinator.modules.first(where: { $0.id == parts[1] })
+                else { return }
+                let settings = AppSettings.shared
+                let renderer = ImageRenderer(content: module.expandedView()
+                    .frame(width: settings.islandWidth - 36, height: settings.islandHeight)
+                    .padding(18)
+                    .background(Color.black)
+                    .environment(\.colorScheme, .dark))
+                renderer.scale = 2
+                if let image = renderer.nsImage, let tiff = image.tiffRepresentation,
+                   let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: parts[2]))
+                }
             case let command? where command.hasPrefix("page:"):
                 self?.coordinator.showPage(id: String(command.dropFirst(5)))
             default: break

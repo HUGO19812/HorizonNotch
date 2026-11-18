@@ -282,6 +282,8 @@ private struct CheckShape: Shape {
 private struct ClaudePage: View {
     @ObservedObject var monitor: ClaudeCodeMonitor
     @ObservedObject var usage: ClaudeUsage
+    /// The session opened up to show its details.
+    @State private var expanded: String?
 
     var body: some View {
         HStack(alignment: .top, spacing: 18) {
@@ -299,8 +301,16 @@ private struct ClaudePage: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.55))
                 } else {
-                    ForEach(monitor.sessions.prefix(3)) { session in
-                        SessionRow(session: session)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(monitor.sessions) { session in
+                                SessionRow(session: session, isExpanded: expanded == session.id) {
+                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                                        expanded = expanded == session.id ? nil : session.id
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 Spacer(minLength: 0)
@@ -314,36 +324,173 @@ private struct ClaudePage: View {
     }
 }
 
+/// One session: a line with state, project and timer; a click opens it up
+/// to show what you asked, the latest steps, the folder and how long it
+/// has been running. The arrow brings the app it runs in to the front.
 private struct SessionRow: View {
     let session: ClaudeCodeMonitor.Session
+    let isExpanded: Bool
+    let toggle: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Circle().fill(session.activity.color).frame(width: 7, height: 7)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(session.project).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                Group {
-                    if case .waiting(let message) = session.activity {
-                        Text(message)
-                    } else if session.activity == .idle {
-                        Text(L("bereit", "ready"))
-                    } else if case .done = session.activity, let summary = session.summary {
-                        Text(summary)
-                    } else {
-                        Text(session.detail ?? session.activity.label)
-                    }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Circle().fill(session.activity.color).frame(width: 7, height: 7)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(session.project).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    status
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .lineLimit(1)
                 }
-                .font(.system(size: 10))
-                .foregroundStyle(.white.opacity(0.55))
-                .lineLimit(1)
+                Spacer(minLength: 4)
+                if let start = session.turnStarted {
+                    Text(start, style: .timer)
+                        .font(.system(size: 10, weight: .medium).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+                OpenButton(session: session)
             }
-            Spacer(minLength: 4)
-            if let start = session.turnStarted {
-                Text(start, style: .timer)
-                    .font(.system(size: 10, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.5))
+            .contentShape(Rectangle())
+            .onTapGesture(perform: toggle)
+
+            if isExpanded {
+                details
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Color.white.opacity(isExpanded ? 0.07 : 0)))
+    }
+
+    @ViewBuilder private var status: some View {
+        if case .waiting(let message) = session.activity {
+            Text(message)
+        } else if session.activity == .idle {
+            Text(L("bereit", "ready"))
+        } else if case .done = session.activity, let summary = session.summary {
+            Text(summary)
+        } else {
+            Text(session.detail ?? session.activity.label)
+        }
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if let prompt = session.prompt {
+                detail("text.bubble", prompt, lines: 3)
+            }
+            if let summary = session.summary {
+                detail("checkmark.circle", summary, lines: 2)
+            }
+            if !session.recent.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(session.recent.enumerated()), id: \.offset) { index, step in
+                        HStack(spacing: 6) {
+                            Text(step.text)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .foregroundStyle(.white.opacity(index == 0 ? 0.8 : 0.5))
+                            Spacer(minLength: 4)
+                            Text(step.date, style: .relative)
+                                .foregroundStyle(.white.opacity(0.3))
+                        }
+                        .font(.system(size: 10))
+                    }
+                }
+                .padding(.leading, 20)
+            }
+            HStack(spacing: 12) {
+                if session.toolCount > 0 {
+                    Label("\(session.toolCount) " + L("Schritte", "steps"), systemImage: "hammer")
+                }
+                Label {
+                    Text(session.started, style: .relative)
+                } icon: {
+                    Image(systemName: "clock")
+                }
+                if let app = session.appName {
+                    Label(app, systemImage: "macwindow")
+                }
+            }
+            .font(.system(size: 9.5, weight: .medium))
+            .foregroundStyle(.white.opacity(0.45))
+            .labelStyle(.titleAndIcon)
+            if !session.cwd.isEmpty {
+                Button {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: session.cwd))
+                } label: {
+                    Text((session.cwd as NSString).abbreviatingWithTildeInPath)
+                        .font(.system(size: 9.5, weight: .medium).monospaced())
+                        .foregroundStyle(.white.opacity(0.4))
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
+                .buttonStyle(.plain)
+                .help(L("Ordner im Finder zeigen", "Show folder in Finder"))
+            }
+        }
+        .padding(.leading, 15)
+    }
+
+    private func detail(_ symbol: String, _ text: String, lines: Int) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: symbol)
+                .font(.system(size: 10))
+                .foregroundStyle(ClaudeCodeModule.tint)
+                .frame(width: 14)
+            Text(text)
+                .font(.system(size: 10.5))
+                .foregroundStyle(.white.opacity(0.75))
+                .lineLimit(lines)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// Round button with an arrow: brings Claude to the front – the app the
+/// session runs in, or else the Claude app or Terminal.
+private struct OpenButton: View {
+    let session: ClaudeCodeMonitor.Session
+    @State private var hovering = false
+
+    var body: some View {
+        Button { session.open() } label: {
+            Image(systemName: "arrow.up.forward.square")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(hovering ? 1 : 0.7))
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(Color.white.opacity(hovering ? 0.16 : 0.09)))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(L("Claude öffnen", "Open Claude"))
+    }
+}
+
+extension ClaudeCodeMonitor.Session {
+    private static let claudeApp = "com.anthropic.claudefordesktop"
+
+    private var appURL: URL? {
+        app.flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+    }
+
+    var appName: String? {
+        appURL.map { FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "") }
+    }
+
+    func open() {
+        let workspace = NSWorkspace.shared
+        if let bundle = app, let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first {
+            running.activate()
+            return
+        }
+        let target = appURL ?? workspace.urlForApplication(withBundleIdentifier: Self.claudeApp)
+            ?? workspace.urlForApplication(withBundleIdentifier: "com.apple.Terminal")
+        guard let target else { return }
+        workspace.openApplication(at: target, configuration: NSWorkspace.OpenConfiguration())
     }
 }
 
