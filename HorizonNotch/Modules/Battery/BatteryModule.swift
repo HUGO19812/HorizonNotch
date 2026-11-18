@@ -128,10 +128,14 @@ private struct ChargingProgress: View {
                 }
             }
             .frame(height: 6)
-            Text(remaining(state))
-                .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.7))
-                .fixedSize()
+            // Re-read every few seconds: the estimate arrives a little later.
+            TimelineView(.periodic(from: .now, by: 3)) { _ in
+                Text(remaining(state))
+                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.7))
+                    .contentTransition(.numericText())
+                    .fixedSize()
+            }
         }
         .padding(.horizontal, 12)
         .frame(maxHeight: .infinity)
@@ -139,8 +143,11 @@ private struct ChargingProgress: View {
 
     private func remaining(_ state: PowerSource.State) -> String {
         if state.percent >= 100 { return L("Voll", "Full") }
-        guard state.isCharging, let minutes = state.minutesRemaining, minutes > 0 else {
-            return L("Wird berechnet …", "Calculating …")
+        guard state.isCharging || state.isPluggedIn,
+              let minutes = state.minutesRemaining ?? PowerSource.estimatedMinutesToFull(), minutes > 0 else {
+            // No estimate yet: the level instead of an endless "calculating".
+            return state.isCharging ? L("Lädt · \(state.percent) %", "Charging · \(state.percent) %")
+                                    : L("Angeschlossen · \(state.percent) %", "Plugged in · \(state.percent) %")
         }
         let time = minutes >= 60 ? L("\(minutes / 60) Std. \(minutes % 60) Min.", "\(minutes / 60) h \(minutes % 60) min")
                                  : L("\(minutes) Min.", "\(minutes) min")
