@@ -29,6 +29,8 @@ final class NotchViewModel: ObservableObject {
     /// First launch: the open island says hello and stays open until
     /// "Get Started" is clicked.
     @Published var showHello = false
+    /// Every later launch: a short "hello" that closes by itself.
+    @Published var showGreeting = false
     /// Provides the drop zones; nil when the shelf module is missing.
     var shelf: ShelfModule?
 
@@ -80,8 +82,9 @@ final class NotchViewModel: ObservableObject {
                                 visible: true)
         case .expanded:
             // The first-launch setup gets a larger stage.
-            let width = showHello ? max(Self.expandedWidth, 600) : Self.expandedWidth
-            let height = showHello ? 330 : Self.expandedContentHeight
+            var width = showHello ? max(Self.expandedWidth, 600) : Self.expandedWidth
+            var height = showHello ? 330 : Self.expandedContentHeight
+            if showGreeting { width = 320; height = 104 }
             return IslandLayout(bodySize: CGSize(width: width,
                                                  height: notch.height + height),
                                 earRadius: attached ? 14 : 0,

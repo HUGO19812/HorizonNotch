@@ -21,6 +21,10 @@ final class ClaudeCodeModule: NotchModule {
 
     init() {
         monitor.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &subscriptions)
+        // A soft chime when Claude is done.
+        monitor.turnFinished
+            .sink { Self.playDoneSound() }
+            .store(in: &subscriptions)
         monitor.turnFinished
             .debounce(for: .seconds(2), scheduler: RunLoop.main)
             .sink { [weak self] in self?.usage.refresh() }
@@ -28,6 +32,13 @@ final class ClaudeCodeModule: NotchModule {
     }
 
     var isActive: Bool { !monitor.visible.isEmpty }
+
+    static func playDoneSound() {
+        let name = AppSettings.shared.claudeDoneSound
+        guard !name.isEmpty, let sound = NSSound(named: NSSound.Name(name)) else { return }
+        sound.volume = 0.6
+        sound.play()
+    }
 
     private var activity: ClaudeCodeMonitor.Activity { monitor.visible.first?.activity ?? .idle }
 
@@ -288,9 +299,16 @@ private struct ClaudePage: View {
     var body: some View {
         HStack(alignment: .top, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(L("Sitzungen", "Sessions"))
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.45))
+                HStack {
+                    Text(L("Sitzungen", "Sessions"))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.45))
+                    Spacer(minLength: 4)
+                    if let five = usage.fiveHour ?? usage.weekly {
+                        PlanGauge(main: five, fiveHour: usage.fiveHour, weekly: usage.weekly)
+                    }
+                }
+                .zIndex(1)
                 if !ClaudeHooks.isInstalled {
                     Text(L("Hooks noch nicht eingerichtet – Einstellungen → Claude Code.",
                            "Hooks not set up yet – Settings → Claude Code."))
@@ -447,6 +465,68 @@ private struct SessionRow: View {
                 .lineLimit(lines)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+/// How much of the plan is used: a ring with the percentage; pointing at
+/// it shows each limit and when it starts over.
+private struct PlanGauge: View {
+    let main: ClaudeUsage.Limit
+    let fiveHour: ClaudeUsage.Limit?
+    let weekly: ClaudeUsage.Limit?
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ZStack {
+                Circle().stroke(Color.white.opacity(0.15), lineWidth: 2.5)
+                Circle()
+                    .trim(from: 0, to: min(1, main.percent / 100))
+                    .stroke(color(main.percent), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            .frame(width: 13, height: 13)
+            Text("\(Int(main.percent.rounded())) %")
+                .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.8))
+        }
+        .contentShape(Rectangle())
+        .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
+        .overlay(alignment: .topTrailing) {
+            if hovering {
+                VStack(alignment: .leading, spacing: 5) {
+                    if let fiveHour { row(L("5-Std.-Limit", "5-hour limit"), fiveHour, weekday: false) }
+                    if let weekly { row(L("Wochenlimit", "Weekly limit"), weekly, weekday: true) }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(white: 0.14)))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
+                .shadow(color: .black.opacity(0.5), radius: 8, y: 3)
+                .fixedSize()
+                .offset(y: 20)
+                .transition(.opacity)
+                .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private func row(_ title: String, _ limit: ClaudeUsage.Limit, weekday: Bool) -> some View {
+        HStack(spacing: 10) {
+            Text(title).foregroundStyle(.white.opacity(0.75)).frame(width: 82, alignment: .leading)
+            Text("\(Int(limit.percent.rounded())) %").fontWeight(.bold).monospacedDigit()
+                .foregroundStyle(color(limit.percent))
+                .frame(width: 38, alignment: .trailing)
+            Text(L("Reset ", "Resets ") + (weekday && !Calendar.current.isDateInToday(limit.resets)
+                    ? limit.resets.formatted(.dateTime.weekday(.abbreviated).hour().minute().locale(appLocale))
+                    : limit.resets.formatted(.dateTime.hour().minute().locale(appLocale))))
+                .foregroundStyle(.white.opacity(0.45))
+        }
+        .font(.system(size: 10.5, weight: .medium))
+    }
+
+    private func color(_ percent: Double) -> Color {
+        percent >= 90 ? .red : (percent >= 70 ? .orange : ClaudeCodeModule.tint)
     }
 }
 

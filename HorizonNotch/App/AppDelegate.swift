@@ -139,6 +139,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 controller?.collapse()
                 AppSettings.shared.onboardingDone = true
             }
+        } else {
+            // Every later start: a short hello in the notch, then it closes.
+            controller.model.showGreeting = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { controller.expand() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.8) { [weak controller] in
+                controller?.collapse()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { controller?.model.showGreeting = false }
+            }
         }
         // Settings → "Try it": the card for a sample AirPods Pro or Max.
         NotificationCenter.default.addObserver(forName: .testDeviceCard, object: nil, queue: .main) { [weak self] note in

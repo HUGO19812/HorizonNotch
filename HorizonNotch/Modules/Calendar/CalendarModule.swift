@@ -523,7 +523,7 @@ private struct NowLine: View {
 /// Opens scrolled to now.
 private struct DayTimeline: View {
     @ObservedObject var module: CalendarModule
-    private let hourHeight: CGFloat = 34
+    private let hourHeight: CGFloat = 19
 
     var body: some View {
         let calendar = Calendar.current
@@ -550,7 +550,7 @@ private struct DayTimeline: View {
                     TimelineView(.periodic(from: .now, by: 60)) { context in
                         ZStack(alignment: .topLeading) {
                             VStack(spacing: 0) {
-                                ForEach(0..<24, id: \.self) { hour in
+                                ForEach(Array(stride(from: 0, to: 24, by: 2)), id: \.self) { hour in
                                     HStack(alignment: .top, spacing: 6) {
                                         Text(String(format: "%02d", hour))
                                             .font(.system(size: 9, weight: .medium).monospacedDigit())
@@ -559,7 +559,7 @@ private struct DayTimeline: View {
                                             .offset(y: -5)
                                         Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
                                     }
-                                    .frame(height: hourHeight, alignment: .top)
+                                    .frame(height: 2 * hourHeight, alignment: .top)
                                     .id(hour)
                                 }
                             }
@@ -576,7 +576,7 @@ private struct DayTimeline: View {
                 }
                 .onAppear {
                     let hour = max(0, calendar.component(.hour, from: Date()) - 1)
-                    proxy.scrollTo(hour, anchor: .top)
+                    proxy.scrollTo(hour - hour % 2, anchor: .top)
                 }
             }
             if events.isEmpty {
@@ -620,7 +620,7 @@ private struct DayTimeline: View {
         let end = start.addingTimeInterval(86_400)
         let from = max(item.event.startDate, start), to = min(item.event.endDate, end)
         let top = CGFloat(from.timeIntervalSince(start) / 3600) * hourHeight
-        let height = max(18, CGFloat(to.timeIntervalSince(from) / 3600) * hourHeight - 2)
+        let height = max(15, CGFloat(to.timeIntervalSince(from) / 3600) * hourHeight - 2)
         let past = item.event.endDate < now
         return GeometryReader { proxy in
             let width = (proxy.size.width - 24) / CGFloat(item.columns)
@@ -629,8 +629,8 @@ private struct DayTimeline: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.event.title ?? "")
                         .font(.system(size: 11, weight: .semibold))
-                        .lineLimit(height > 40 ? 2 : 1)
-                    if height > 28 {
+                        .lineLimit(height > 44 ? 2 : 1)
+                    if height > 30 {
                         Text(item.event.startDate.formatted(.dateTime.hour().minute().locale(appLocale)) + " – "
                              + item.event.endDate.formatted(.dateTime.hour().minute().locale(appLocale))
                              + (item.event.location.map { $0.isEmpty ? "" : " · " + $0 } ?? ""))
@@ -640,7 +640,7 @@ private struct DayTimeline: View {
                     }
                 }
                 Spacer(minLength: 0)
-                if let link = item.event.meetingURL, !past, height > 24 {
+                if let link = item.event.meetingURL, !past, height > 17 {
                     Button { NSWorkspace.shared.open(link) } label: {
                         Image(systemName: "video.fill")
                             .font(.system(size: 9, weight: .semibold))

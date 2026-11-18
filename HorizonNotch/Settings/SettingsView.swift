@@ -1530,6 +1530,7 @@ private struct DownloadSettings: View {
 }
 
 private struct ClaudeSettings: View {
+    @ObservedObject private var settings = AppSettings.shared
     @State private var installed = ClaudeHooks.isInstalled
     @State private var error: String?
 
@@ -1563,6 +1564,23 @@ private struct ClaudeSettings: View {
                         Button(L("Notch testen", "Test the notch")) { ClaudeHooks.sendTest() }
                     }
                 }
+                HStack {
+                    Picker(L("Ton, wenn Claude fertig ist", "Sound when Claude is done"), selection: $settings.claudeDoneSound) {
+                        Text(L("Aus", "Off")).tag("")
+                        ForEach(["Glass", "Ping", "Pop", "Purr", "Tink", "Hero", "Submarine", "Blow", "Bottle", "Frog", "Funk", "Morse", "Sosumi", "Basso"], id: \.self) {
+                            Text($0).tag($0)
+                        }
+                    }
+                    Button {
+                        ClaudeCodeModule.playDoneSound()
+                    } label: {
+                        Image(systemName: "speaker.wave.2.fill")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(settings.claudeDoneSound.isEmpty)
+                    .help(L("Anhören", "Listen"))
+                }
+                .onChange(of: settings.claudeDoneSound) { _, _ in ClaudeCodeModule.playDoneSound() }
             } header: {
                 Text(L("Status in der Notch", "Status in the notch"))
             } footer: {
@@ -1592,12 +1610,11 @@ private struct LockScreenSettings: View {
             }
             Section {
                 GlassStylePicker(selection: $settings.lockGlassStyle)
-                Toggle(L("Apples Liquid Glass verwenden", "Use Apple's Liquid Glass"), isOn: $settings.lockSystemGlass)
             } header: {
                 Text(L("Glas", "Glass style"))
             } footer: {
-                note("Klar lässt den Hintergrund durchscheinen, nur der Rand bricht ihn. Milchig zeichnet ihn weich. Das Glas nimmt das Bild, das macOS selbst für den Sperrbildschirm bereithält – ohne Bildschirmaufnahme. „Apples Liquid Glass“ nutzt das Glas des Systems statt des eigenen.",
-                     "Clear lets the background show through, only the rim bends it. Frosted blurs it softly. The glass uses the picture macOS itself keeps for the lock screen – no screen recording. “Apple's Liquid Glass” uses the system's glass instead of our own.")
+                note("Klar lässt den Hintergrund durchscheinen, nur der Rand bricht ihn. Milchig zeichnet ihn weich. Das Glas nimmt das Bild, das macOS selbst für den Sperrbildschirm bereithält – ohne Bildschirmaufnahme.",
+                     "Clear lets the background show through, only the rim bends it. Frosted blurs it softly. The glass uses the picture macOS itself keeps for the lock screen – no screen recording.")
             }
             Section {
                 Toggle(L("Musik-Player auf dem Sperrbildschirm", "Music player on the lock screen"), isOn: $settings.lockScreenWidgets)

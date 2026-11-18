@@ -275,7 +275,7 @@ final class NotchWindowController {
             hoverTimer?.cancel()
             hoverTimer = nil
             model.setHovering(false)
-            guard model.isExpanded, collapseTimer == nil, !model.showHello else { return }
+            guard model.isExpanded, collapseTimer == nil, !model.showHello, !model.showGreeting else { return }
             let work = DispatchWorkItem { [weak self] in
                 self?.collapseTimer = nil
                 self?.model.setExpanded(false)

@@ -251,13 +251,18 @@ struct MediaExpandedView: View {
                         CanopyControls(service: service, info: info, showOutputs: $showOutputs)
                             .matchedGeometryEffect(id: "controls", in: player)
                     }
-                    .opacity(showOutputs ? 0 : 1)
-                    .overlay {
+                    .overlay(alignment: .bottomTrailing) {
                         if showOutputs {
-                            OutputPicker(close: {
+                            let close = {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showOutputs = false }
-                            })
-                            .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                            }
+                            ZStack(alignment: .bottomTrailing) {
+                                // A click beside the popup closes it.
+                                Color.clear.contentShape(Rectangle()).onTapGesture(perform: close)
+                                OutputPicker(close: close)
+                                    .padding(.bottom, 34)
+                                    .transition(.scale(scale: 0.85, anchor: .bottomTrailing).combined(with: .opacity))
+                            }
                         }
                     }
                     .padding(.top, 2)
@@ -422,9 +427,9 @@ private struct OutputPicker: View {
     @ObservedObject private var output = AudioOutput.shared
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             VolumeRow(close: close)
-                .frame(height: 30)
+                .frame(height: 26)
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 2) {
                     ForEach(output.devices) { device in
@@ -432,10 +437,10 @@ private struct OutputPicker: View {
                         Button { output.select(device) } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: device.symbol)
-                                    .font(.system(size: 13, weight: .medium))
-                                    .frame(width: 22)
+                                    .font(.system(size: 11.5, weight: .medium))
+                                    .frame(width: 18)
                                 Text(device.name)
-                                    .font(.system(size: 12.5, weight: current ? .semibold : .medium))
+                                    .font(.system(size: 11.5, weight: current ? .semibold : .medium))
                                     .lineLimit(1)
                                 Spacer(minLength: 4)
                                 if current {
@@ -444,19 +449,23 @@ private struct OutputPicker: View {
                                 }
                             }
                             .foregroundStyle(.white.opacity(current ? 1 : 0.7))
-                            .padding(.horizontal, 10)
-                            .frame(height: 30)
-                            .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(Color.white.opacity(current ? 0.12 : 0.04)))
+                            .padding(.horizontal, 8)
+                            .frame(height: 26)
+                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.white.opacity(current ? 0.12 : 0)))
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(PressScaleStyle())
                     }
                 }
             }
+            .frame(maxHeight: CGFloat(min(output.devices.count, 3)) * 28)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
+        .padding(8)
+        .frame(width: 236)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(white: 0.13)))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+        .shadow(color: .black.opacity(0.5), radius: 12, y: 4)
     }
 }
 

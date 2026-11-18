@@ -230,8 +230,8 @@ private struct ExpandedContent: View {
             header
                 .frame(height: model.geometry.notchSize.height)
                 // The setup has its own layout below the notch.
-                .opacity(model.showHello ? 0 : 1)
-                .allowsHitTesting(!model.showHello)
+                .opacity(model.showHello || model.showGreeting ? 0 : 1)
+                .allowsHitTesting(!model.showHello && !model.showGreeting)
                 .onAppear(perform: refreshInfos)
                 .onReceive(infoChanges) { refreshInfos() }
                 .onChange(of: settings.headerLiveInfo) { refreshInfos() }
@@ -239,6 +239,9 @@ private struct ExpandedContent: View {
             ZStack {
                 if model.showHello {
                     OnboardingView { NotificationCenter.default.post(name: .helloFinished, object: nil) }
+                        .transition(.opacity)
+                } else if model.showGreeting {
+                    GreetingView()
                         .transition(.opacity)
                 } else if model.isFileDragActive, let shelf = model.shelf {
                     shelf.dropZones(onDone: onDropFinished)
