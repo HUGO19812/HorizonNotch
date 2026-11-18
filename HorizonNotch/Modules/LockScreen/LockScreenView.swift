@@ -1,5 +1,5 @@
 import AppKit
-import ScreenCaptureKit
+import OpenDirectory
 import SwiftUI
 
 /// What the lock screen player shows; back to the chosen start view
@@ -332,10 +332,17 @@ private struct LiquidPlayerCard<Artwork: View>: View {
                 // Transparency slider: 100 % = perfectly clear glass, lower
                 // values frost and shade it more and more.
                 let frosted = settings.lockGlassStyle == .frosted
-                if overWallpaper, settings.lockSystemGlass, #available(macOS 26.0, *) {
-                    // Test mode: the system's own Liquid Glass over the live
-                    // wallpaper hosted in our window.
-                    Color.clear.glassEffect(frosted ? .regular : .clear, in: shape)
+                if overWallpaper, settings.lockSystemGlass, Wallpaper.shared.image != nil, #available(macOS 26.0, *) {
+                    // The system's own Liquid Glass. It cannot see the lock
+                    // screen drawn by another process, so the matching piece
+                    // of the lock screen picture lies right behind it (a
+                    // little larger, for what the rim bends in from outside).
+                    ZStack {
+                        WallpaperPiece()
+                            .padding(-16)
+                            .mask(RoundedRectangle(cornerRadius: 44, style: .continuous).padding(-16).blur(radius: 6))
+                        Color.clear.glassEffect(frosted ? .regular : .clear, in: shape)
+                    }
                 } else if overWallpaper && Wallpaper.shared.image != nil {
                     CraftedGlass(shape: shape, frost: frosted ? 1 : 0)
                 } else if #available(macOS 26.0, *) {
@@ -447,22 +454,23 @@ final class Wallpaper: ObservableObject {
     /// The same picture decoded once, for the refracting glass.
     private(set) var cgImage: CGImage?
     private(set) var screenSize: CGSize = .zero
-    private var loadedURL: URL?
-    /// While locked, a photo of the screen itself (without our windows)
-    /// replaces the desktop picture: it matches whatever the lock screen
-    /// shows – any picture, Aerials, dynamic wallpapers.
-    private var capturing = false
-    private var captureTimer: Timer?
+    /// The file and its modification date, to notice when it changes.
+    private var loadedKey: String?
 
     func load(for screen: NSScreen) {
-        if capturing { return }
         screenSize = screen.frame.size
-        // macOS 26+ often reports a stale or default picture here; its
-        // wallpaper store knows the one actually shown.
-        guard let url = Self.storePictureURL(for: screen) ?? NSWorkspace.shared.desktopImageURL(for: screen)
+        // The lock screen's own picture first: macOS keeps it as a file for
+        // the login window (also a still of Aerials and dynamic wallpapers,
+        // and it can differ from the desktop). Then the desktop picture –
+        // macOS 26+ often reports a stale one, its wallpaper store knows the
+        // one actually shown.
+        guard let url = Self.lockScreenPictureURL ?? Self.storePictureURL(for: screen)
+                ?? NSWorkspace.shared.desktopImageURL(for: screen)
         else { image = nil; cgImage = nil; return }
-        if url == loadedURL, image != nil { return }
-        loadedURL = url
+        let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        let key = url.path + "|" + String(modified?.timeIntervalSince1970 ?? 0)
+        if key == loadedKey, image != nil { return }
+        loadedKey = key
         var isDirectory: ObjCBool = false
         if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue,
            let loaded = NSImage(contentsOf: url), !Self.isNearlyBlack(loaded) {
@@ -474,53 +482,22 @@ final class Wallpaper: ObservableObject {
         }
     }
 
-    /// Photographs the lock screen now and every few seconds (moving
-    /// wallpapers move on), until `endScreenCapture`. Needs the Screen
-    /// Recording permission; without it the desktop picture stays.
-    func beginScreenCapture(on screen: NSScreen) {
-        guard CGPreflightScreenCaptureAccess() else { return }
-        capturing = true
-        capture(screen)
-        captureTimer?.invalidate()
-        captureTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
-            self?.capture(screen)
-        }
+    /// /var/db/Wallpapers/<user's generated UID>/Wallpaper.png, readable by
+    /// everyone and kept up to date by macOS.
+    private static var lockScreenPictureURL: URL? {
+        guard let uid = generatedUID else { return nil }
+        let url = URL(fileURLWithPath: "/var/db/Wallpapers/\(uid)/Wallpaper.png")
+        return FileManager.default.isReadableFile(atPath: url.path) ? url : nil
     }
 
-    func endScreenCapture() {
-        captureTimer?.invalidate()
-        captureTimer = nil
-        guard capturing else { return }
-        capturing = false
-        loadedURL = nil
-    }
-
-    private func capture(_ screen: NSScreen) {
-        let displayID = screen.displayID
-        let size = screen.frame.size
-        let scale = screen.backingScaleFactor
-        Task { [weak self] in
-            guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
-                  let display = content.displays.first(where: { $0.displayID == displayID }) else { return }
-            let own = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
-            let filter = SCContentFilter(display: display, excludingApplications: own, exceptingWindows: [])
-            let configuration = SCStreamConfiguration()
-            configuration.width = Int(size.width * scale)
-            configuration.height = Int(size.height * scale)
-            configuration.showsCursor = false
-            guard let shot = try? await SCScreenshotManager.captureImage(contentFilter: filter,
-                                                                         configuration: configuration)
-            else { return }
-            await MainActor.run {
-                guard let self, self.capturing else { return }
-                let image = NSImage(cgImage: shot, size: size)
-                guard !Self.isNearlyBlack(image) else { return }
-                self.screenSize = size
-                self.cgImage = shot
-                self.image = image
-            }
-        }
-    }
+    private static let generatedUID: String? = {
+        guard let node = try? ODNode(session: .default(), type: ODNodeType(kODNodeTypeLocalNodes)),
+              let record = try? node.record(withRecordType: kODRecordTypeUsers, name: NSUserName(),
+                                            attributes: [kODAttributeTypeGUID]),
+              let values = try? record.values(forAttribute: kODAttributeTypeGUID)
+        else { return nil }
+        return values.first as? String
+    }()
 
     /// The desktop picture from macOS's wallpaper store: of all the places
     /// a picture can be set (all spaces, a display, one space on a display)

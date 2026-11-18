@@ -1580,34 +1580,6 @@ private struct ClaudeSettings: View {
     }
 }
 
-/// Whether the lock screen glass may photograph the screen behind it.
-private struct ScreenCaptureRow: View {
-    @State private var granted = CGPreflightScreenCaptureAccess()
-
-    var body: some View {
-        HStack {
-            Text(L("Bildschirmaufnahme", "Screen recording"))
-            Spacer()
-            if granted {
-                Label(L("Erlaubt", "Allowed"), systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            } else {
-                Button(L("Erlauben …", "Allow …")) {
-                    // Asks once; afterwards macOS only offers System Settings.
-                    if !CGRequestScreenCaptureAccess(),
-                       let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-                        NSWorkspace.shared.open(url)
-                    }
-                    granted = CGPreflightScreenCaptureAccess()
-                }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            granted = CGPreflightScreenCaptureAccess()
-        }
-    }
-}
-
 private struct LockScreenSettings: View {
     let appDelegate: AppDelegate
     @ObservedObject private var settings = AppSettings.shared
@@ -1620,15 +1592,12 @@ private struct LockScreenSettings: View {
             }
             Section {
                 GlassStylePicker(selection: $settings.lockGlassStyle)
-                Toggle(L("Systemglas (Test, wie Canopy)", "System glass (test, like Canopy)"), isOn: $settings.lockSystemGlass)
-                if !settings.lockSystemGlass {
-                    ScreenCaptureRow()
-                }
+                Toggle(L("Apples Liquid Glass verwenden", "Use Apple's Liquid Glass"), isOn: $settings.lockSystemGlass)
             } header: {
                 Text(L("Glas", "Glass style"))
             } footer: {
-                note("Klar lässt den Hintergrund durchscheinen, nur der Rand bricht ihn. Milchig zeichnet ihn weich. Mit „Bildschirmaufnahme“ sieht das Glas genau, was der Sperrbildschirm zeigt – jedes Bild, auch Aerials; ohne nimmt es das Schreibtischbild. Aufgenommen wird nur im Speicher, nichts wird gespeichert.",
-                     "Clear lets the background show through, only the rim bends it. Frosted blurs it softly. With “Screen recording” the glass sees exactly what the lock screen shows – any picture, Aerials too; without it, it uses the desktop picture. Captures stay in memory only.")
+                note("Klar lässt den Hintergrund durchscheinen, nur der Rand bricht ihn. Milchig zeichnet ihn weich. Das Glas nimmt das Bild, das macOS selbst für den Sperrbildschirm bereithält – ohne Bildschirmaufnahme. „Apples Liquid Glass“ nutzt das Glas des Systems statt des eigenen.",
+                     "Clear lets the background show through, only the rim bends it. Frosted blurs it softly. The glass uses the picture macOS itself keeps for the lock screen – no screen recording. “Apple's Liquid Glass” uses the system's glass instead of our own.")
             }
             Section {
                 Toggle(L("Musik-Player auf dem Sperrbildschirm", "Music player on the lock screen"), isOn: $settings.lockScreenWidgets)
