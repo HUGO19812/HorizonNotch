@@ -322,8 +322,13 @@ private struct LiquidPlayerCard<Artwork: View>: View {
                 // Transparency slider: 100 % = perfectly clear glass, lower
                 // values frost and shade it more and more.
                 let frosted = settings.lockGlassStyle == .frosted
-                if overWallpaper && Wallpaper.shared.image != nil {
+                if overWallpaper && Wallpaper.shared.image != nil && !Wallpaper.shared.lockScreenMoves {
                     CraftedGlass(shape: shape, frost: frosted ? 1 : 0)
+                } else if overWallpaper {
+                    // A moving wallpaper (Aerial) on the lock screen: its
+                    // picture is unknown, so no piece of it can sit behind
+                    // the glass. Dark smoked glass reads on any frame.
+                    SmokedGlass(shape: shape)
                 } else if #available(macOS 26.0, *) {
                     Color.clear.glassEffect(frosted ? .regular : .clear, in: shape)
                 } else {
@@ -336,6 +341,22 @@ private struct LiquidPlayerCard<Artwork: View>: View {
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: solid)
+        }
+    }
+}
+
+/// Dark, slightly see-through glass with a light rim and a soft sheen at
+/// the top, for backgrounds the app cannot see (moving wallpapers).
+private struct SmokedGlass: View {
+    let shape: RoundedRectangle
+
+    var body: some View {
+        ZStack {
+            shape.fill(Color.black.opacity(0.42))
+            shape.fill(LinearGradient(colors: [.white.opacity(0.14), .white.opacity(0.02), .clear],
+                                      startPoint: .top, endPoint: .bottom))
+            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.35), .white.opacity(0.08)],
+                                              startPoint: .top, endPoint: .bottom), lineWidth: 1)
         }
     }
 }
@@ -470,10 +491,14 @@ final class Wallpaper: ObservableObject {
     static let shared = Wallpaper()
     @Published private(set) var image: NSImage?
     private(set) var screenSize: CGSize = .zero
+    /// The lock screen shows a moving wallpaper (an Aerial) rather than the
+    /// desktop picture, so a piece of the picture would not match.
+    @Published private(set) var lockScreenMoves = false
     private var loadedURL: URL?
 
     func load(for screen: NSScreen) {
         screenSize = screen.frame.size
+        lockScreenMoves = Self.lockScreenShowsAerial()
         guard let url = NSWorkspace.shared.desktopImageURL(for: screen) else { image = nil; return }
         if url == loadedURL, image != nil { return }
         loadedURL = url
@@ -484,6 +509,27 @@ final class Wallpaper: ObservableObject {
         } else {
             image = nil
         }
+    }
+
+    /// Reads macOS's wallpaper store: an Aerial chosen for the idle / lock
+    /// screen ("Idle"), for all displays or one of them.
+    private static func lockScreenShowsAerial() -> Bool {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/com.apple.wallpaper/Store/Index.plist")
+        guard let data = try? Data(contentsOf: url),
+              let store = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        else { return false }
+        func idleProvider(_ scope: Any?) -> String? {
+            guard let scope = scope as? [String: Any], let idle = scope["Idle"] as? [String: Any],
+                  let content = idle["Content"] as? [String: Any],
+                  let choices = content["Choices"] as? [[String: Any]] else { return nil }
+            return choices.first?["Provider"] as? String
+        }
+        var providers = [idleProvider(store["AllSpacesAndDisplays"])]
+        if let displays = store["Displays"] as? [String: Any] {
+            providers += displays.values.map { idleProvider($0) }
+        }
+        return providers.contains { $0?.contains("aerials") == true }
     }
 
     static func isNearlyBlack(_ image: NSImage) -> Bool {
