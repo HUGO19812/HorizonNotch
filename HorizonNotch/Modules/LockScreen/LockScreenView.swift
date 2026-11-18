@@ -1,4 +1,5 @@
 import AppKit
+import ScreenCaptureKit
 import SwiftUI
 
 /// What the lock screen player shows; back to the chosen start view
@@ -443,8 +444,14 @@ final class Wallpaper: ObservableObject {
     private(set) var cgImage: CGImage?
     private(set) var screenSize: CGSize = .zero
     private var loadedURL: URL?
+    /// While locked, a photo of the screen itself (without our windows)
+    /// replaces the desktop picture: it matches whatever the lock screen
+    /// shows – any picture, Aerials, dynamic wallpapers.
+    private var capturing = false
+    private var captureTimer: Timer?
 
     func load(for screen: NSScreen) {
+        if capturing { return }
         screenSize = screen.frame.size
         // macOS 26+ often reports a stale or default picture here; its
         // wallpaper store knows the one actually shown.
@@ -460,6 +467,54 @@ final class Wallpaper: ObservableObject {
         } else {
             cgImage = nil
             image = nil
+        }
+    }
+
+    /// Photographs the lock screen now and every few seconds (moving
+    /// wallpapers move on), until `endScreenCapture`. Needs the Screen
+    /// Recording permission; without it the desktop picture stays.
+    func beginScreenCapture(on screen: NSScreen) {
+        guard CGPreflightScreenCaptureAccess() else { return }
+        capturing = true
+        capture(screen)
+        captureTimer?.invalidate()
+        captureTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            self?.capture(screen)
+        }
+    }
+
+    func endScreenCapture() {
+        captureTimer?.invalidate()
+        captureTimer = nil
+        guard capturing else { return }
+        capturing = false
+        loadedURL = nil
+    }
+
+    private func capture(_ screen: NSScreen) {
+        let displayID = screen.displayID
+        let size = screen.frame.size
+        let scale = screen.backingScaleFactor
+        Task { [weak self] in
+            guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+                  let display = content.displays.first(where: { $0.displayID == displayID }) else { return }
+            let own = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
+            let filter = SCContentFilter(display: display, excludingApplications: own, exceptingWindows: [])
+            let configuration = SCStreamConfiguration()
+            configuration.width = Int(size.width * scale)
+            configuration.height = Int(size.height * scale)
+            configuration.showsCursor = false
+            guard let shot = try? await SCScreenshotManager.captureImage(contentFilter: filter,
+                                                                         configuration: configuration)
+            else { return }
+            await MainActor.run {
+                guard let self, self.capturing else { return }
+                let image = NSImage(cgImage: shot, size: size)
+                guard !Self.isNearlyBlack(image) else { return }
+                self.screenSize = size
+                self.cgImage = shot
+                self.image = image
+            }
         }
     }
 

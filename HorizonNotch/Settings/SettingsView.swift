@@ -1580,6 +1580,34 @@ private struct ClaudeSettings: View {
     }
 }
 
+/// Whether the lock screen glass may photograph the screen behind it.
+private struct ScreenCaptureRow: View {
+    @State private var granted = CGPreflightScreenCaptureAccess()
+
+    var body: some View {
+        HStack {
+            Text(L("Bildschirmaufnahme", "Screen recording"))
+            Spacer()
+            if granted {
+                Label(L("Erlaubt", "Allowed"), systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else {
+                Button(L("Erlauben …", "Allow …")) {
+                    // Asks once; afterwards macOS only offers System Settings.
+                    if !CGRequestScreenCaptureAccess(),
+                       let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                        NSWorkspace.shared.open(url)
+                    }
+                    granted = CGPreflightScreenCaptureAccess()
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            granted = CGPreflightScreenCaptureAccess()
+        }
+    }
+}
+
 private struct LockScreenSettings: View {
     let appDelegate: AppDelegate
     @ObservedObject private var settings = AppSettings.shared
@@ -1592,11 +1620,12 @@ private struct LockScreenSettings: View {
             }
             Section {
                 GlassStylePicker(selection: $settings.lockGlassStyle)
+                ScreenCaptureRow()
             } header: {
                 Text(L("Glas", "Glass style"))
             } footer: {
-                note("Klar lässt das Hintergrundbild durchscheinen, nur der Rand bricht es. Milchig zeichnet es weich.",
-                     "Clear lets the wallpaper show through, only the rim bends it. Frosted blurs it softly.")
+                note("Klar lässt den Hintergrund durchscheinen, nur der Rand bricht ihn. Milchig zeichnet ihn weich. Mit „Bildschirmaufnahme“ sieht das Glas genau, was der Sperrbildschirm zeigt – jedes Bild, auch Aerials; ohne nimmt es das Schreibtischbild. Aufgenommen wird nur im Speicher, nichts wird gespeichert.",
+                     "Clear lets the background show through, only the rim bends it. Frosted blurs it softly. With “Screen recording” the glass sees exactly what the lock screen shows – any picture, Aerials too; without it, it uses the desktop picture. Captures stay in memory only.")
             }
             Section {
                 Toggle(L("Musik-Player auf dem Sperrbildschirm", "Music player on the lock screen"), isOn: $settings.lockScreenWidgets)

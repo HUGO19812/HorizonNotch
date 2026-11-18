@@ -14,6 +14,9 @@ struct DeviceCard: Equatable {
     var caseLevel: Int?
     /// Devices with one battery (headphones, keyboards …).
     var single: Int?
+    /// The 3D model to show when known beyond the name (KRK speakers
+    /// recognised by their maker); otherwise it follows the name.
+    var model: CustomDeviceModel?
 }
 
 /// Like Pro Notch: when headphones connect, the island opens downwards into
@@ -164,7 +167,8 @@ private struct DeviceImage: View {
                 .fill(Color.white.opacity(card.connected ? 0.14 : 0.05))
                 .blur(radius: 14)
                 .scaleEffect(0.9)
-            if AppSettings.shared.accessoryStyle == .model3D, let model = CustomDeviceModel.kind(for: card.name),
+            if AppSettings.shared.accessoryStyle == .model3D,
+               let model = card.model ?? CustomDeviceModel.kind(for: card.name),
                model.url != nil {
                 // The user's own 3D model wins over every picture.
                 DeviceModelView(model: model, moment: card.connected ? .arriving : .leaving)
