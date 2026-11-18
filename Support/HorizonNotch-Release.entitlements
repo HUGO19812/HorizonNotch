@@ -5,6 +5,8 @@
 	<!-- Only used for notarized builds (hardened runtime), see scripts/make-dmg.sh. -->
 	<key>com.apple.security.automation.apple-events</key>
 	<true/>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
 	<key>com.apple.security.personal-information.calendars</key>
 	<true/>
 	<key>com.apple.security.personal-information.location</key>
