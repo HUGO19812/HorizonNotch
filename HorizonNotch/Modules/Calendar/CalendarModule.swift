@@ -301,11 +301,13 @@ private struct CalendarPage: View {
                 }
                 .frame(height: 50)
                 HStack(alignment: .top, spacing: 12) {
+                    // Events and to-dos share the width equally.
                     DayEvents(module: module, day: day)
+                        .frame(maxWidth: .infinity)
                     if settings.calendarShowReminders {
                         Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1)
                         TodoColumn(module: module, day: day)
-                            .frame(width: 190)
+                            .frame(maxWidth: .infinity)
                     }
                 }
             }

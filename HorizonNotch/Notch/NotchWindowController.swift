@@ -194,6 +194,9 @@ final class NotchWindowController {
             // pointer touching the top edge around the centre.
             rect = CGRect(x: screen.frame.midX - 110, y: screen.frame.maxY - 8, width: 220, height: 8)
         }
+        // A pointer pushed against the top edge reports y == maxY, which a
+        // rectangle does not contain: reach one point past the edge.
+        rect.size.height = max(rect.height, screen.frame.maxY + 1 - rect.minY)
         return rect
     }
 

@@ -47,8 +47,12 @@ final class PowerSource: ObservableObject {
         }
         if let average = number("AvgTimeToFull"), average > 0, average < 65535 { return average }
         if let full = number("TimeToFull"), full > 0, full < 65535 { return full }
-        let current = number("AppleRawCurrentCapacity") ?? number("CurrentCapacity")
-        let max = number("AppleRawMaxCapacity") ?? number("MaxCapacity")
+        // Charge in mAh: newer macOS keeps it only inside "BatteryData"
+        // (CurrentCapacity/MaxCapacity there are percentages).
+        let data = IORegistryEntryCreateCFProperty(service, "BatteryData" as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? [String: Any]
+        let current = (data?["RemainingCapacity"] as? NSNumber)?.intValue ?? number("AppleRawCurrentCapacity")
+        let max = (data?["FullChargeCapacity"] as? NSNumber)?.intValue ?? number("AppleRawMaxCapacity")
         guard let current, let max, max > 100, let amperage = number("Amperage") ?? number("InstantAmperage"),
               amperage > 50 else { return nil }
         // Charging slows down near full; add a little for the last stretch.

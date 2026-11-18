@@ -119,7 +119,11 @@ final class MediaBridgeClient {
         var state = State()
         if json["empty"] as? Bool != true {
             let pid = (json["pid"] as? NSNumber)?.int32Value ?? 0
-            let rate = (json["rate"] as? NSNumber)?.doubleValue ?? 0
+            // The app's own playing flag decides: after a pause Spotify keeps
+            // reporting its last rate (1), which would keep the island "playing".
+            let playing = (json["playing"] as? NSNumber)?.boolValue
+                ?? ((json["rate"] as? NSNumber)?.doubleValue ?? 0 > 0)
+            let rate = playing ? (json["rate"] as? NSNumber)?.doubleValue ?? 1 : 0
             let stamp = (json["timestamp"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) } ?? Date()
             let info = NowPlayingInfo(
                 title: json["title"] as? String ?? "",
@@ -129,7 +133,7 @@ final class MediaBridgeClient {
                 elapsed: (json["elapsed"] as? NSNumber)?.doubleValue ?? 0,
                 timestamp: stamp,
                 rate: rate,
-                isPlaying: (json["playing"] as? Bool ?? false) || rate > 0,
+                isPlaying: playing,
                 shuffleMode: (json["shuffle"] as? NSNumber)?.intValue ?? 1,
                 bundleID: nil,
                 appName: nil,

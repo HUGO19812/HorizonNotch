@@ -583,16 +583,9 @@ private struct NothingPlayingView: View {
                     .overlay(Image(systemName: "music.note")
                         .font(.system(size: 22, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.45)))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(starting ? L("Wird gestartet …", "Starting …") : L("Gerade läuft nichts", "Not playing"))
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.4))
-                    if let app = playerName {
-                        Text(L("▶ startet \(app)", "▶ starts \(app)"))
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.25))
-                    }
-                }
+                Text(starting ? L("Wird gestartet …", "Starting …") : L("Gerade läuft nichts", "Not playing"))
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.4))
                 Spacer(minLength: 8)
                 HStack(spacing: 3) {
                     ForEach(0..<6, id: \.self) { _ in
