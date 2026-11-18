@@ -32,7 +32,7 @@ struct MediaCompactVisualizer: View {
         if settings.showVisualizer {
             switch settings.compactIndicator {
             case .waves:
-                AudioVisualizerView(color: NSColor(color), isPlaying: playing)
+                LiveWaves(color: color, playing: playing)
                     .frame(width: 24, height: 14)
             case .ring:
                 CompactProgressRing(service: service, color: color)
@@ -73,21 +73,70 @@ private struct CompactProgressRing: View {
     }
 }
 
-/// A dot that slowly grows and fades back while music plays, at rest when
-/// paused.
+/// Measures the system audio while the view is on screen and music plays
+/// (the tap, and macOS's recording indicator, only run then).
+private struct MeasuresAudio: ViewModifier {
+    let playing: Bool
+
+    func body(content: Content) -> some View {
+        content.task(id: playing) {
+            guard playing else { return }
+            AudioLevelMeter.shared.acquire()
+            defer { AudioLevelMeter.shared.release() }
+            // Runs until the view goes away or playback stops.
+            while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+        }
+    }
+}
+
+/// A dot that beats with the music: it grows and brightens with the
+/// loudness and kicks on every beat. Without a signal (no permission,
+/// silence) it breathes slowly instead; at rest when paused.
 private struct BreathingDot: View {
     let color: Color
     let playing: Bool
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !playing)) { context in
-            let phase = playing ? (sin(context.date.timeIntervalSinceReferenceDate * 2 * .pi / 2.4) + 1) / 2 : 0
+        TimelineView(.animation(minimumInterval: 1 / 60, paused: !playing)) { context in
+            let levels = AudioLevelMeter.shared.levels
+            let pulse: Double = {
+                guard playing else { return 0 }
+                if levels.hasSignal { return Double(min(1, levels.level * 0.55 + levels.beat * 0.7)) }
+                return (sin(context.date.timeIntervalSinceReferenceDate * 2 * .pi / 2.4) + 1) / 2
+            }()
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)
-                .scaleEffect(0.75 + 0.4 * phase)
-                .opacity(0.5 + 0.5 * phase)
+                .scaleEffect(0.7 + 0.55 * pulse)
+                .opacity(0.45 + 0.55 * pulse)
         }
+        .modifier(MeasuresAudio(playing: playing))
+    }
+}
+
+/// The bars following the music: bass, low mids, high mids and treble.
+/// Without a signal they fall back to the decorative animation.
+private struct LiveWaves: View {
+    let color: Color
+    let playing: Bool
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 60, paused: !playing)) { _ in
+            let levels = AudioLevelMeter.shared.levels
+            if playing, levels.hasSignal {
+                HStack(spacing: 2.5) {
+                    ForEach(0..<4, id: \.self) { i in
+                        Capsule()
+                            .fill(color)
+                            .frame(width: 3, height: 14 * CGFloat(0.25 + 0.75 * levels.bands[i]))
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                AudioVisualizerView(color: NSColor(color), isPlaying: playing)
+            }
+        }
+        .modifier(MeasuresAudio(playing: playing))
     }
 }
 

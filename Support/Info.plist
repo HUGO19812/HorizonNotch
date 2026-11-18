@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Horizon Notch steuert Musik und Spotify, falls die Systemschnittstelle für „Jetzt läuft“ nicht verfügbar ist.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Horizon Notch misst nur die Lautstärke der laufenden Musik, damit Punkt und Wellen in der Notch im Takt mitgehen. Es wird nichts aufgenommen oder gespeichert.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Horizon Notch zeigt verbundene Bluetooth-Geräte und den Akkustand deiner AirPods.</string>
 	<key>NSFocusStatusUsageDescription</key>
