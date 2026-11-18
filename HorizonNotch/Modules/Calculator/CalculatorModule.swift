@@ -2,10 +2,10 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// A scientific calculator page: three wide rows of keys (functions,
-/// digits, operators) under the expression and its result, and a history
-/// sidebar that slides in from the left. Works with the mouse and, while
-/// the page is open, with the keyboard.
+/// A calculator page: history on the left (can be folded away), the
+/// calculation in the middle, a compact keypad on the right. Works with
+/// the mouse and, while the page is open, with the keyboard – which also
+/// takes brackets, ^, %, π and sin/cos/tan.
 final class CalculatorModule: NotchModule {
     let id = "calculator"
     var title: String { L("Rechner", "Calculator") }
@@ -323,13 +323,14 @@ extension Notification.Name {
     static let islandWantsKeyboard = Notification.Name("horizon.islandWantsKeyboard")
 }
 
-/// History sidebar (toggle at the top left) and the calculator: DEG/RAD,
-/// the last calculation and the result, then three rows of keys.
+
+/// History on the left (can be folded away), the calculation and its
+/// result in the middle, a compact keypad on the right.
 private struct CalculatorView: View {
     @ObservedObject var engine: CalculatorEngine
     @ObservedObject private var settings = AppSettings.shared
     @FocusState private var focused: Bool
-    @State private var showHistory = false
+    @AppStorage("calculatorHistoryOpen") private var showHistory = true
     @State private var copied = false
 
     var body: some View {
@@ -338,13 +339,12 @@ private struct CalculatorView: View {
                 HistorySidebar(entries: settings.calculatorHistory,
                                onPick: { engine.recall($0) },
                                onClear: { engine.clearHistory() })
-                    .frame(width: 150)
+                    .frame(width: 152)
                     .transition(.move(edge: .leading).combined(with: .opacity))
             }
-            VStack(spacing: 8) {
-                displayRow
-                ScientificKeypad(engine: engine)
-            }
+            display
+            Keypad(engine: engine)
+                .frame(width: 184)
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.86), value: showHistory)
         .focusable()
@@ -357,51 +357,53 @@ private struct CalculatorView: View {
         }
     }
 
-    private var displayRow: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    SmallToggle(symbol: "sidebar.left", active: showHistory) { showHistory.toggle() }
-                        .help(L("Verlauf ein-/ausblenden", "Show/hide history"))
-                    Button { engine.degrees.toggle() } label: {
-                        Text(engine.degrees ? "DEG" : "RAD")
-                            .font(.system(size: 10.5, weight: .bold))
-                            .foregroundStyle(Color.orange)
-                            .frame(width: 44, height: 22)
-                            .background(Capsule().fill(Color.white.opacity(0.1)))
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(PressScaleStyle())
-                    .help(L("Winkel in Grad oder Bogenmaß", "Angles in degrees or radians"))
+    private var display: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(copied ? L("Kopiert", "Copied") : topLine)
+                .font(.system(size: 15, weight: .medium).monospacedDigit())
+                .foregroundStyle(copied ? Color.orange : .white.opacity(0.5))
+                .lineLimit(1)
+                .truncationMode(.head)
+            Spacer(minLength: 0)
+            Text(engine.display)
+                .font(.system(size: 46, weight: .bold).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.35)
+                .truncationMode(.head)
+                .contentTransition(.numericText())
+                .animation(.snappy(duration: 0.15), value: engine.display)
+                .onTapGesture { copy() }
+                .help(L("Klicken zum Kopieren", "Click to copy"))
+            Spacer(minLength: 0)
+            HStack(spacing: 6) {
+                Button { showHistory.toggle() } label: {
+                    Image(systemName: "sidebar.left")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(showHistory ? 0.75 : 0.45))
+                        .frame(width: 26, height: 20)
+                        .background(Capsule().fill(Color.white.opacity(showHistory ? 0.14 : 0.07)))
+                        .contentShape(Capsule())
                 }
+                .buttonStyle(PressScaleStyle())
+                .help(L("Verlauf ein-/ausblenden", "Show/hide history"))
                 Spacer(minLength: 0)
-            }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(copied ? L("Kopiert", "Copied") : topLine)
-                    .font(.system(size: 13, weight: .medium).monospacedDigit())
-                    .foregroundStyle(copied ? Color.orange : .white.opacity(0.45))
-                    .lineLimit(1)
-                    .truncationMode(.head)
-                Text(engine.display)
-                    .font(.system(size: 34, weight: .light).monospacedDigit())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.4)
-                    .truncationMode(.head)
-                    .contentTransition(.numericText())
-                    .animation(.snappy(duration: 0.15), value: engine.display)
-                    .onTapGesture { copy() }
-                    .help(L("Klicken zum Kopieren", "Click to copy"))
+                if showHistory && !settings.calculatorHistory.isEmpty {
+                    Text(L("Klick auf den Verlauf übernimmt", "Click the history to reuse"))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .lineLimit(1)
+                }
             }
         }
-        .frame(height: 58)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
     }
 
     /// While typing: the live result; after "=": the calculation.
     private var topLine: String {
         if engine.shownResult != nil { return engine.lastExpression }
         if let preview = engine.preview, preview != engine.expression { return "= " + preview }
-        return engine.lastExpression
+        return engine.lastExpression.isEmpty ? " " : engine.lastExpression
     }
 
     private func copy() {
@@ -447,64 +449,38 @@ private struct CalculatorView: View {
     }
 }
 
-/// Three rows of ten keys, like a scientific calculator turned sideways:
-/// functions on dark grey, digits on grey, operators in orange.
-private struct ScientificKeypad: View {
+/// 4 × 4 keys: C and the operators on top and on the right, digits in
+/// grey, operators in orange.
+private struct Keypad: View {
     @ObservedObject var engine: CalculatorEngine
 
-    private enum Kind { case function, digit, operation, clear }
-
-    private struct KeyDef: Hashable {
-        let label: String
-        let token: String
-        let kind: Kind
-    }
-
-    private var rows: [[KeyDef]] {
-        [
-            [f("sin", "sin("), f("cos", "cos("), f("tan", "tan("), f("π", "π"), f("e", "e"),
-             f("x²", "²"), f("√", "√("), f("(", "("), f(")", ")"), o("÷")],
-            [d("7"), d("8"), d("9"), d("4"), d("5"), d("6"), o("×"),
-             KeyDef(label: engine.clearTitle, token: "clear", kind: .clear),
-             KeyDef(label: "±", token: "sign", kind: .clear), o("−")],
-            [d("1"), d("2"), d("3"), d("0"), d(","), f("%", "%"), f("ln", "ln("), f("log", "log("),
-             f("xʸ", "^"), KeyDef(label: "=", token: "=", kind: .operation)],
-        ]
-    }
-
-    private func f(_ label: String, _ token: String) -> KeyDef { KeyDef(label: label, token: token, kind: .function) }
-    private func d(_ label: String) -> KeyDef { KeyDef(label: label, token: label, kind: .digit) }
-    private func o(_ label: String) -> KeyDef { KeyDef(label: label, token: label, kind: .operation) }
+    private let rows = [["C", "÷", "×", "−"], ["7", "8", "9", "+"], ["4", "5", "6", "="], ["1", "2", "3", "0"]]
 
     var body: some View {
         Grid(horizontalSpacing: 4, verticalSpacing: 5) {
-            ForEach(rows.indices, id: \.self) { row in
+            ForEach(rows, id: \.self) { row in
                 GridRow {
-                    ForEach(rows[row], id: \.self) { key in
-                        CalcKey(label: key.label, fill: fill(key.kind), foreground: key.kind == .clear ? .black : .white) {
-                            press(key)
-                        }
+                    ForEach(row, id: \.self) { label in
+                        CalcKey(label: label == "C" ? engine.clearTitle : label,
+                                fill: fill(label),
+                                foreground: label == "C" ? .black : .white) { press(label) }
                     }
                 }
             }
         }
     }
 
-    private func fill(_ kind: Kind) -> Color {
-        switch kind {
-        case .function: return Color.white.opacity(0.09)
-        case .digit: return Color(white: 0.2)
-        case .operation: return Color.orange
-        case .clear: return Color(white: 0.65)
-        }
+    private func fill(_ label: String) -> Color {
+        if label == "C" { return Color(white: 0.65) }
+        if "÷×−+=".contains(label) { return Color.orange }
+        return Color(white: 0.2)
     }
 
-    private func press(_ key: KeyDef) {
-        switch key.token {
+    private func press(_ label: String) {
+        switch label {
+        case "C": engine.clear()
         case "=": engine.equals()
-        case "clear": engine.clear()
-        case "sign": engine.toggleSign()
-        default: engine.input(key.token)
+        default: engine.input(label)
         }
     }
 }
@@ -519,62 +495,29 @@ private struct CalcKey: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 12.5, weight: .medium))
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(foreground)
-                .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24)
-                .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 28)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(fill).brightness(hovering ? 0.08 : 0))
-                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(PressScaleStyle())
         .onHover { hovering = $0 }
     }
 }
 
-/// Small round icon button (the history toggle).
-private struct SmallToggle: View {
-    let symbol: String
-    let active: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(active ? .black : .white.opacity(0.75))
-                .frame(width: 28, height: 22)
-                .background(Capsule().fill(active ? Color.white : Color.white.opacity(0.1)))
-                .contentShape(Capsule())
-        }
-        .buttonStyle(PressScaleStyle())
-    }
-}
-
-/// Past calculations, newest at the top; a click puts the result into the
-/// calculation. The bin clears the list.
+/// Past calculations, newest at the top: calculation on the left, result
+/// on the right. A click puts the result into the calculation; the bin
+/// (shown on hover) clears the list.
 private struct HistorySidebar: View {
     let entries: [String]
     let onPick: (String) -> Void
     let onClear: () -> Void
+    @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(L("Verlauf", "History"))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.5))
-                Spacer()
-                if !entries.isEmpty {
-                    Button(action: onClear) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.45))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help(L("Verlauf löschen", "Clear history"))
-                }
-            }
+        Group {
             if entries.isEmpty {
                 Text(L("Noch keine Rechnungen", "No calculations yet"))
                     .font(.system(size: 11))
@@ -582,10 +525,10 @@ private struct HistorySidebar: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
+                    VStack(spacing: 0) {
                         ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
                             if index > 0 {
-                                Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
+                                Rectangle().fill(Color.white.opacity(0.09)).frame(height: 1)
                             }
                             HistoryRow(entry: entry) { onPick(entry) }
                         }
@@ -593,9 +536,30 @@ private struct HistorySidebar: View {
                 }
             }
         }
-        .padding(10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.06)))
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(white: 0.08)))
+        .overlay(alignment: .topTrailing) {
+            if hovering && !entries.isEmpty {
+                Button(action: onClear) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 20, height: 20)
+                        .background(Circle().fill(Color(white: 0.2)))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help(L("Verlauf löschen", "Clear history"))
+                .offset(x: 6, y: -6)
+                .transition(.opacity)
+            }
+        }
+        .onHover { hover in withAnimation(.easeOut(duration: 0.15)) { hovering = hover } }
+        .contextMenu {
+            Button(L("Verlauf löschen", "Clear history"), role: .destructive, action: onClear)
+        }
     }
 }
 
@@ -606,21 +570,24 @@ private struct HistoryRow: View {
 
     var body: some View {
         let result = CalculatorEngine.result(of: entry)
-        let calculation = String(entry.dropLast(result.count)).trimmingCharacters(in: .whitespaces)
+        let calculation = String(entry.dropLast(result.count))
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: " =", with: "")
         Button(action: action) {
-            VStack(alignment: .trailing, spacing: 1) {
+            HStack(spacing: 8) {
                 Text(calculation)
-                    .font(.system(size: 10, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.45))
+                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.5))
                     .lineLimit(1)
                     .truncationMode(.head)
+                Spacer(minLength: 4)
                 Text(result)
                     .font(.system(size: 13, weight: .semibold).monospacedDigit())
                     .foregroundStyle(hovering ? Color.orange : .white)
                     .lineLimit(1)
+                    .layoutPriority(1)
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.vertical, 5)
+            .padding(.vertical, 7)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
