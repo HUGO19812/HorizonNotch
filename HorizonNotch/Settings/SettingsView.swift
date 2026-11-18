@@ -1227,6 +1227,7 @@ private struct CalendarSettings: View {
                            "Days ahead in the date strip: \(settings.calendarDaysAhead)"))
                 }
                 Toggle(L("Ganztägige Termine anzeigen", "Show all-day events"), isOn: $settings.calendarShowAllDay)
+                Toggle(L("To-dos aus Erinnerungen daneben", "To-dos from Reminders beside them"), isOn: $settings.calendarShowReminders)
             }
             HapticSection()
             Section(L("Meeting-Countdown", "Meeting countdown")) {
@@ -1334,6 +1335,12 @@ private struct WeatherSettings: View {
                 }
             } footer: {
                 note("Wetterdaten von Open-Meteo, ohne Konto.", "Weather data from Open-Meteo, no account needed.")
+            }
+            Section {
+                Toggle(L("Hinweis, wenn es bald regnet", "Notice when rain is coming"), isOn: $settings.weatherRainAlert)
+            } footer: {
+                note("Kurz in der Notch, wenn es in den nächsten zwei Stunden an deinem Ort zu regnen beginnt – einmal pro Schauer. Lädt dafür alle 15 Minuten die Vorhersage.",
+                     "Briefly in the notch when rain starts at your place within the next two hours – once per shower. Loads the forecast every 15 minutes for it.")
             }
             Section {
                 Picker(L("Einheiten", "Units"), selection: $settings.useFahrenheit) {
@@ -1510,6 +1517,7 @@ private struct DownloadSettings: View {
         Group {
             Section {
                 Toggle(L("Laufende und fertige Downloads anzeigen", "Show running and finished downloads"), isOn: $settings.notifyDownloads)
+                Toggle(L("Fortschritt beim Kopieren großer Dateien", "Progress when copying large files"), isOn: $settings.notifyCopies)
             } footer: {
                 note("Zeigt Fortschritt neben der Notch, solange Safari, Chrome & Co. in den Downloads-Ordner laden, und meldet fertige Dateien. Fragt beim Einschalten nach Zugriff auf den Downloads-Ordner.",
                      "Shows progress next to the notch while Safari, Chrome & co. download into the Downloads folder, and reports finished files. Asks for access to the Downloads folder when switched on.")

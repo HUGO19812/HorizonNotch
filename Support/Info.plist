@@ -34,6 +34,10 @@
 	<string>Horizon Notch zeigt kurz an, wenn ein Fokus ein- oder ausgeschaltet wird.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Horizon Notch zeigt deinen nächsten Termin und einen Countdown bis zum Meeting in der Notch.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Horizon Notch zeigt deine offenen Erinnerungen im Kalender-Reiter und hakt sie dort ab.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>Horizon Notch zeigt deine offenen Erinnerungen im Kalender-Reiter und hakt sie dort ab.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>Horizon Notch zeigt deinen nächsten Termin und einen Countdown bis zum Meeting in der Notch.</string>
 	<key>NSLocationUsageDescription</key>
