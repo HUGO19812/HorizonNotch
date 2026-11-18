@@ -33,7 +33,8 @@ final class DeviceCardModule: NotchModule {
 
     var isActive: Bool { card != nil }
     var isPeeking: Bool { card != nil }
-    var peekHeight: CGFloat { card?.connected == true ? 74 : 58 }
+    // The same size connected or not, so the model stays put while it animates.
+    var peekHeight: CGFloat { 74 }
 
     /// Shows the card, or updates it in place (battery arriving later).
     func show(_ card: DeviceCard) {
@@ -69,7 +70,7 @@ private struct DeviceCardView: View {
         if let card = module.card ?? module.lastCard {
             HStack(spacing: 14) {
                 DeviceImage(card: card)
-                    .frame(width: card.connected ? 58 : 44, height: card.connected ? 58 : 44)
+                    .frame(width: 58, height: 58)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(card.name)
                         .font(.system(size: 14, weight: .semibold))
