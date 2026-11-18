@@ -365,7 +365,9 @@ private struct ClaudePage: View {
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 4) {
                             ForEach(monitor.today) { session in
-                                SessionRow(session: session, isExpanded: false) { focused = session.id }
+                                SessionRow(session: session, desktop: monitor.desktop[session.id], isExpanded: false) {
+                                    focused = session.id
+                                }
                             }
                         }
                     }
@@ -398,7 +400,7 @@ private struct ClaudePage: View {
             .padding(.top, 6)
             .zIndex(1)
             ScrollView(.vertical, showsIndicators: false) {
-                SessionRow(session: session, isExpanded: true) { focused = nil }
+                SessionRow(session: session, desktop: monitor.desktop[session.id], isExpanded: true) { focused = nil }
             }
         }
     }
@@ -409,6 +411,8 @@ private struct ClaudePage: View {
 /// has been running. The arrow brings the app it runs in to the front.
 private struct SessionRow: View {
     let session: ClaudeCodeMonitor.Session
+    /// The chat in the Claude app, when the session runs there.
+    let desktop: ClaudeCodeMonitor.DesktopSession?
     let isExpanded: Bool
     let toggle: () -> Void
 
@@ -419,7 +423,7 @@ private struct SessionRow: View {
                 Circle().fill(session.isActive ? ClaudeCodeModule.tint : Color.white.opacity(0.3))
                     .frame(width: 7, height: 7)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(session.project).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    Text(desktop?.title ?? session.project).font(.system(size: 12, weight: .semibold)).lineLimit(1)
                     status
                         .font(.system(size: 10))
                         .foregroundStyle(.white.opacity(0.55))
@@ -432,7 +436,7 @@ private struct SessionRow: View {
                         .foregroundStyle(.white.opacity(0.5))
                 }
                 if isExpanded {
-                    OpenButton(session: session)
+                    OpenButton(session: session, desktop: desktop)
                 } else {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .bold))
@@ -597,12 +601,19 @@ private struct PlanGauge: View {
             Text("\(Int(limit.percent.rounded())) %").fontWeight(.bold).monospacedDigit()
                 .foregroundStyle(color(limit.percent))
                 .frame(width: 38, alignment: .trailing)
-            Text(L("Reset ", "Resets ") + (weekday && !Calendar.current.isDateInToday(limit.resets)
-                    ? limit.resets.formatted(.dateTime.weekday(.abbreviated).hour().minute().locale(appLocale))
-                    : limit.resets.formatted(.dateTime.hour().minute().locale(appLocale))))
+            Text(resetText(limit, weekday: weekday))
                 .foregroundStyle(.white.opacity(0.45))
         }
         .font(.system(size: 10.5, weight: .medium))
+    }
+
+    private func resetText(_ limit: ClaudeUsage.Limit, weekday: Bool) -> String {
+        guard let resets = limit.resets else {
+            return L("Stand ", "as of ") + (limit.asOf ?? Date()).formatted(date: .omitted, time: .shortened)
+        }
+        return L("Reset ", "Resets ") + (weekday && !Calendar.current.isDateInToday(resets)
+            ? resets.formatted(.dateTime.weekday(.abbreviated).hour().minute().locale(appLocale))
+            : resets.formatted(.dateTime.hour().minute().locale(appLocale)))
     }
 
     private func color(_ percent: Double) -> Color {
@@ -614,14 +625,16 @@ private struct PlanGauge: View {
 /// session runs in, or else the Claude app or Terminal.
 private struct OpenButton: View {
     let session: ClaudeCodeMonitor.Session
+    let desktop: ClaudeCodeMonitor.DesktopSession?
     @State private var hovering = false
 
     var body: some View {
-        Button { session.open() } label: {
+        Button { session.open(desktop: desktop) } label: {
             HStack(spacing: 5) {
                 Image(systemName: "arrow.up.forward.square")
                     .font(.system(size: 12, weight: .semibold))
-                Text(session.appName.map { L("In \($0) öffnen", "Open in \($0)") } ?? L("Claude öffnen", "Open Claude"))
+                Text(desktop != nil ? L("Chat öffnen", "Open chat")
+                     : session.appName.map { L("In \($0) öffnen", "Open in \($0)") } ?? L("Claude öffnen", "Open Claude"))
                     .font(.system(size: 11, weight: .semibold))
                     .lineLimit(1)
             }
@@ -657,8 +670,14 @@ extension ClaudeCodeMonitor.Session {
     /// Brings the app Claude runs in to the front. The island is a panel
     /// that never becomes active, and macOS ignores `activate()` from an
     /// inactive app – opening the app through Launch Services always works.
-    func open() {
+    func open(desktop: ClaudeCodeMonitor.DesktopSession? = nil) {
         let workspace = NSWorkspace.shared
+        // In the Claude app: straight to this very chat.
+        if let desktop, let encoded = desktop.id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+           let url = URL(string: "claude://code/continue?session=\(encoded)") {
+            workspace.open(url)
+            return
+        }
         let target = appURL ?? workspace.urlForApplication(withBundleIdentifier: Self.claudeApp)
             ?? workspace.urlForApplication(withBundleIdentifier: "com.apple.Terminal")
         guard let target else { return }

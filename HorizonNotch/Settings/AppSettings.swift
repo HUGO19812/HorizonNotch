@@ -160,6 +160,13 @@ final class AppSettings: ObservableObject {
     @Published var lockScreenWidgets: Bool { didSet { defaults.set(lockScreenWidgets, forKey: "lockScreenWidgets") } }
     /// Weather, battery and headphones under the lock screen clock.
     @Published var lockScreenStatusRow: Bool { didSet { defaults.set(lockScreenStatusRow, forKey: "lockScreenStatusRow") } }
+    /// Which widgets the row under the lock screen clock shows.
+    @Published var lockWidgetWeather: Bool { didSet { defaults.set(lockWidgetWeather, forKey: "lockWidgetWeather") } }
+    @Published var lockWidgetBattery: Bool { didSet { defaults.set(lockWidgetBattery, forKey: "lockWidgetBattery") } }
+    @Published var lockWidgetHeadphones: Bool { didSet { defaults.set(lockWidgetHeadphones, forKey: "lockWidgetHeadphones") } }
+    @Published var lockWidgetEvent: Bool { didSet { defaults.set(lockWidgetEvent, forKey: "lockWidgetEvent") } }
+    /// The clock over the large cover takes the cover's colour.
+    @Published var lockClockTint: Bool { didSet { defaults.set(lockClockTint, forKey: "lockClockTint") } }
     @Published var lockScreenStart: LockScreenStart { didSet { defaults.set(lockScreenStart.rawValue, forKey: "lockScreenStart") } }
     /// How see-through the lock screen player card is (0 = solid glass, 1 = almost invisible).
     @Published var lockScreenTransparency: Double { didSet { defaults.set(lockScreenTransparency, forKey: "lockScreenTransparency") } }
@@ -278,6 +285,11 @@ final class AppSettings: ObservableObject {
         notifyDownloads = defaults.bool(forKey: "notifyDownloads")
         lockScreenWidgets = defaults.object(forKey: "lockScreenWidgets") as? Bool ?? true
         lockScreenStatusRow = defaults.object(forKey: "lockScreenStatusRow") as? Bool ?? true
+        lockWidgetWeather = defaults.object(forKey: "lockWidgetWeather") as? Bool ?? true
+        lockWidgetBattery = defaults.object(forKey: "lockWidgetBattery") as? Bool ?? true
+        lockWidgetHeadphones = defaults.object(forKey: "lockWidgetHeadphones") as? Bool ?? true
+        lockWidgetEvent = defaults.object(forKey: "lockWidgetEvent") as? Bool ?? false
+        lockClockTint = defaults.bool(forKey: "lockClockTint")
         lockScreenStart = LockScreenStart(rawValue: defaults.string(forKey: "lockScreenStart") ?? "") ?? .compact
         // Clearer glass by default; the old default 0.6 moves up once.
         let storedTransparency = defaults.object(forKey: "lockScreenTransparency") as? Double

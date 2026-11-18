@@ -22,7 +22,10 @@ final class ClaudeUsage: ObservableObject {
     struct Limit: Equatable {
         /// 0…100.
         let percent: Double
-        let resets: Date
+        /// When the window starts over; nil when only a saved value is known.
+        var resets: Date?
+        /// For saved values: when they were current.
+        var asOf: Date?
     }
     /// The 5-hour and the weekly limit of a Pro/Max plan, from Claude
     /// Code's status line (see ClaudeHooks); nil until it reported them.
@@ -50,6 +53,8 @@ final class ClaudeUsage: ObservableObject {
             var request = URLRequest(url: url, timeoutInterval: 10)
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+            request.setValue("claude-code/2.1", forHTTPHeaderField: "User-Agent")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
             URLSession.shared.dataTask(with: request) { data, response, error in
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard code == 200, let data,
@@ -57,8 +62,10 @@ final class ClaudeUsage: ObservableObject {
                     NSLog("[HorizonNotch] plan usage: HTTP %ld %@", code, error?.localizedDescription ?? "")
                     switch code {
                     case 401, 403:
-                        self?.report(L("Claude-Login abgelaufen – einmal Claude Code benutzen, dann klappt es wieder.",
-                                       "Claude login expired – use Claude Code once and it works again."))
+                        self?.report(Self.loginExpired
+                            ? L("Der Claude-Code-Login im Schlüsselbund ist abgelaufen (die Claude-App erneuert ihn nicht, nur Claude Code im Terminal).",
+                                "The Claude Code login in the keychain has expired (the Claude app does not renew it, only Claude Code in the terminal).")
+                            : L("Claude lehnt den Login ab (\(code)).", "Claude refuses the login (\(code))."))
                     case 0:
                         self?.report(L("Keine Verbindung zu Claude.", "No connection to Claude."))
                     default:
@@ -97,11 +104,14 @@ final class ClaudeUsage: ObservableObject {
     private struct Problem: Error { let text: String }
 
     private func report(_ text: String) {
-        DispatchQueue.main.async { [weak self] in self?.planProblem = text }
+        fallBackToApp(text)
     }
 
     /// Claude Code's login from the keychain (read through macOS'
     /// `security` tool, as Claude Code itself does).
+    /// Whether the keychain login's expiry date has passed (set while reading it).
+    private static var loginExpired = false
+
     private static func claudeLogin() -> Result<String, Problem> {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
@@ -126,7 +136,48 @@ final class ClaudeUsage: ObservableObject {
               let token = login["accessToken"] as? String else {
             return .failure(Problem(text: L("Claude-Login hat ein unbekanntes Format.", "Claude login has an unknown format.")))
         }
+        if let expires = (login["expiresAt"] as? NSNumber)?.doubleValue {
+            // Milliseconds since 1970 (seconds in older versions).
+            let seconds = expires > 10_000_000_000 ? expires / 1000 : expires
+            loginExpired = seconds < Date().timeIntervalSince1970
+        }
         return .success(token)
+    }
+
+    /// The Claude app keeps the plan usage it last saw (5-hour and weekly,
+    /// in %, without reset times) – used when asking Claude directly fails.
+    private func readAppHistory() -> (five: Double, week: Double, date: Date)? {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Claude/plan-usage-history.json")
+        guard let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let samples = json["samples"] as? [[String: Any]],
+              let last = samples.max(by: { (($0["t"] as? NSNumber)?.doubleValue ?? 0) < (($1["t"] as? NSNumber)?.doubleValue ?? 0) }),
+              let time = (last["t"] as? NSNumber)?.doubleValue,
+              let usage = last["u"] as? [String: Any] else { return nil }
+        return ((usage["fh"] as? NSNumber)?.doubleValue ?? 0, (usage["sd"] as? NSNumber)?.doubleValue ?? 0,
+                Date(timeIntervalSince1970: time / 1000))
+    }
+
+    /// When the direct request failed: the Claude app's last values, if
+    /// recent enough to still be the current windows.
+    private func fallBackToApp(_ problem: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if let saved = self.readAppHistory() {
+                let age = Date().timeIntervalSince(saved.date)
+                if age < 5 * 3600, self.fiveHour == nil {
+                    self.fiveHour = Limit(percent: saved.five, resets: nil, asOf: saved.date)
+                }
+                if age < 7 * 86_400, self.weekly == nil {
+                    self.weekly = Limit(percent: saved.week, resets: nil, asOf: saved.date)
+                }
+                self.planProblem = problem + " " + L("Zeige den Stand der Claude-App von ", "Showing the Claude app's values from ")
+                    + saved.date.formatted(date: .omitted, time: .shortened) + "."
+            } else {
+                self.planProblem = problem
+            }
+        }
     }
 
     private func readLimits() {
