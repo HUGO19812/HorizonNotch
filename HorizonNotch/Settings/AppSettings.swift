@@ -144,6 +144,7 @@ final class AppSettings: ObservableObject {
     @Published var displayID: UInt32 { didSet { defaults.set(Int(displayID), forKey: "displayID") } }
     @Published var replaceSystemHUD: Bool { didSet { defaults.set(replaceSystemHUD, forKey: "replaceSystemHUD") } }
     @Published var showVisualizer: Bool { didSet { defaults.set(showVisualizer, forKey: "showVisualizer") } }
+    @Published var compactIndicator: CompactMusicIndicator { didSet { defaults.set(compactIndicator.rawValue, forKey: "compactIndicator") } }
     @Published var moduleOrder: [String] { didSet { defaults.set(moduleOrder, forKey: "moduleOrder") } }
     @Published var disabledModules: Set<String> { didSet { defaults.set(Array(disabledModules), forKey: "disabledModules") } }
     @Published var onboardingDone: Bool { didSet { defaults.set(onboardingDone, forKey: "onboardingDone") } }
@@ -259,6 +260,7 @@ final class AppSettings: ObservableObject {
         displayID = UInt32(defaults.integer(forKey: "displayID"))
         replaceSystemHUD = defaults.object(forKey: "replaceSystemHUD") as? Bool ?? true
         showVisualizer = defaults.object(forKey: "showVisualizer") as? Bool ?? true
+        compactIndicator = CompactMusicIndicator(rawValue: defaults.string(forKey: "compactIndicator") ?? "") ?? .waves
         moduleOrder = defaults.stringArray(forKey: "moduleOrder") ?? []
         disabledModules = Set(defaults.stringArray(forKey: "disabledModules") ?? [])
         onboardingDone = defaults.bool(forKey: "onboardingDone")
