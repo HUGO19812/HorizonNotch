@@ -140,6 +140,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AppSettings.shared.onboardingDone = true
             }
         }
+        // Settings → "Try it": the card for a sample AirPods Pro or Max.
+        NotificationCenter.default.addObserver(forName: .testDeviceCard, object: nil, queue: .main) { [weak self] note in
+            let name = note.object as? String ?? "AirPods Pro"
+            let card = name.lowercased().contains("max")
+                ? DeviceCard(name: name, symbol: "airpodsmax", connected: true, single: 72)
+                : DeviceCard(name: name, symbol: "airpodspro", connected: true, left: 85, right: 80, caseLevel: 60)
+            self?.devices.show(card)
+        }
         #if DEBUG
         installDebugHooks()
         #endif

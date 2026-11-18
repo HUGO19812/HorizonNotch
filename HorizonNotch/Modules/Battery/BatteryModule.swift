@@ -174,6 +174,7 @@ private struct BatteryTrailing: View {
     }
 
     private var color: Color {
+        if module.state.isLowPower { return theme.tint(.yellow) }
         if module.state.isPluggedIn { return theme.tint(.green) }
         if module.state.percent <= 20 { return theme.tint(.red) }
         return .white
@@ -242,6 +243,7 @@ struct HeaderBattery: View {
     }
 
     private func color(_ state: PowerSource.State) -> Color {
+        if state.isLowPower { return theme.tint(.yellow) }
         if state.isPluggedIn { return theme.tint(.green) }
         if state.percent <= 20 { return theme.tint(.red) }
         return .white
