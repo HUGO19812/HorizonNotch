@@ -29,6 +29,72 @@ final class ClaudeUsage: ObservableObject {
     @Published private(set) var fiveHour: Limit?
     @Published private(set) var weekly: Limit?
 
+    private var lastFetch: Date?
+
+    /// Asks Claude for the plan usage directly – the same request Claude
+    /// Code makes for /usage, with the login it keeps in the keychain – so
+    /// it shows even when no session runs. At most once a minute; nothing
+    /// is stored, and it only goes to Anthropic.
+    private func fetchPlanUsage() {
+        if let lastFetch, Date().timeIntervalSince(lastFetch) < 60 { return }
+        lastFetch = Date()
+        queue.async { [weak self] in
+            guard let token = Self.claudeLogin(),
+                  let url = URL(string: "https://api.anthropic.com/api/oauth/usage") else { return }
+            var request = URLRequest(url: url, timeoutInterval: 10)
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+            URLSession.shared.dataTask(with: request) { data, response, _ in
+                guard (response as? HTTPURLResponse)?.statusCode == 200, let data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+                func limit(_ key: String) -> Limit? {
+                    guard let entry = json[key] as? [String: Any],
+                          let percent = (entry["utilization"] as? NSNumber)?.doubleValue else { return nil }
+                    let reset = Self.date(entry["resets_at"]) ?? Date().addingTimeInterval(3600)
+                    return Limit(percent: percent, resets: reset)
+                }
+                let five = limit("five_hour"), week = limit("seven_day")
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if let five, five != self.fiveHour { self.fiveHour = five }
+                    if let week, week != self.weekly { self.weekly = week }
+                }
+            }.resume()
+        }
+    }
+
+    private static func date(_ value: Any?) -> Date? {
+        if let number = value as? NSNumber { return Date(timeIntervalSince1970: number.doubleValue) }
+        guard let text = value as? String else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: text) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: text)
+    }
+
+    /// Claude Code's login from the keychain (read through macOS'
+    /// `security` tool, as Claude Code itself does), if still valid.
+    private static func claudeLogin() -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let login = json["claudeAiOauth"] as? [String: Any],
+              let token = login["accessToken"] as? String else { return nil }
+        if let expires = (login["expiresAt"] as? NSNumber)?.doubleValue, expires / 1000 < Date().timeIntervalSince1970 {
+            return nil
+        }
+        return token
+    }
+
     private func readLimits() {
         guard let data = try? Data(contentsOf: ClaudeHooks.statusURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -41,9 +107,9 @@ final class ClaudeUsage: ObservableObject {
             // A window that has started over counts as unused.
             return date > Date() ? Limit(percent: percent, resets: date) : nil
         }
-        let five = limit("five_hour"), week = limit("seven_day")
-        if five != fiveHour { fiveHour = five }
-        if week != weekly { weekly = week }
+        // Only fresh windows; the direct request fills in the rest.
+        if let five = limit("five_hour"), five != fiveHour { fiveHour = five }
+        if let week = limit("seven_day"), week != weekly { weekly = week }
     }
 
     private struct Entry {
@@ -70,6 +136,7 @@ final class ClaudeUsage: ObservableObject {
     /// often; callers do so when the page opens and after each turn.
     func refresh() {
         readLimits()
+        fetchPlanUsage()
         guard !refreshing else { return }
         refreshing = true
         queue.async { [weak self] in

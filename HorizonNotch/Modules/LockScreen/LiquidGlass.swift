@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import SwiftUI
 
 /// Clear Liquid Glass over the desktop picture, like macOS Tahoe: no tint,
@@ -100,6 +101,19 @@ enum LiquidGlassRenderer {
         source.translateBy(x: origin.x, y: origin.y + drawn.height)
         source.scaleBy(x: 1, y: -1)
         source.draw(wallpaper, in: CGRect(origin: .zero, size: drawn))
+        // Softened a little: the rim is bent from a still picture, and over
+        // a moving wallpaper a soft rim stands out much less than a sharp one.
+        if let sharp = source.makeImage(),
+           let blur = CIFilter(name: "CIGaussianBlur", parameters: [kCIInputImageKey: CIImage(cgImage: sharp),
+                                                                     kCIInputRadiusKey: 2.2 * scale]),
+           let blurred = blur.outputImage?.cropped(to: CGRect(x: 0, y: 0, width: sourceWidth, height: sourceHeight)),
+           let soft = CIContext(options: [.useSoftwareRenderer: false]).createCGImage(blurred, from: blurred.extent) {
+            source.saveGState()
+            source.resetClip()
+            source.concatenate(source.ctm.inverted())
+            source.draw(soft, in: CGRect(x: 0, y: 0, width: sourceWidth, height: sourceHeight))
+            source.restoreGState()
+        }
 
         guard let input = source.data?.assumingMemoryBound(to: UInt8.self),
               let out = output.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
@@ -164,7 +178,7 @@ enum LiquidGlassRenderer {
                     // 1 at the very edge, 0 where the bevel ends; the curve
                     // keeps the inside calm and bends hard near the rim.
                     let t = 1 - edge / bevelPx
-                    let bend = bevelPx * 1.9 * t * t * (0.3 + 0.7 * t)
+                    let bend = bevelPx * 1.5 * t * t * (0.3 + 0.7 * t)
                     // Look further outwards: picture from beyond the edge is
                     // drawn in, squeezed into streaks along it. Red bends a
                     // little more than blue for the colour fringe.
@@ -182,7 +196,7 @@ enum LiquidGlassRenderer {
                     // Fades out towards the inside, where the bend is gone
                     // and the still picture would equal the live one anyway.
                     let fade = min(1, t * 2.2)
-                    alpha *= fade * fade * (3 - 2 * fade)
+                    alpha *= 0.82 * fade * fade * (3 - 2 * fade)
                 }
                 out[index] = UInt8(min(255, r * alpha))
                 out[index + 1] = UInt8(min(255, g * alpha))

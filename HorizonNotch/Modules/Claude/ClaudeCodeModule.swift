@@ -112,26 +112,50 @@ extension ClaudeCodeMonitor.Activity {
 
 /// Left of the notch: the spark while working, a badge when Claude needs
 /// you, a check that draws itself when done.
-/// The Claude mark alone, for the bubble beside the music.
+/// The drop beside the music: Claude's spark and the running time, the
+/// badge when Claude needs you, a check when it is done.
 private struct ClaudeBubble: View {
     @ObservedObject var monitor: ClaudeCodeMonitor
 
     var body: some View {
         let session = monitor.visible.first
-        ZStack {
-            switch session?.activity {
-            case .waiting:
-                Text("✳")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 17, height: 17)
-                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(ClaudeCodeModule.tint))
-            case .done: DrawnCheck().frame(width: 13, height: 13)
-            default: ClaudeSpark()
+        HStack(spacing: 6) {
+            Group {
+                switch session?.activity {
+                case .waiting:
+                    Text("✳")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 16, height: 16)
+                        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(ClaudeCodeModule.tint))
+                case .done: DrawnCheck().frame(width: 13, height: 13)
+                default: ClaudeSpark()
+                }
             }
+            .id(session?.activity.kind)
+            .transition(.scale(scale: 0.6).combined(with: .opacity))
+            Group {
+                switch session?.activity {
+                case .working:
+                    if let start = session?.turnStarted {
+                        Text(start, style: .timer)
+                            .font(.system(size: 13, weight: .bold).monospacedDigit())
+                            .foregroundStyle(.white)
+                    }
+                case .waiting:
+                    Text(L("DU", "YOU"))
+                        .font(.system(size: 10, weight: .heavy)).kerning(0.4)
+                        .foregroundStyle(Color(red: 1, green: 0.62, blue: 0.27))
+                case .done:
+                    Text(L("FERTIG", "DONE"))
+                        .font(.system(size: 9.5, weight: .heavy)).kerning(0.3)
+                        .foregroundStyle(Color(red: 0.93, green: 0.6, blue: 0.46))
+                default: EmptyView()
+                }
+            }
+            .lineLimit(1)
+            .fixedSize()
         }
-        .id(session?.activity.kind)
-        .transition(.scale(scale: 0.6).combined(with: .opacity))
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: session?.activity.kind)
     }
 }
@@ -293,10 +317,30 @@ private struct CheckShape: Shape {
 private struct ClaudePage: View {
     @ObservedObject var monitor: ClaudeCodeMonitor
     @ObservedObject var usage: ClaudeUsage
-    /// The session opened up to show its details.
-    @State private var expanded: String?
+    /// The session shown across the whole page.
+    @State private var focused: String?
 
     var body: some View {
+        ZStack {
+            if let id = focused, let session = monitor.sessions.first(where: { $0.id == id }) {
+                detail(session)
+                    .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                                            removal: .move(edge: .trailing).combined(with: .opacity)))
+            } else {
+                overview
+                    .transition(.asymmetric(insertion: .move(edge: .leading).combined(with: .opacity),
+                                            removal: .move(edge: .leading).combined(with: .opacity)))
+            }
+        }
+        .animation(.spring(response: 0.34, dampingFraction: 0.88), value: focused)
+        .onAppear { usage.refresh() }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in usage.refresh() }
+        .onChange(of: monitor.sessions.map(\.id)) { _, ids in
+            if let id = focused, !ids.contains(id) { focused = nil }
+        }
+    }
+
+    private var overview: some View {
         HStack(alignment: .top, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -304,9 +348,7 @@ private struct ClaudePage: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.45))
                     Spacer(minLength: 4)
-                    if let five = usage.fiveHour ?? usage.weekly {
-                        PlanGauge(main: five, fiveHour: usage.fiveHour, weekly: usage.weekly)
-                    }
+                    PlanGauge(fiveHour: usage.fiveHour, weekly: usage.weekly)
                 }
                 .zIndex(1)
                 if !ClaudeHooks.isInstalled {
@@ -322,11 +364,7 @@ private struct ClaudePage: View {
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 4) {
                             ForEach(monitor.sessions) { session in
-                                SessionRow(session: session, isExpanded: expanded == session.id) {
-                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                                        expanded = expanded == session.id ? nil : session.id
-                                    }
-                                }
+                                SessionRow(session: session, isExpanded: false) { focused = session.id }
                             }
                         }
                     }
@@ -338,7 +376,29 @@ private struct ClaudePage: View {
             UsageCard(usage: usage)
                 .frame(width: 214)
         }
-        .onAppear { usage.refresh() }
+    }
+
+    /// One session over the whole page, with the button to open it.
+    private func detail(_ session: ClaudeCodeMonitor.Session) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Button { focused = nil } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "chevron.left").font(.system(size: 10, weight: .bold))
+                        Text(L("Sitzungen", "Sessions")).font(.system(size: 10.5, weight: .semibold))
+                    }
+                    .foregroundStyle(.white.opacity(0.55))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: 4)
+                PlanGauge(fiveHour: usage.fiveHour, weekly: usage.weekly)
+            }
+            .zIndex(1)
+            ScrollView(.vertical, showsIndicators: false) {
+                SessionRow(session: session, isExpanded: true) { focused = nil }
+            }
+        }
     }
 }
 
@@ -367,7 +427,13 @@ private struct SessionRow: View {
                         .font(.system(size: 10, weight: .medium).monospacedDigit())
                         .foregroundStyle(.white.opacity(0.5))
                 }
-                OpenButton(session: session)
+                if isExpanded {
+                    OpenButton(session: session)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.3))
+                }
             }
             .contentShape(Rectangle())
             .onTapGesture(perform: toggle)
@@ -471,24 +537,27 @@ private struct SessionRow: View {
 /// How much of the plan is used: a ring with the percentage; pointing at
 /// it shows each limit and when it starts over.
 private struct PlanGauge: View {
-    let main: ClaudeUsage.Limit
     let fiveHour: ClaudeUsage.Limit?
     let weekly: ClaudeUsage.Limit?
     @State private var hovering = false
+
+    private var main: ClaudeUsage.Limit? { fiveHour ?? weekly }
 
     var body: some View {
         HStack(spacing: 5) {
             ZStack {
                 Circle().stroke(Color.white.opacity(0.15), lineWidth: 2.5)
-                Circle()
-                    .trim(from: 0, to: min(1, main.percent / 100))
-                    .stroke(color(main.percent), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
+                if let main {
+                    Circle()
+                        .trim(from: 0, to: min(1, main.percent / 100))
+                        .stroke(color(main.percent), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
             }
             .frame(width: 13, height: 13)
-            Text("\(Int(main.percent.rounded())) %")
+            Text(main.map { "\(Int($0.percent.rounded())) %" } ?? "– %")
                 .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(.white.opacity(main == nil ? 0.4 : 0.8))
         }
         .contentShape(Rectangle())
         .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
@@ -497,6 +566,11 @@ private struct PlanGauge: View {
                 VStack(alignment: .leading, spacing: 5) {
                     if let fiveHour { row(L("5-Std.-Limit", "5-hour limit"), fiveHour, weekday: false) }
                     if let weekly { row(L("Wochenlimit", "Weekly limit"), weekly, weekday: true) }
+                    if main == nil {
+                        Text(L("Noch keine Daten von deinem Claude-Abo.", "No data from your Claude plan yet."))
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -538,11 +612,17 @@ private struct OpenButton: View {
 
     var body: some View {
         Button { session.open() } label: {
-            Image(systemName: "arrow.up.forward.square")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(hovering ? 1 : 0.7))
-                .frame(width: 26, height: 26)
-                .background(Circle().fill(Color.white.opacity(hovering ? 0.16 : 0.09)))
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.up.forward.square")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(session.appName.map { L("In \($0) öffnen", "Open in \($0)") } ?? L("Claude öffnen", "Open Claude"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.white.opacity(hovering ? 1 : 0.8))
+            .padding(.horizontal, 10)
+            .frame(height: 26)
+            .background(Capsule().fill(Color.white.opacity(hovering ? 0.16 : 0.09)))
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }

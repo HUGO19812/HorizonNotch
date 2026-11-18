@@ -206,7 +206,8 @@ final class NotchWindowController {
         let island = islandRect(for: .compact)
         let top = screen.frame.maxY - model.geometry.topInset
         let height = max(model.geometry.notchSize.height, 34)
-        return CGRect(x: island.maxX, y: top - height, width: 44, height: screen.frame.maxY + 1 - (top - height))
+        return CGRect(x: island.maxX, y: top - height, width: NotchViewModel.bubbleSize.width + 16,
+                      height: screen.frame.maxY + 1 - (top - height))
     }
 
     /// Hovering Claude (the bubble, or the island while Claude owns it)

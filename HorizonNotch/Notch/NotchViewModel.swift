@@ -35,6 +35,8 @@ final class NotchViewModel: ObservableObject {
     var shelf: ShelfModule?
 
     let coordinator: NotchCoordinator
+    /// The drop beside the closed island (Claude next to the music).
+    static let bubbleSize = CGSize(width: 76, height: 30)
     /// Size of the open island, from Settings → Appearance.
     static var expandedWidth: CGFloat { CGFloat(AppSettings.shared.islandWidth) }
     static var expandedContentHeight: CGFloat { CGFloat(AppSettings.shared.islandHeight) }
@@ -45,7 +47,7 @@ final class NotchViewModel: ObservableObject {
     }
 
     var state: IslandState {
-        if isExpanded { return .expanded }
+        if isExpanded || showGreeting { return .expanded }
         return coordinator.compactModule != nil ? .compact : .collapsed
     }
 
