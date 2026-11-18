@@ -97,7 +97,7 @@ private struct BreathingDot: View {
     let playing: Bool
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 60, paused: !playing)) { context in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !playing)) { context in
             let levels = AudioLevelMeter.shared.levels
             let pulse: Double = {
                 guard playing else { return 0 }
@@ -121,7 +121,7 @@ private struct LiveWaves: View {
     let playing: Bool
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 60, paused: !playing)) { _ in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !playing)) { _ in
             let levels = AudioLevelMeter.shared.levels
             if playing, levels.hasSignal {
                 HStack(spacing: 2.5) {
