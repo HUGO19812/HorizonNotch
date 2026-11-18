@@ -16,7 +16,7 @@ import SwiftUI
 struct LiquidGlassView: View {
     let cornerRadius: CGFloat
     /// Width of the curved rim, in points.
-    var bevel: CGFloat = 22
+    var bevel: CGFloat = 28
     @ObservedObject private var wallpaper = Wallpaper.shared
     @State private var rendered: (key: String, image: CGImage)?
 
@@ -80,7 +80,7 @@ enum LiquidGlassRenderer {
         let width = Int((frame.width * scale).rounded(.up))
         let height = Int((frame.height * scale).rounded(.up))
         // The bevel pulls in picture from outside the glass: keep a margin.
-        let margin = Int((bevel * scale * 1.5).rounded(.up))
+        let margin = Int((bevel * scale * 2.4).rounded(.up))
         let sourceWidth = width + 2 * margin, sourceHeight = height + 2 * margin
         guard width > 0, height > 0, screenSize.width > 0,
               let source = CGContext(data: nil, width: sourceWidth, height: sourceHeight, bitsPerComponent: 8,
@@ -158,25 +158,31 @@ enum LiquidGlassRenderer {
                     continue
                 }
                 var r: Float, g: Float, b: Float
+                // The whole slab magnifies a little, like a thick lens.
+                let zx = halfW + dx * 0.95, zy = halfH + dy * 0.95
                 if edge < bevelPx {
                     // 1 at the very edge, 0 where the bevel ends; the curve
                     // keeps the inside calm and bends hard near the rim.
                     let t = 1 - edge / bevelPx
-                    let bend = bevelPx * 1.6 * t * t * (0.35 + 0.65 * t)
+                    let bend = bevelPx * 1.9 * t * t * (0.3 + 0.7 * t)
                     // Look further outwards: picture from beyond the edge is
                     // drawn in, squeezed into streaks along it. Red bends a
                     // little more than blue for the colour fringe.
-                    r = sample(px + nx * bend * 1.07, py + ny * bend * 1.07, 0)
-                    g = sample(px + nx * bend, py + ny * bend, 1)
-                    b = sample(px + nx * bend * 0.93, py + ny * bend * 0.93, 2)
-                    // The curved glass catches a touch more light.
-                    let lift: Float = 1.04 + 0.05 * t
-                    r *= lift; g *= lift; b *= lift
+                    r = sample(zx + nx * bend * 1.14, zy + ny * bend * 1.14, 0)
+                    g = sample(zx + nx * bend, zy + ny * bend, 1)
+                    b = sample(zx + nx * bend * 0.86, zy + ny * bend * 0.86, 2)
+                    // The curved glass catches a touch more light, and the
+                    // light from the top left glints along the rim there
+                    // (fainter bottom right).
+                    let lift: Float = 1.03 + 0.06 * t
+                    let towardsLight = max(0, -(nx + ny) * 0.7071)
+                    let away = max(0, (nx + ny) * 0.7071)
+                    let glint = (pow(towardsLight, 4) * 120 + pow(away, 4) * 60) * t * t
+                    r = r * lift + glint; g = g * lift + glint; b = b * lift + glint
                 } else {
-                    let i = (Int(py - 0.5) + margin) * sourceWidth + Int(px - 0.5) + margin
-                    r = Float(input[i * 4]) * 1.04
-                    g = Float(input[i * 4 + 1]) * 1.04
-                    b = Float(input[i * 4 + 2]) * 1.04
+                    r = sample(zx, zy, 0) * 1.03
+                    g = sample(zx, zy, 1) * 1.03
+                    b = sample(zx, zy, 2) * 1.03
                 }
                 out[index] = UInt8(min(255, r * coverage))
                 out[index + 1] = UInt8(min(255, g * coverage))

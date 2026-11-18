@@ -30,8 +30,8 @@ struct LockScreenView: View {
     @ObservedObject var nowPlaying: NowPlayingService
     @ObservedObject var lyrics: LyricsService
     @ObservedObject var state: LockScreenState
-    /// The screen saver draws its own clock; on the lock screen the system
-    /// clock stays the only one.
+    /// Kept for the screen saver; the clock over the large cover is now
+    /// drawn on the lock screen too.
     var drawsClock = false
     @ObservedObject private var settings = AppSettings.shared
     @StateObject private var hiRes = HiResArtwork()
@@ -49,9 +49,13 @@ struct LockScreenView: View {
                              tint: nowPlaying.accent, size: size,
                              style: settings.lockScreenBackdrop)
                         .transition(.opacity)
-                    // The backdrop covers the system clock: draw our own.
-                    if drawsClock {
-                        GlassClock(screenHeight: size.height, tint: nowPlaying.artwork != nil ? nowPlaying.accent : nil)
+                    // The backdrop covers the system clock: draw our own,
+                    // with the status row, where the system's would be.
+                    GlassClock(screenHeight: size.height, tint: nowPlaying.artwork != nil ? nowPlaying.accent : nil)
+                        .transition(.opacity)
+                    if settings.lockScreenStatusRow {
+                        StatusRow(screenHeight: size.height)
+                            .position(x: size.width / 2, y: size.height * 0.285)
                             .transition(.opacity)
                     }
                     large(info: info, size: size)
@@ -64,7 +68,7 @@ struct LockScreenView: View {
                     }
                     if let info = nowPlaying.info {
                         compact(info: info)
-                            .position(x: size.width / 2, y: size.height * 0.66)
+                            .position(x: size.width / 2, y: size.height * 0.705)
                     }
                 }
             }
@@ -91,14 +95,14 @@ struct LockScreenView: View {
                 .onTapGesture { state.large = true }
                 .help(L("Groß anzeigen", "Show large"))
         }
-        .frame(width: 340)
+        .frame(width: 330)
         .transition(.opacity)
     }
 
     /// Large cover under the clock with the card below; with lyrics the
     /// pair moves left and the lyrics appear on the right.
     private func large(info: NowPlayingInfo, size: CGSize) -> some View {
-        let cover = min(400, size.height * 0.37)
+        let cover = min(380, size.height * 0.3)
         return HStack(alignment: .center, spacing: 72) {
             VStack(spacing: 22) {
                 CoverArt(image: nowPlaying.artwork, cornerRadius: 10)
@@ -119,7 +123,8 @@ struct LockScreenView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, size.height * 0.27)
+        // Below the clock and the status row.
+        .padding(.top, size.height * 0.33)
     }
 }
 
@@ -177,16 +182,16 @@ private struct GlassClock: View {
         TimelineView(.everyMinute) { context in
             VStack(spacing: 0) {
                 Text(context.date.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(appLocale)))
-                    .font(.system(size: screenHeight * 0.024, weight: .semibold))
+                    .font(.system(size: screenHeight * 0.027, weight: .semibold))
                     .foregroundStyle(glass)
                     .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
                 Text(context.date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                    .font(.system(size: screenHeight * 0.12, weight: .semibold))
+                    .font(.system(size: screenHeight * 0.145, weight: .semibold, design: .rounded))
                     .foregroundStyle(glass)
                     // Bright rim on top, a darker edge below: thick glass.
                     .overlay {
                         Text(context.date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                            .font(.system(size: screenHeight * 0.12, weight: .semibold))
+                            .font(.system(size: screenHeight * 0.145, weight: .semibold, design: .rounded))
                             .foregroundStyle(LinearGradient(colors: [.white.opacity(0.75), .clear, .clear, .white.opacity(0.25)],
                                                             startPoint: .top, endPoint: .bottom))
                             .blendMode(.plusLighter)
@@ -195,7 +200,7 @@ private struct GlassClock: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, screenHeight * 0.078)
+        .padding(.top, screenHeight * 0.09)
         .allowsHitTesting(false)
     }
 
@@ -441,7 +446,10 @@ final class Wallpaper: ObservableObject {
 
     func load(for screen: NSScreen) {
         screenSize = screen.frame.size
-        guard let url = NSWorkspace.shared.desktopImageURL(for: screen) else { image = nil; return }
+        // macOS 26+ often reports a stale or default picture here; its
+        // wallpaper store knows the one actually shown.
+        guard let url = Self.storePictureURL(for: screen) ?? NSWorkspace.shared.desktopImageURL(for: screen)
+        else { image = nil; cgImage = nil; return }
         if url == loadedURL, image != nil { return }
         loadedURL = url
         var isDirectory: ObjCBool = false
@@ -453,6 +461,49 @@ final class Wallpaper: ObservableObject {
             cgImage = nil
             image = nil
         }
+    }
+
+    /// The desktop picture from macOS's wallpaper store: of all the places
+    /// a picture can be set (all spaces, a display, one space on a display)
+    /// the one that was shown last on this display wins. Only plain picture
+    /// files; moving or system-provided ones fall back to the reported URL.
+    private static func storePictureURL(for screen: NSScreen) -> URL? {
+        let storeURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/com.apple.wallpaper/Store/Index.plist")
+        guard let data = try? Data(contentsOf: storeURL),
+              let store = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        else { return nil }
+        let displayUUID = CGDisplayCreateUUIDFromDisplayID(screen.displayID)
+            .map { CFUUIDCreateString(nil, $0.takeRetainedValue()) as String }
+
+        var best: (date: Date, url: URL?)?
+        func visit(_ node: [String: Any], path: String) {
+            if let desktop = node["Desktop"] as? [String: Any] {
+                // Entries for another display do not count.
+                let otherDisplay = path.contains("/Displays/") && !(displayUUID.map { path.contains($0) } ?? true)
+                let date = (desktop["LastUse"] as? Date) ?? (desktop["LastSet"] as? Date) ?? .distantPast
+                if !otherDisplay, date > (best?.date ?? .distantPast) {
+                    best = (date, pictureURL(in: desktop))
+                }
+            }
+            for (key, value) in node {
+                if let child = value as? [String: Any] { visit(child, path: path + "/" + key) }
+            }
+        }
+        visit(store, path: "")
+        return best?.url
+    }
+
+    private static func pictureURL(in desktop: [String: Any]) -> URL? {
+        guard let content = desktop["Content"] as? [String: Any],
+              let choice = (content["Choices"] as? [[String: Any]])?.first,
+              (choice["Provider"] as? String)?.hasSuffix(".image") == true,
+              let configuration = choice["Configuration"] as? Data,
+              let settings = try? PropertyListSerialization.propertyList(from: configuration, format: nil) as? [String: Any],
+              let url = settings["url"] as? [String: Any],
+              let relative = url["relative"] as? String
+        else { return nil }
+        return URL(string: relative)
     }
 
     static func isNearlyBlack(_ image: NSImage) -> Bool {
