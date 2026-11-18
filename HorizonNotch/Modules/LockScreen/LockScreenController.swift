@@ -15,6 +15,8 @@ final class LockScreenController {
     private let state = LockScreenState()
     private let settings = AppSettings.shared
     private var window: NSPanel?
+    /// Test mode "System glass": the live lock screen wallpaper behind us.
+    private var wallpaperHost: LockWallpaperHost?
     private var observers: [NSObjectProtocol] = []
     private(set) var isShowing = false
     var onLockChange: ((Bool) -> Void)?
@@ -49,8 +51,21 @@ final class LockScreenController {
         // background (the progress bar ticks twice a second while playing).
         let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics, state: state))
         host.sizingOptions = []
-        panel.contentView = host
+        if settings.lockSystemGlass, let wallpaper = LockWallpaperHost(displayID: screen.displayID, size: screen.frame.size) {
+            // The wallpaper underneath, the SwiftUI content (and its glass) on top.
+            let container = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
+            container.wantsLayer = true
+            container.layer?.addSublayer(wallpaper.layer)
+            host.frame = container.bounds
+            host.autoresizingMask = [.width, .height]
+            container.addSubview(host)
+            panel.contentView = container
+            wallpaperHost = wallpaper
+        } else {
+            panel.contentView = host
+        }
         panel.setFrame(screen.frame, display: true)
+        wallpaperHost?.resize(to: screen.frame.size)
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         if !SkyLight.moveAboveLockScreen(panel) {
@@ -61,7 +76,7 @@ final class LockScreenController {
             panel.animator().alphaValue = 1
         }
         // The glass bends what the lock screen really shows.
-        Wallpaper.shared.beginScreenCapture(on: screen)
+        if wallpaperHost == nil { Wallpaper.shared.beginScreenCapture(on: screen) }
         isShowing = true
     }
 
@@ -76,6 +91,7 @@ final class LockScreenController {
             guard self?.isShowing == false else { return }
             panel.orderOut(nil)
             panel.contentView = nil
+            self?.wallpaperHost = nil
         })
     }
 

@@ -269,7 +269,7 @@ private struct LiquidPlayerCard<Artwork: View>: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
-        let crafted = overWallpaper && Wallpaper.shared.image != nil
+        let crafted = overWallpaper && (Wallpaper.shared.image != nil || settings.lockSystemGlass)
         // Clear glass over the picture has no tint at all; the transparency
         // slider shades the other looks.
         let solid = crafted && settings.lockGlassStyle != .frosted
@@ -332,7 +332,11 @@ private struct LiquidPlayerCard<Artwork: View>: View {
                 // Transparency slider: 100 % = perfectly clear glass, lower
                 // values frost and shade it more and more.
                 let frosted = settings.lockGlassStyle == .frosted
-                if overWallpaper && Wallpaper.shared.image != nil {
+                if overWallpaper, settings.lockSystemGlass, #available(macOS 26.0, *) {
+                    // Test mode: the system's own Liquid Glass over the live
+                    // wallpaper hosted in our window.
+                    Color.clear.glassEffect(frosted ? .regular : .clear, in: shape)
+                } else if overWallpaper && Wallpaper.shared.image != nil {
                     CraftedGlass(shape: shape, frost: frosted ? 1 : 0)
                 } else if #available(macOS 26.0, *) {
                     Color.clear.glassEffect(frosted ? .regular : .clear, in: shape)
