@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import IOKit
 
 /// Keeps the Mac awake – also with the lid closed – until switched off.
 ///
@@ -25,6 +26,10 @@ final class KeepAwake: ObservableObject {
         didSet { UserDefaults.standard.set(endDate, forKey: Self.endDateKey) }
     }
     private var offTimer: DispatchWorkItem?
+    /// While on: watches the lid, to switch the screen off when it closes.
+    private var lidTimer: Timer?
+    private var lidWasClosed = false
+    private var settingSubscription: AnyCancellable?
     private static let endDateKey = "keepAwakeUntil"
 
     private static let sudoersPath = "/etc/sudoers.d/horizonnotch"
@@ -33,6 +38,8 @@ final class KeepAwake: ObservableObject {
     private init() {
         isSetUp = FileManager.default.fileExists(atPath: Self.sudoersPath)
         endDate = UserDefaults.standard.object(forKey: Self.endDateKey) as? Date
+        settingSubscription = AppSettings.shared.$keepAwakeScreenOffWhenClosed.dropFirst()
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.watchLid() } }
         refresh()
     }
 
@@ -80,6 +87,7 @@ final class KeepAwake: ObservableObject {
     /// Switches off when the end time has passed, otherwise waits for it.
     /// Wall-clock deadline, so the timer stays right across sleep.
     private func applyLimit() {
+        watchLid()
         offTimer?.cancel()
         offTimer = nil
         guard isOn else {
@@ -95,6 +103,49 @@ final class KeepAwake: ObservableObject {
         let work = DispatchWorkItem { [weak self] in self?.set(false) }
         offTimer = work
         DispatchQueue.main.asyncAfter(wallDeadline: .now() + remaining, execute: work)
+    }
+
+    // MARK: - Lid
+
+    /// With sleep disabled, macOS leaves the built-in screen lit when the
+    /// lid closes. Every few seconds (only while awake is on) the lid is
+    /// checked; closed, the screen is sent to sleep – the Mac itself stays
+    /// awake. Not with an external display attached, which you then use.
+    private func watchLid() {
+        guard isOn, AppSettings.shared.keepAwakeScreenOffWhenClosed else {
+            lidTimer?.invalidate()
+            lidTimer = nil
+            lidWasClosed = false
+            return
+        }
+        guard lidTimer == nil else { return }
+        let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in self?.checkLid() }
+        timer.tolerance = 1
+        RunLoop.main.add(timer, forMode: .common)
+        lidTimer = timer
+    }
+
+    private func checkLid() {
+        let closed = Self.lidClosed
+        defer { lidWasClosed = closed }
+        guard closed, !Self.hasExternalDisplay else { return }
+        // Right after closing, and again whenever the screen woke up.
+        if !lidWasClosed || CGDisplayIsAsleep(CGMainDisplayID()) == 0 {
+            DispatchQueue.global(qos: .utility).async { _ = Self.run(Self.pmset, ["displaysleepnow"]) }
+        }
+    }
+
+    private static var lidClosed: Bool {
+        let root = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+        guard root != 0 else { return false }
+        defer { IOObjectRelease(root) }
+        let value = IORegistryEntryCreateCFProperty(root, "AppleClamshellState" as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue()
+        return (value as? Bool) ?? false
+    }
+
+    private static var hasExternalDisplay: Bool {
+        NSScreen.screens.contains { CGDisplayIsBuiltin($0.displayID) == 0 }
     }
 
     /// Asks for the password once: switches and installs the sudoers rule.

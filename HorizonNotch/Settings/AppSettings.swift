@@ -202,6 +202,8 @@ final class AppSettings: ObservableObject {
     @Published var lyricsOffset: Double { didSet { defaults.set(lyricsOffset, forKey: "lyricsOffset") } }
     @Published var keepAwakeIcon: Bool { didSet { defaults.set(keepAwakeIcon, forKey: "keepAwakeIcon") } }
     /// Stay awake switches itself off after this many hours; 0 = no limit.
+    /// Keep awake, but switch the screen off when the lid is closed.
+    @Published var keepAwakeScreenOffWhenClosed: Bool { didSet { defaults.set(keepAwakeScreenOffWhenClosed, forKey: "keepAwakeScreenOffWhenClosed") } }
     @Published var keepAwakeLimitHours: Int { didSet { defaults.set(keepAwakeLimitHours, forKey: "keepAwakeLimitHours") } }
     @Published var batteryInHeader: Bool { didSet { defaults.set(batteryInHeader, forKey: "batteryInHeader") } }
     @Published var batteryShowPercent: Bool { didSet { defaults.set(batteryShowPercent, forKey: "batteryShowPercent") } }
@@ -320,6 +322,7 @@ final class AppSettings: ObservableObject {
         mediaSource = MediaSourceChoice(rawValue: defaults.string(forKey: "mediaSource") ?? "") ?? .auto
         keepAwakeIcon = defaults.object(forKey: "keepAwakeIcon") as? Bool ?? true
         keepAwakeLimitHours = defaults.object(forKey: "keepAwakeLimitHours") as? Int ?? 0
+        keepAwakeScreenOffWhenClosed = defaults.object(forKey: "keepAwakeScreenOffWhenClosed") as? Bool ?? true
         batteryInHeader = defaults.object(forKey: "batteryInHeader") as? Bool ?? true
         batteryShowPercent = defaults.object(forKey: "batteryShowPercent") as? Bool ?? true
         showSource = defaults.object(forKey: "showSource") as? Bool ?? true

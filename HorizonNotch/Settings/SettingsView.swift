@@ -1487,6 +1487,8 @@ private struct BatterySettings: View {
             Section {
                 Toggle(L("Wach bleiben, auch zugeklappt", "Stay awake, also with the lid closed"), isOn: Binding(
                     get: { awake.isOn }, set: { awake.set($0) }))
+                Toggle(L("Bildschirm beim Zuklappen ausschalten", "Turn the screen off when the lid closes"),
+                       isOn: $settings.keepAwakeScreenOffWhenClosed)
                 Picker(L("Höchstens", "At most"), selection: $settings.keepAwakeLimitHours) {
                     Text(L("Unbegrenzt", "No limit")).tag(0)
                     ForEach([1, 2, 3, 4, 6, 8, 12], id: \.self) { hours in
