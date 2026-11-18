@@ -1389,6 +1389,23 @@ private struct ShelfSettings: View {
 private struct ConnectivitySettings: View {
     @ObservedObject private var settings = AppSettings.shared
     @State private var customPicture = NSImage(contentsOf: DevicePhotos.customURL)
+    @State private var hasModel = CustomDeviceModel.url != nil
+    @AppStorage(CustomDeviceModel.creditKey) private var modelCredit = ""
+
+    private func chooseModel() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = CustomDeviceModel.fileTypes
+        panel.allowsMultipleSelection = false
+        NSApp.activate()
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try CustomDeviceModel.install(from: url)
+            hasModel = true
+            settings.accessoryStyle = .model3D
+        } catch {
+            NSSound.beep()
+        }
+    }
 
     private func choosePicture() {
         let panel = NSOpenPanel()
@@ -1415,7 +1432,9 @@ private struct ConnectivitySettings: View {
                     StagePicker(selection: $settings.accessoryStyle, items: [
                         StageItem(value: AccessoryStyle.model3D, picture: AnyView(
                             Group {
-                                if let custom = customPicture {
+                                if hasModel {
+                                    DeviceModelView(spinning: false)
+                                } else if let custom = customPicture {
                                     Image(nsImage: custom).resizable().scaledToFit()
                                 } else {
                                     AirPodsPairView(spinning: false)
@@ -1439,9 +1458,24 @@ private struct ConnectivitySettings: View {
                     }
                     Button(L("Bild wählen …", "Choose picture …"), action: choosePicture)
                 }
+                HStack {
+                    Text(L("3D-Modell", "3D model"))
+                    Spacer()
+                    if hasModel {
+                        Button(L("Entfernen", "Remove")) {
+                            CustomDeviceModel.remove()
+                            hasModel = false
+                        }
+                    }
+                    Button(L("Modell wählen …", "Choose model …"), action: chooseModel)
+                }
+                if hasModel {
+                    TextField(L("Quelle / Credits", "Source / credits"), text: $modelCredit, axis: .vertical)
+                        .lineLimit(1...3)
+                }
             } footer: {
-                note("Links ein Bild deiner Kopfhörer (z. B. ein 3D-Render als PNG mit durchsichtigem Hintergrund, über „Bild wählen …“) oder ohne eigenes Bild das gezeichnete Modell, rechts das schlichte Systemsymbol.",
-                     "Left a picture of your headphones (e.g. a 3D render as a PNG with a transparent background, via “Choose picture …”) or, without one, the drawn model; right the plain system glyph.")
+                note("Links deine Kopfhörer: ein eigenes 3D-Modell (USDZ, über „Modell wählen …“), ein eigenes Bild oder sonst Apples AirPods-Bild aus macOS; rechts das schlichte Systemsymbol. Modell und Bild bleiben nur auf diesem Mac. Steht ein Modell unter CC BY, gehört die Quelle ins Feld „Credits“.",
+                     "Left your headphones: your own 3D model (USDZ, via “Choose model …”), your own picture or else Apple's AirPods picture from macOS; right the plain system glyph. Model and picture stay on this Mac only. For a CC BY model, put its source in the credits field.")
             }
             Section {
                 Toggle(L("Alle Bluetooth-Geräte und AirPods-Akku", "All Bluetooth devices and AirPods battery"),
