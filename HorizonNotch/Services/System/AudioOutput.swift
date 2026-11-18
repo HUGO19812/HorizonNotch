@@ -10,6 +10,10 @@ final class AudioOutput: ObservableObject {
     @Published private(set) var deviceName = ""
     @Published private(set) var symbol = "hifispeaker.fill"
     @Published private(set) var isBluetooth = false
+    /// The output is a KRK speaker, whatever its name ("K3" …): by the
+    /// maker's Bluetooth vendor ID in Core Audio's model UID, or the name.
+    @Published private(set) var isKRK = false
+    private static let krkVendorID = 0x05D6
     /// Fires when the default output switches to another device (not at launch).
     let deviceChanged = PassthroughSubject<Void, Never>()
 
@@ -125,6 +129,18 @@ final class AudioOutput: ObservableObject {
         AudioObjectGetPropertyData(id, &transportAddress, 0, nil, &size, &transport)
         symbol = Self.symbol(name: deviceName, transport: transport)
         isBluetooth = transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
+
+        // Bluetooth devices report "<product> <vendor>" in hex, e.g. "a 5d6".
+        var modelAddress = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyModelUID,
+                                                      mScope: kAudioObjectPropertyScopeGlobal,
+                                                      mElement: kAudioObjectPropertyElementMain)
+        var model: Unmanaged<CFString>?
+        size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        AudioObjectGetPropertyData(id, &modelAddress, 0, nil, &size, &model)
+        let modelUID = (model?.takeRetainedValue() as String?) ?? ""
+        let vendor = modelUID.split(separator: " ").last.flatMap { Int($0, radix: 16) }
+        isKRK = (isBluetooth && vendor == Self.krkVendorID) || deviceName.lowercased().contains("krk")
+        if isKRK { symbol = "hifispeaker.2.fill" }
     }
 
     private static func symbol(name: String, transport: UInt32) -> String {

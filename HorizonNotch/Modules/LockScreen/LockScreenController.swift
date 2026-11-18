@@ -60,12 +60,15 @@ final class LockScreenController {
             context.duration = 0.35
             panel.animator().alphaValue = 1
         }
+        // The glass bends what the lock screen really shows.
+        Wallpaper.shared.beginScreenCapture(on: screen)
         isShowing = true
     }
 
     func hide() {
         guard isShowing, let panel = window else { return }
         isShowing = false
+        Wallpaper.shared.endScreenCapture()
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.25
             panel.animator().alphaValue = 0

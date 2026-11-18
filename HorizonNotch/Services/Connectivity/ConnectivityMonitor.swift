@@ -23,6 +23,7 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
 
     private var lastOutputName: String
     private var lastOutputWasBluetooth: Bool
+    private var lastOutputWasKRK: Bool
     private let pathMonitor = NWPathMonitor()
     private var wifiConnected: Bool?
     private var lastSSID: String?
@@ -36,6 +37,7 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
         self.device = device
         lastOutputName = AudioOutput.shared.deviceName
         lastOutputWasBluetooth = AudioOutput.shared.isBluetooth
+        lastOutputWasKRK = AudioOutput.shared.isKRK
         super.init()
 
         output.deviceChanged
@@ -74,19 +76,21 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
         defer {
             lastOutputName = name
             lastOutputWasBluetooth = output.isBluetooth
+            lastOutputWasKRK = output.isKRK
         }
         if output.isBluetooth {
-            showCard(symbol: output.symbol, name: name, connected: true)
+            showCard(symbol: output.symbol, name: name, connected: true, model: output.isKRK ? .speakers : nil)
         } else if lastOutputWasBluetooth {
-            showCard(symbol: "headphones", name: lastOutputName, connected: false)
+            showCard(symbol: lastOutputWasKRK ? "hifispeaker.2.fill" : "headphones", name: lastOutputName,
+                     connected: false, model: lastOutputWasKRK ? .speakers : nil)
         }
     }
 
     /// The device card in the island. AirPods report their battery a moment
     /// after connecting, so the card is updated then. Battery levels need
     /// the Bluetooth permission ("All Bluetooth devices" option).
-    private func showCard(symbol: String, name: String, connected: Bool) {
-        var card = DeviceCard(name: name, symbol: symbol, connected: connected)
+    private func showCard(symbol: String, name: String, connected: Bool, model: CustomDeviceModel? = nil) {
+        var card = DeviceCard(name: name, symbol: symbol, connected: connected, model: model)
         guard connected else {
             device(card)
             return
