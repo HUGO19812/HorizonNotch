@@ -14,6 +14,7 @@ final class LockWallpaperHost {
     let layer = CALayer()
     private var controller: NSObject?
     private var assertion: AnyObject?
+    private var locked = false
     private var size: CGSize = .zero
     private var sizing: Timer?
 
@@ -21,23 +22,18 @@ final class LockWallpaperHost {
         dlopen("/System/Library/PrivateFrameworks/LoginUIKit.framework/Versions/A/LoginUIKit", RTLD_LAZY) != nil
     }()
 
+    /// The display this host shows the wallpaper of.
+    let displayID: CGDirectDisplayID
+
+    /// Created ahead of time (see LockScreenController.prepareSystemGlass):
+    /// connecting to the wallpaper service takes a moment, and a host made
+    /// only when the screen locks shows nothing for the first seconds.
     init?(displayID: CGDirectDisplayID, size: CGSize) {
         guard Self.framework, let type = NSClassFromString("LUI2WallpaperController") as? NSObject.Type else {
             NSLog("[HorizonNotch] LoginUIKit wallpaper controller unavailable")
             return nil
         }
-        // Tell the wallpaper service the lock screen presentation is wanted.
-        let assertSelector = NSSelectorFromString("takeLockedAssertionWithCompletion:")
-        if let method = class_getClassMethod(type, assertSelector) {
-            typealias Completion = @convention(block) (AnyObject?) -> Void
-            typealias Assert = @convention(c) (AnyClass, Selector, Completion) -> Void
-            let assert = unsafeBitCast(method_getImplementation(method), to: Assert.self)
-            // LoginUIKit keeps the block, so it must be a real heap block.
-            let completion: Completion = { [weak self] token in
-                DispatchQueue.main.async { self?.assertion = token }
-            }
-            assert(type, assertSelector, completion)
-        }
+        self.displayID = displayID
         // alloc + initWithDisplayID:style:
         let initSelector = NSSelectorFromString("initWithDisplayID:style:")
         guard let allocated = type.perform(NSSelectorFromString("alloc"))?.takeUnretainedValue() as? NSObject,
@@ -51,16 +47,47 @@ final class LockWallpaperHost {
 
         layer.addSublayer(wallpaper)
         resize(to: size)
-        // The wallpaper service attaches its live layer a moment later; give
-        // it the full size as soon as it is there.
+        NSLog("[HorizonNotch] lock wallpaper host: %@ (style %ld)", wallpaper.sublayers?.description ?? "-", style)
+    }
+
+    /// The screen is locked: ask the wallpaper service for the lock screen
+    /// presentation and keep the hosted layer at full size while it attaches.
+    func lockBegan(size: CGSize) {
+        locked = true
+        resize(to: size)
+        if assertion == nil, let type = NSClassFromString("LUI2WallpaperController") {
+            let assertSelector = NSSelectorFromString("takeLockedAssertionWithCompletion:")
+            if let method = class_getClassMethod(type, assertSelector) {
+                typealias Completion = @convention(block) (AnyObject?) -> Void
+                typealias Assert = @convention(c) (AnyClass, Selector, Completion) -> Void
+                let assert = unsafeBitCast(method_getImplementation(method), to: Assert.self)
+                // LoginUIKit keeps the block, so it must be a real heap block.
+                let completion: Completion = { [weak self] token in
+                    DispatchQueue.main.async {
+                        guard let self, self.locked else { return Self.release(token) }
+                        self.assertion = token
+                    }
+                }
+                assert(type, assertSelector, completion)
+            }
+        }
+        sizing?.invalidate()
         var ticks = 0
         sizing = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] timer in
             guard let self else { timer.invalidate(); return }
             self.resize(to: self.size)
             ticks += 1
-            if ticks >= 20 { timer.invalidate() }
+            if ticks >= 12 { timer.invalidate() }
         }
-        NSLog("[HorizonNotch] lock wallpaper host: %@ (style %ld)", wallpaper.sublayers?.description ?? "-", style)
+    }
+
+    /// Unlocked: let go of the lock presentation, keep the connection.
+    func lockEnded() {
+        locked = false
+        sizing?.invalidate()
+        Self.release(assertion)
+        assertion = nil
+        layer.removeFromSuperlayer()
     }
 
     /// Keeps the hosted wallpaper filling the window.
@@ -76,8 +103,13 @@ final class LockWallpaperHost {
         CATransaction.commit()
     }
 
+    private static func release(_ token: AnyObject?) {
+        if let token = token as? NSObject, token.responds(to: NSSelectorFromString("invalidate")) {
+            token.perform(NSSelectorFromString("invalidate"))
+        }
+    }
+
     deinit {
-        sizing?.invalidate()
-        layer.removeFromSuperlayer()
+        lockEnded()
     }
 }
