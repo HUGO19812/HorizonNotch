@@ -1618,8 +1618,18 @@ private struct LockScreenSettings: View {
             }
             Section {
                 Toggle(L("Musik-Player auf dem Sperrbildschirm", "Music player on the lock screen"), isOn: $settings.lockScreenWidgets)
-                Toggle(L("Wetter, Akku und Kopfhörer unter der Uhr", "Weather, battery and headphones under the clock"),
-                       isOn: $settings.lockScreenStatusRow)
+                Toggle(L("Widgets unter der Uhr", "Widgets under the clock"), isOn: $settings.lockScreenStatusRow)
+                    .disabled(!settings.lockScreenWidgets)
+                Group {
+                    Toggle(L("Wetter", "Weather"), isOn: $settings.lockWidgetWeather)
+                    Toggle(L("Akku", "Battery"), isOn: $settings.lockWidgetBattery)
+                    Toggle(L("Kopfhörer", "Headphones"), isOn: $settings.lockWidgetHeadphones)
+                    Toggle(L("Nächster Termin heute", "Next event today"), isOn: $settings.lockWidgetEvent)
+                }
+                .padding(.leading, 18)
+                .disabled(!settings.lockScreenWidgets || !settings.lockScreenStatusRow)
+                Toggle(L("Uhr nimmt beim großen Cover dessen Farbe an", "Clock takes the cover's colour with the large cover"),
+                       isOn: $settings.lockClockTint)
                     .disabled(!settings.lockScreenWidgets)
                 TilePicker(title: L("Beim Sperren zeigen", "When locking, show"), selection: $settings.lockScreenStart, options: [
                     TileOption(value: LockScreenStart.compact, title: L("Kleiner Player", "Small player"), symbol: "play.rectangle"),

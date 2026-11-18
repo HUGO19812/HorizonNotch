@@ -73,6 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         downloadWatcher = DownloadWatcher { [weak self] in self?.notifications.post($0) }
         lockScreen = LockScreenController(nowPlaying: nowPlaying, lyrics: media.lyrics)
         LockScreenSources.weather = weather.service
+        LockScreenSources.calendar = calendar
         // "Rain in 15 min" as a short notice, once per shower.
         weather.service.activateForAlerts()
         rainSubscription = weather.service.$report

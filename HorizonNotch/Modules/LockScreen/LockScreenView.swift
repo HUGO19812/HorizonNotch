@@ -20,6 +20,7 @@ final class LockScreenState: ObservableObject {
 /// Data the lock screen shows besides the music (set by the app delegate).
 enum LockScreenSources {
     static weak var weather: WeatherService?
+    static weak var calendar: CalendarModule?
 }
 
 /// The lock screen, in the style of Canopy: a small clear Liquid Glass
@@ -50,9 +51,9 @@ struct LockScreenView: View {
                              tint: nowPlaying.accent, size: size,
                              style: settings.lockScreenBackdrop)
                         .transition(.opacity)
-                    // The backdrop covers the system clock: draw our own,
-                    // with the status row, where the system's would be.
-                    GlassClock(screenHeight: size.height, tint: nowPlaying.artwork != nil ? nowPlaying.accent : nil)
+                    // The backdrop covers the system clock: the same clock,
+                    // with the status row, exactly where the system's is.
+                    LockClock(size: size, tint: settings.lockClockTint && nowPlaying.artwork != nil ? nowPlaying.accent : nil)
                         .transition(.opacity)
                     if settings.lockScreenStatusRow {
                         StatusRow(screenHeight: size.height)
@@ -100,32 +101,39 @@ struct LockScreenView: View {
         .transition(.opacity)
     }
 
-    /// Large cover under the clock with the card below; with lyrics the
-    /// pair moves left and the lyrics appear on the right.
+    /// Large cover between the status row and the player; the player is
+    /// the very same card at the very same place as without the cover.
+    /// With lyrics, cover and card move left and the lyrics appear right.
     private func large(info: NowPlayingInfo, size: CGSize) -> some View {
-        let cover = min(380, size.height * 0.3)
-        return HStack(alignment: .center, spacing: 72) {
-            VStack(spacing: 22) {
-                CoverArt(image: nowPlaying.artwork, cornerRadius: 10)
-                    .matchedGeometryEffect(id: "cover", in: player)
-                    .frame(width: cover, height: cover)
-                    .shadow(color: .black.opacity(0.45), radius: 30, y: 14)
+        let cardY = size.height * 0.705
+        let top = size.height * 0.285 + 34
+        let cover = min(380, cardY - 74 - top - 24)
+        let shift: CGFloat = state.lyrics ? -min(330, size.width * 0.2) : 0
+        return ZStack {
+            CoverArt(image: nowPlaying.artwork, cornerRadius: 10)
+                .matchedGeometryEffect(id: "cover", in: player)
+                .frame(width: cover, height: cover)
+                .shadow(color: .black.opacity(0.45), radius: 30, y: 14)
+                .onTapGesture { state.large = false; state.lyrics = false }
+                .help(L("Klein anzeigen", "Show small"))
+                .position(x: size.width / 2 + shift, y: top + (cardY - 74 - top) / 2)
+            LiquidPlayerCard(service: nowPlaying, info: info, lyricsOn: state.lyrics,
+                             onLyrics: { state.lyrics.toggle() }) {
+                CoverArt(image: nowPlaying.artwork, cornerRadius: 9)
+                    .frame(width: 56, height: 56)
                     .onTapGesture { state.large = false; state.lyrics = false }
-                    .help(L("Klein anzeigen", "Show small"))
-                LiquidPlayerCard(service: nowPlaying, info: info, lyricsOn: state.lyrics,
-                                 onLyrics: { state.lyrics.toggle() }) { EmptyView() }
-                    .frame(width: min(cover * 0.8, 320))
-                    .transition(.opacity)
             }
+            .frame(width: 330)
+            .position(x: size.width / 2 + shift, y: cardY)
+            .transition(.opacity)
             if state.lyrics {
                 LyricsPanel(lyrics: lyrics, info: info, large: true, fontSize: 30) { nowPlaying.seek(to: $0) }
-                    .frame(width: 540, height: cover + 160)
+                    .frame(width: 540, height: cardY + 60 - top)
+                    .position(x: size.width / 2 + 330 + 40, y: top + (cardY + 60 - top) / 2)
                     .transition(.opacity.combined(with: .offset(x: 40)))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        // Below the clock and the status row.
-        .padding(.top, size.height * 0.33)
+        .frame(width: size.width, height: size.height)
     }
 }
 
@@ -172,63 +180,99 @@ private struct Backdrop: View {
     }
 }
 
-/// Date and time in Liquid Glass, like the macOS lock screen clock: rounded
-/// serif digits that look cut from glass, tinted by the cover when there
-/// is one. Drawn when the artwork covers the system clock.
-private struct GlassClock: View {
-    let screenHeight: CGFloat
+/// The clock over the large cover, where and how macOS draws its own:
+/// LoginUIKit's real date and time views; tinted by the cover (a setting)
+/// or without LoginUIKit, a glass copy in the same font, size and place.
+private struct LockClock: View {
+    let size: CGSize
     let tint: Color?
+
+    // Where macOS puts them, as a share of the screen height.
+    private var dateY: CGFloat { size.height * 0.1066 }
+    private var timeY: CGFloat { size.height * 0.186 }
 
     var body: some View {
         TimelineView(.everyMinute) { context in
-            VStack(spacing: 0) {
-                Text(context.date.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(appLocale)))
-                    .font(.system(size: screenHeight * 0.027, weight: .semibold))
-                    .foregroundStyle(glass)
-                    .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
-                Text(context.date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                    .font(.system(size: screenHeight * 0.145, weight: .semibold, design: .rounded))
-                    .foregroundStyle(glass)
-                    // Bright rim on top, a darker edge below: thick glass.
-                    .overlay {
-                        Text(context.date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
-                            .font(.system(size: screenHeight * 0.145, weight: .semibold, design: .rounded))
-                            .foregroundStyle(LinearGradient(colors: [.white.opacity(0.75), .clear, .clear, .white.opacity(0.25)],
-                                                            startPoint: .top, endPoint: .bottom))
-                            .blendMode(.plusLighter)
-                    }
-                    .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
+            ZStack {
+                if tint == nil, SystemClock.isAvailable {
+                    SystemClockView(part: .date, minute: context.date)
+                        .frame(width: 600, height: 60)
+                        .position(x: size.width / 2, y: dateY)
+                    SystemClockView(part: .time, minute: context.date)
+                        .frame(width: 900, height: 240)
+                        .position(x: size.width / 2, y: timeY)
+                } else {
+                    Text(Self.dateFormatter.string(from: context.date))
+                        .font(.system(size: 31.28 * size.height / 1117, weight: .medium))
+                        .foregroundStyle(glass)
+                        .position(x: size.width / 2, y: dateY)
+                    Text(context.date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute()))
+                        .font(timeFont)
+                        .foregroundStyle(glass)
+                        .overlay {
+                            Text(context.date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute()))
+                                .font(timeFont)
+                                .foregroundStyle(LinearGradient(colors: [.white.opacity(0.75), .clear, .clear, .white.opacity(0.25)],
+                                                                startPoint: .top, endPoint: .bottom))
+                                .blendMode(.plusLighter)
+                        }
+                        .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
+                        .position(x: size.width / 2, y: timeY)
+                }
             }
+            .frame(width: size.width, height: size.height)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, screenHeight * 0.09)
         .allowsHitTesting(false)
     }
 
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = appLocale
+        formatter.setLocalizedDateFormatFromTemplate("EEE d MMM")
+        return formatter
+    }()
+
+    private var timeFont: Font {
+        let points = 156.38 * size.height / 1117
+        if let system = SystemClock.timeFont, let scaled = NSFont(descriptor: system.fontDescriptor, size: points) {
+            return Font(scaled)
+        }
+        return .system(size: points, weight: .semibold, design: .rounded)
+    }
+
     private var glass: LinearGradient {
-        let base = tint ?? Color(red: 0.75, green: 0.88, blue: 0.97)
-        return LinearGradient(colors: [.white.opacity(0.95), base.opacity(0.9), base.opacity(0.65)],
+        let base = tint ?? Color(white: 0.6)
+        return LinearGradient(colors: [.white.opacity(0.9), base.opacity(0.85), base.opacity(0.6)],
                               startPoint: .top, endPoint: .bottom)
     }
 }
 
-/// Weather, battery and headphones in one quiet row under the clock.
+/// The widgets under the clock, as chosen in Settings → Lock Screen:
+/// weather, battery, headphones and the next appointment.
 private struct StatusRow: View {
     let screenHeight: CGFloat
     @ObservedObject private var power = PowerSource.shared
     @ObservedObject private var output = AudioOutput.shared
+    @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
         HStack(spacing: 22) {
-            if let report = LockScreenSources.weather?.report {
+            if settings.lockWidgetWeather, let report = LockScreenSources.weather?.report {
                 item(WeatherCode.symbol(report.code, isDay: report.isDay), "\(Int(report.temperature.rounded()))°")
             }
-            if power.state.hasBattery {
+            if settings.lockWidgetBattery, power.state.hasBattery {
                 item(power.state.isCharging || power.state.isPluggedIn ? "bolt.fill" : "battery.75percent",
                      "\(power.state.percent) %")
             }
-            if output.isBluetooth {
+            if settings.lockWidgetHeadphones, output.isBluetooth {
                 item(output.symbol, nil)
+            }
+            if settings.lockWidgetEvent, let event = LockScreenSources.calendar?.nextEvent,
+               Calendar.current.isDateInToday(event.startDate) {
+                item("calendar", event.startDate.formatted(.dateTime.hour().minute().locale(appLocale))
+                     + " " + (event.title ?? ""))
+                    .lineLimit(1)
+                    .frame(maxWidth: 320)
             }
         }
         .font(.system(size: max(16, screenHeight * 0.022), weight: .semibold))
@@ -479,7 +523,7 @@ final class Wallpaper: ObservableObject {
         return FileManager.default.isReadableFile(atPath: url.path) ? url : nil
     }
 
-    private static let generatedUID: String? = {
+    static let generatedUID: String? = {
         guard let node = try? ODNode(session: .default(), type: ODNodeType(kODNodeTypeLocalNodes)),
               let record = try? node.record(withRecordType: kODRecordTypeUsers, name: NSUserName(),
                                             attributes: [kODAttributeTypeGUID]),

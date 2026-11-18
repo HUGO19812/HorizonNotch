@@ -40,6 +40,38 @@ final class ClaudeCodeMonitor: ObservableObject {
         var transcriptPath: String?
     }
 
+    /// The Claude app's own record of a Code session: its ID there (to
+    /// open exactly that chat) and the title it shows.
+    struct DesktopSession: Equatable {
+        let id: String
+        let title: String?
+    }
+
+    /// Claude app sessions by Claude Code session ID, from the app's
+    /// session files (~/Library/Application Support/Claude/claude-code-sessions).
+    @Published private(set) var desktop: [String: DesktopSession] = [:]
+
+    private func loadDesktopSessions() -> [String: DesktopSession] {
+        let root = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
+        let start = Calendar.current.startOfDay(for: Date()).addingTimeInterval(-86_400)
+        var found: [String: DesktopSession] = [:]
+        guard let accounts = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey],
+                                                            options: [.skipsHiddenFiles]) else { return found }
+        for case let file as URL in accounts where file.lastPathComponent.hasPrefix("local_") && file.pathExtension == "json" {
+            guard let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+                  modified >= start,
+                  let data = try? Data(contentsOf: file),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = json["sessionId"] as? String else { continue }
+            let session = DesktopSession(id: id, title: json["title"] as? String)
+            for key in ["cliSessionId", "lastAssistantCliSessionId"] {
+                if let cli = json[key] as? String { found[cli] = session }
+            }
+        }
+        return found
+    }
+
     struct Step: Equatable {
         let text: String
         let date: Date
@@ -112,7 +144,11 @@ final class ClaudeCodeMonitor: ObservableObject {
                     found.append(session)
                 }
             }
-            DispatchQueue.main.async { self?.history = found }
+            let desktop = self?.loadDesktopSessions() ?? [:]
+            DispatchQueue.main.async {
+                self?.history = found
+                if self?.desktop != desktop { self?.desktop = desktop }
+            }
         }
     }
     /// Fires when a turn finished, so usage can be refreshed.
