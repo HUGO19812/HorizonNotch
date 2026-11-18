@@ -728,11 +728,23 @@ private struct DisplaySettings: View {
                      "The notch hangs from the top edge, growing out of the camera housing. The Dynamic Island floats just below the edge, a capsule as on iPhone, joined to the edge only where the camera sits.")
             }
             Section {
+                TilePicker(title: L("Notch zeigen auf", "Show the notch on"), selection: $settings.displayMode, options: [
+                    TileOption(value: DisplayMode.chosen, title: L("Einem Bildschirm", "One display"), symbol: "display"),
+                    TileOption(value: DisplayMode.all, title: L("Jedem Bildschirm", "Every display"), symbol: "display.2"),
+                    TileOption(value: DisplayMode.followMouse, title: L("Wo die Maus ist", "Where the mouse is"),
+                               symbol: "cursorarrow.motionlines"),
+                ])
+            } footer: {
+                note("„Wo die Maus ist“ lässt die geschlossene Notch auf den Bildschirm wandern, auf dem gerade der Zeiger ist. Bei „Jedem Bildschirm“ hat jeder Bildschirm seine eigene Notch.",
+                     "“Where the mouse is” moves the closed notch to the display the pointer is on. With “Every display” each display gets its own notch.")
+            }
+            Section {
                 Picker(L("Bildschirm", "Display"), selection: $settings.displayID) {
                     Text(L("Automatisch", "Automatic")).tag(UInt32(0))
                     ForEach(NSScreen.screens, id: \.displayID) { screen in
                         Text(screen.localizedName + (screen.hasNotch ? " (Notch)" : "")).tag(screen.displayID)
                     }
+                .disabled(settings.displayMode == .followMouse)
                 }
             } footer: {
                 note("Automatisch nimmt den Bildschirm mit Notch, sonst den Hauptbildschirm. Ohne Notch erscheint eine schwebende Kapsel.",

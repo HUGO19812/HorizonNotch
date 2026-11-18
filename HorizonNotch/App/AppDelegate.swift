@@ -34,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var screenSaver: ScreenSaverController?
 
     private var notchController: NotchWindowController?
+    /// "Every screen": one more island per further screen.
+    private var extraControllers: [NotchWindowController] = []
+    private var displaySubscriptions = Set<AnyCancellable>()
     private var statusBar: StatusBarController?
     private var settingsWindow: SettingsWindowController?
 
@@ -105,12 +108,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // Islands on the other screens, when wanted.
+        AppSettings.shared.$displayMode.map { _ in () }
+            .merge(with: AppSettings.shared.$displayID.map { _ in () },
+                   NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification).map { _ in () })
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .sink { [weak self] in self?.updateExtraIslands() }
+            .store(in: &displaySubscriptions)
+
         statusBar = StatusBarController(appDelegate: self)
         NotificationCenter.default.addObserver(forName: .openSettings, object: nil, queue: .main) { [weak self] _ in
             self?.showSettings()
         }
         lockScreen?.onLockChange = { [weak controller, weak self] locked in
             controller?.collapse()
+            self?.extraControllers.forEach { $0.collapse() }
             self?.screenSaver?.screenLocked(locked)
         }
 
@@ -183,6 +195,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settingsWindow == nil { settingsWindow = SettingsWindowController(appDelegate: self) }
         notchController?.collapse()
         settingsWindow?.show(tab: tab)
+    }
+
+    private func updateExtraIslands() {
+        extraControllers.forEach { $0.stop() }
+        extraControllers.removeAll()
+        guard AppSettings.shared.displayMode == .all, let main = notchController?.displayID else { return }
+        for screen in NSScreen.screens where screen.displayID != main {
+            let extra = NotchWindowController(coordinator: coordinator, shelf: shelf, fixedDisplay: screen.displayID)
+            extra.start()
+            extra.onMediaSwipe = notchController?.onMediaSwipe
+            extraControllers.append(extra)
+        }
     }
 
     func toggleIsland() {

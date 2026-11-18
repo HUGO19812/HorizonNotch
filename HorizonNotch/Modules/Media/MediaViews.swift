@@ -565,22 +565,111 @@ private struct LyricsScroller: View {
     }
 }
 
+/// Nothing plays: the player itself, greyed out and waiting – an empty
+/// cover with a note, "Not playing", resting dots instead of the
+/// visualizer, an empty bar with "-:--", and the buttons. Play starts the
+/// chosen player (Spotify or Music) right away.
 private struct NothingPlayingView: View {
+    @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var output = AudioOutput.shared
+    @State private var starting = false
+
     var body: some View {
-        HStack(spacing: 14) {
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color.white.opacity(0.08))
-                .frame(width: 72, height: 72)
-                .overlay(Image(systemName: "music.note").font(.system(size: 26)).foregroundStyle(.white.opacity(0.35)))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(L("Gerade läuft nichts", "Nothing playing"))
-                    .font(.system(size: 14, weight: .semibold))
-                Text(L("Starte Musik, Spotify oder ein Video im Browser.",
-                       "Start Music, Spotify or a video in your browser."))
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.55))
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 14) {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(Color.white.opacity(0.09))
+                    .frame(width: 58, height: 58)
+                    .overlay(Image(systemName: "music.note")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.45)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(starting ? L("Wird gestartet …", "Starting …") : L("Gerade läuft nichts", "Not playing"))
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.4))
+                    if let app = playerName {
+                        Text(L("▶ startet \(app)", "▶ starts \(app)"))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.25))
+                    }
+                }
+                Spacer(minLength: 8)
+                HStack(spacing: 3) {
+                    ForEach(0..<6, id: \.self) { _ in
+                        Circle().fill(Color.white.opacity(0.35)).frame(width: 2.5, height: 2.5)
+                    }
+                }
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.top, 6)
             }
-            Spacer()
+            .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
+                Text("-:--")
+                Capsule().fill(Color.white.opacity(0.12)).frame(height: 7)
+                Text("-:--")
+            }
+            .font(.system(size: 12, weight: .semibold).monospacedDigit())
+            .foregroundStyle(.white.opacity(0.3))
+            HStack(spacing: 0) {
+                Color.clear.frame(width: 38, height: 32)
+                Spacer(minLength: 0)
+                dimmed("backward.fill", size: 18)
+                Spacer(minLength: 0)
+                Button(action: startPlayer) {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .frame(width: 42, height: 38)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PressScaleStyle())
+                .help(playerName.map { L("\($0) starten", "Start \($0)") } ?? "")
+                Spacer(minLength: 0)
+                dimmed("forward.fill", size: 18)
+                Spacer(minLength: 0)
+                Image(systemName: output.symbol)
+                    .font(.system(size: 16))
+                    .foregroundStyle(.white.opacity(0.3))
+                    .frame(width: 38, height: 32)
+            }
+            .frame(height: 32)
+        }
+        .padding(.top, 2)
+        .padding(.bottom, 8)
+        .padding(.horizontal, 6)
+    }
+
+    private func dimmed(_ symbol: String, size: CGFloat) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: size, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.3))
+            .frame(width: size + 18, height: 32)
+    }
+
+    /// The player the play button opens: the chosen source, else Spotify if
+    /// it is installed, else Music.
+    private var player: (bundle: String, name: String)? {
+        let installed = { (id: String) in NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) != nil }
+        switch settings.mediaSource {
+        case .spotify: return ("com.spotify.client", "Spotify")
+        case .music: return ("com.apple.Music", "Music")
+        case .auto:
+            return installed("com.spotify.client") ? ("com.spotify.client", "Spotify") : ("com.apple.Music", "Music")
+        }
+    }
+
+    private var playerName: String? {
+        guard let player else { return nil }
+        return player.bundle == "com.apple.Music" ? L("Musik", "Music") : player.name
+    }
+
+    private func startPlayer() {
+        guard let player else { return }
+        starting = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            var error: NSDictionary?
+            NSAppleScript(source: "tell application \"\(player.name)\" to play")?.executeAndReturnError(&error)
+            DispatchQueue.main.async { starting = false }
         }
     }
 }
