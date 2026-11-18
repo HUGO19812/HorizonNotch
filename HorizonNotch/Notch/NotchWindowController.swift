@@ -33,9 +33,13 @@ final class NotchWindowController {
     /// Hidden because another app fills the screen (setting).
     private var hiddenForFullscreen = false
 
-    init(coordinator: NotchCoordinator, shelf: ShelfModule?) {
+    /// Set for the extra islands of "every screen": always that screen.
+    let fixedDisplay: CGDirectDisplayID?
+
+    init(coordinator: NotchCoordinator, shelf: ShelfModule?, fixedDisplay: CGDirectDisplayID? = nil) {
         self.coordinator = coordinator
-        let screen = NSScreen.islandScreen(preferred: AppSettings.shared.displayID)
+        self.fixedDisplay = fixedDisplay
+        let screen = Self.resolveScreen(fixed: fixedDisplay)
         self.screen = screen
         model = NotchViewModel(geometry: screen.map(NotchGeometry.init) ?? NotchGeometry.fallback,
                                coordinator: coordinator)
@@ -77,6 +81,10 @@ final class NotchWindowController {
             .sink { [weak self] _ in DispatchQueue.main.async { self?.screenConfigurationChanged() } }
             .store(in: &subscriptions)
         settings.$notchHeightAdjust
+            .dropFirst()
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.screenConfigurationChanged() } }
+            .store(in: &subscriptions)
+        settings.$displayMode
             .dropFirst()
             .sink { [weak self] _ in DispatchQueue.main.async { self?.screenConfigurationChanged() } }
             .store(in: &subscriptions)
@@ -135,10 +143,34 @@ final class NotchWindowController {
 
     // MARK: - Placement
 
+    /// The screen this island belongs on: its own one for an extra island,
+    /// the one under the pointer when following the mouse, else the chosen.
+    private static func resolveScreen(fixed: CGDirectDisplayID?) -> NSScreen? {
+        if let fixed, let screen = NSScreen.screens.first(where: { $0.displayID == fixed }) { return screen }
+        if AppSettings.shared.displayMode == .followMouse,
+           let under = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) {
+            return under
+        }
+        return NSScreen.islandScreen(preferred: AppSettings.shared.displayID)
+    }
+
+    var displayID: CGDirectDisplayID? { screen?.displayID }
+
     private func screenConfigurationChanged() {
-        screen = NSScreen.islandScreen(preferred: settings.displayID)
+        screen = Self.resolveScreen(fixed: fixedDisplay)
         if let screen { model.geometry = NotchGeometry(screen: screen) }
         positionPanel()
+    }
+
+    /// Removes the island (an extra screen went away or the mode changed).
+    func stop() {
+        monitors.forEach { NSEvent.removeMonitor($0) }
+        monitors.removeAll()
+        subscriptions.removeAll()
+        cancelTimers()
+        panel?.orderOut(nil)
+        panel?.contentView = nil
+        panel = nil
     }
 
     private func positionPanel() {
@@ -192,6 +224,12 @@ final class NotchWindowController {
     }
 
     private func pointerMoved() {
+        // Follow the mouse: hop to the screen the pointer moved onto.
+        if fixedDisplay == nil, settings.displayMode == .followMouse, !model.isExpanded,
+           let under = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }),
+           under.displayID != screen?.displayID {
+            screenConfigurationChanged()
+        }
         guard !model.isFileDragActive, !hiddenForFullscreen else { return }
         #if DEBUG
         if debugPinned { return }

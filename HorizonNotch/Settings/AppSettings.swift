@@ -69,6 +69,17 @@ enum LockScreenStart: String, CaseIterable, Identifiable {
 }
 
 /// Background behind the large lock screen player.
+/// On which screens the island lives.
+enum DisplayMode: String, CaseIterable, Identifiable {
+    /// One screen: the one picked under Displays (or automatic).
+    case chosen
+    /// Every connected screen gets its own island.
+    case all
+    /// One island that moves to the screen the pointer is on.
+    case followMouse
+    var id: String { rawValue }
+}
+
 /// Notch: hangs from the top edge out of the camera housing. Dynamic
 /// Island: a capsule floating just below the edge, like on iPhone.
 enum IslandDesign: String, CaseIterable, Identifiable {
@@ -158,6 +169,7 @@ final class AppSettings: ObservableObject {
     @Published var weatherRainAlert: Bool { didSet { defaults.set(weatherRainAlert, forKey: "weatherRainAlert") } }
     /// Reminders (to-dos) on the calendar page.
     @Published var calendarShowReminders: Bool { didSet { defaults.set(calendarShowReminders, forKey: "calendarShowReminders") } }
+    @Published var displayMode: DisplayMode { didSet { defaults.set(displayMode.rawValue, forKey: "displayMode") } }
     @Published var islandDesign: IslandDesign { didSet { defaults.set(islandDesign.rawValue, forKey: "islandDesign") } }
     @Published var accessoryStyle: AccessoryStyle { didSet { defaults.set(accessoryStyle.rawValue, forKey: "accessoryStyle") } }
     @Published var lockGlassStyle: LockGlassStyle { didSet { defaults.set(lockGlassStyle.rawValue, forKey: "lockGlassStyle") } }
@@ -270,6 +282,7 @@ final class AppSettings: ObservableObject {
         notifyCopies = defaults.object(forKey: "notifyCopies") as? Bool ?? true
         weatherRainAlert = defaults.object(forKey: "weatherRainAlert") as? Bool ?? true
         calendarShowReminders = defaults.object(forKey: "calendarShowReminders") as? Bool ?? true
+        displayMode = DisplayMode(rawValue: defaults.string(forKey: "displayMode") ?? "") ?? .chosen
         islandDesign = IslandDesign(rawValue: defaults.string(forKey: "islandDesign") ?? "") ?? .notch
         // The drawn 3D model was not liked: the glyph is the default now.
         if defaults.bool(forKey: "accessoryStyleV2") {
