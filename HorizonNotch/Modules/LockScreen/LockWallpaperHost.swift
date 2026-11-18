@@ -15,6 +15,7 @@ final class LockWallpaperHost {
     private var controller: NSObject?
     private var assertion: AnyObject?
     private var locked = false
+    private let style: Int
     private var size: CGSize = .zero
     private var sizing: Timer?
 
@@ -40,7 +41,12 @@ final class LockWallpaperHost {
               allocated.responds(to: initSelector) else { return nil }
         typealias Init = @convention(c) (AnyObject, Selector, UInt32, Int) -> NSObject?
         let initialize = unsafeBitCast(allocated.method(for: initSelector), to: Init.self)
-        let style = UserDefaults.standard.integer(forKey: "lockSystemGlassStyle")
+        // 1 = the desktop presentation, which macOS keeps drawing all the
+        // time (pictures, Aerials, dynamic) – there at once when the screen
+        // locks. 0, the lock presentation, only starts after the system's
+        // own lock animation, seconds too late.
+        let style = UserDefaults.standard.object(forKey: "lockSystemGlassStyle") as? Int ?? 1
+        self.style = style
         guard let controller = initialize(allocated, initSelector, displayID, style),
               let wallpaper = controller.value(forKey: "layer") as? CALayer else { return nil }
         self.controller = controller
@@ -55,7 +61,7 @@ final class LockWallpaperHost {
     func lockBegan(size: CGSize) {
         locked = true
         resize(to: size)
-        if assertion == nil, let type = NSClassFromString("LUI2WallpaperController") {
+        if style == 0, assertion == nil, let type = NSClassFromString("LUI2WallpaperController") {
             let assertSelector = NSSelectorFromString("takeLockedAssertionWithCompletion:")
             if let method = class_getClassMethod(type, assertSelector) {
                 typealias Completion = @convention(block) (AnyObject?) -> Void
