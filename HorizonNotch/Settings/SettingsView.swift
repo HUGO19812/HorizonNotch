@@ -1391,20 +1391,26 @@ private struct DeviceModelRow: View {
     let kind: CustomDeviceModel
     let changed: () -> Void
     @State private var installed: Bool
-    @AppStorage private var credit: String
 
     init(kind: CustomDeviceModel, changed: @escaping () -> Void) {
         self.kind = kind
         self.changed = changed
         _installed = State(initialValue: kind.url != nil)
-        _credit = AppStorage(wrappedValue: "", kind.creditKey)
     }
 
     var body: some View {
-        Group {
-            HStack {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(L("3D-Modell \(kind.title)", "3D model \(kind.title)"))
-                Spacer()
+                // The source line its licence asks for (CC BY), read-only.
+                if installed, !kind.credit.isEmpty {
+                    Text(kind.credit)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+            Spacer()
                 if installed {
                     Button(L("Entfernen", "Remove")) {
                         kind.remove()
@@ -1412,12 +1418,7 @@ private struct DeviceModelRow: View {
                         changed()
                     }
                 }
-                Button(L("Modell wählen …", "Choose model …"), action: choose)
-            }
-            if installed {
-                TextField(L("Quelle / Credits", "Source / credits"), text: $credit, axis: .vertical)
-                    .lineLimit(1...3)
-            }
+            Button(L("Modell wählen …", "Choose model …"), action: choose)
         }
     }
 
@@ -1500,8 +1501,9 @@ private struct ConnectivitySettings: View {
                 HStack {
                     Text(L("Ausprobieren", "Try it"))
                     Spacer()
-                    Button("AirPods Pro") { NotificationCenter.default.post(name: .testDeviceCard, object: "AirPods Pro") }
-                    Button("AirPods Max") { NotificationCenter.default.post(name: .testDeviceCard, object: "AirPods Max") }
+                    ForEach(CustomDeviceModel.allCases) { kind in
+                        Button(kind.sampleName) { NotificationCenter.default.post(name: .testDeviceCard, object: kind.sampleName) }
+                    }
                 }
             } footer: {
                 note("Links deine Kopfhörer: ein eigenes 3D-Modell (USDZ, über „Modell wählen …“), ein eigenes Bild oder sonst Apples AirPods-Bild aus macOS; rechts das schlichte Systemsymbol. Modell und Bild bleiben nur auf diesem Mac. Steht ein Modell unter CC BY, gehört die Quelle ins Feld „Credits“.",

@@ -3,12 +3,12 @@ import SceneKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// 3D models of the headphones the user picked in the settings (USDZ, USD
-/// or SceneKit), one for AirPods / AirPods Pro and one for AirPods Max.
-/// They are copied to Application Support and never part of the app or the
+/// 3D models of the user's audio devices, picked in the settings (USDZ,
+/// USD or SceneKit): AirPods / AirPods Pro, AirPods Max and speakers. They
+/// are copied to Application Support and never part of the app or the
 /// repository; each keeps its credit line, as licences like CC BY require.
 enum CustomDeviceModel: String, CaseIterable, Identifiable {
-    case pro, max
+    case pro, max, speakers
 
     var id: String { rawValue }
 
@@ -16,19 +16,38 @@ enum CustomDeviceModel: String, CaseIterable, Identifiable {
         switch self {
         case .pro: return "AirPods / AirPods Pro"
         case .max: return "AirPods Max"
+        case .speakers: return L("Lautsprecher (KRK)", "Speakers (KRK)")
         }
     }
 
-    /// The model for a Bluetooth device's name, if it is AirPods at all.
+    /// The name the "Try it" button shows on the card.
+    var sampleName: String {
+        switch self {
+        case .pro: return "AirPods Pro"
+        case .max: return "AirPods Max"
+        case .speakers: return "KRK Classic 5"
+        }
+    }
+
+    /// The model for a device's name, if there is one for that kind.
     static func kind(for deviceName: String) -> CustomDeviceModel? {
         let name = deviceName.lowercased()
+        if name.contains("krk") { return .speakers }
         guard name.contains("airpods") else { return nil }
         return name.contains("max") ? .max : .pro
     }
 
     static let fileTypes: [UTType] = ["usdz", "usdc", "usd", "scn"].compactMap { UTType(filenameExtension: $0) }
 
-    var creditKey: String { self == .pro ? "deviceModelCredit" : "deviceModelCreditMax" }
+    var creditKey: String {
+        switch self {
+        case .pro: return "deviceModelCredit"
+        case .max: return "deviceModelCreditMax"
+        case .speakers: return "deviceModelCreditSpeakers"
+        }
+    }
+
+    var credit: String { UserDefaults.standard.string(forKey: creditKey) ?? "" }
 
     private static let folder = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/HorizonNotch")
@@ -60,12 +79,15 @@ enum CustomDeviceModel: String, CaseIterable, Identifiable {
 
     func remove() {
         for ext in Self.extensions { try? FileManager.default.removeItem(at: file(ext)) }
+        UserDefaults.standard.removeObject(forKey: creditKey)
         Self.cache[self] = nil
     }
 
     private static var cache: [CustomDeviceModel: (url: URL, node: SCNNode)] = [:]
 
     /// A fresh copy of the model, centred and scaled to fit a 2-unit box.
+    /// Animations the model brings along (an AirPods case opening, the buds
+    /// flying out and back) are kept and follow the scene time.
     func makeNode() -> SCNNode? {
         guard let url else { return nil }
         if let cached = Self.cache[self], cached.url == url { return cached.node.clone() }
@@ -80,6 +102,9 @@ enum CustomDeviceModel: String, CaseIterable, Identifiable {
         content.position = SCNVector3(-(bounds.min.x + bounds.max.x) / 2 * scale,
                                       -(bounds.min.y + bounds.max.y) / 2 * scale,
                                       -(bounds.min.z + bounds.max.z) / 2 * scale)
+        content.enumerateHierarchy { node, _ in
+            for key in node.animationKeys { node.animationPlayer(forKey: key)?.animation.usesSceneTimeBase = true }
+        }
         let holder = SCNNode()
         holder.addChildNode(content)
         Self.cache[self] = (url, holder)
@@ -107,10 +132,33 @@ enum CustomDeviceModel: String, CaseIterable, Identifiable {
 }
 
 /// A user's model, lit like a studio shot and turning all the way round,
-/// on a transparent background.
+/// on a transparent background. For a model with its own animation (the
+/// AirPods case) the moment picks the part to play: connecting opens the
+/// case and the buds fly out, disconnecting brings them back and closes it.
 struct DeviceModelView: NSViewRepresentable {
+    enum Moment: Equatable {
+        /// At rest: the start of the model's animation (case closed).
+        case still
+        case arriving
+        case leaving
+
+        /// Seconds of the model's animation to play, then hold the end. The
+        /// ranges fit the AirPods case model: 0–2.6 s opening and flying
+        /// out, 3–4.5 s open and empty, 4.5–6.2 s back in and closing.
+        var range: ClosedRange<Double> {
+            switch self {
+            case .still: return 0...0
+            case .arriving: return 0...3.0
+            case .leaving: return 4.3...6.15
+            }
+        }
+    }
+
     let model: CustomDeviceModel
+    var moment: Moment = .still
     var spinning = true
+
+    func makeCoordinator() -> Clock { Clock(moment: moment) }
 
     func makeNSView(context: Context) -> SCNView {
         let view = SCNView()
@@ -118,11 +166,35 @@ struct DeviceModelView: NSViewRepresentable {
         view.antialiasingMode = .multisampling4X
         view.allowsCameraControl = false
         view.scene = Self.makeScene(model, spinning: spinning)
-        view.isPlaying = spinning
+        view.delegate = context.coordinator
+        view.sceneTime = moment.range.lowerBound
+        view.rendersContinuously = spinning || moment != .still
+        view.isPlaying = true
         return view
     }
 
-    func updateNSView(_ nsView: SCNView, context: Context) {}
+    func updateNSView(_ nsView: SCNView, context: Context) {
+        context.coordinator.play(moment)
+    }
+
+    /// Plays the chosen part of the model's animation once, then holds it.
+    final class Clock: NSObject, SCNSceneRendererDelegate {
+        private var range: ClosedRange<Double>
+        private var started: TimeInterval?
+
+        init(moment: Moment) { range = moment.range }
+
+        func play(_ moment: Moment) {
+            guard moment.range != range else { return }
+            range = moment.range
+            started = nil
+        }
+
+        func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+            if started == nil { started = time }
+            renderer.sceneTime = Swift.min(range.lowerBound + (time - (started ?? time)), range.upperBound)
+        }
+    }
 
     static func makeScene(_ model: CustomDeviceModel, spinning: Bool) -> SCNScene {
         let scene = SCNScene()

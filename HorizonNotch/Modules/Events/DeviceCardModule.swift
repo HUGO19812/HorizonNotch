@@ -166,7 +166,7 @@ private struct DeviceImage: View {
             if AppSettings.shared.accessoryStyle == .model3D, let model = CustomDeviceModel.kind(for: card.name),
                model.url != nil {
                 // The user's own 3D model wins over every picture.
-                DeviceModelView(model: model)
+                DeviceModelView(model: model, moment: card.connected ? .arriving : .leaving)
                     .opacity(card.connected ? 1 : 0.55)
             } else if let photo, AppSettings.shared.accessoryStyle == .model3D {
                 Image(nsImage: photo)
