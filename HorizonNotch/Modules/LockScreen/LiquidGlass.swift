@@ -13,6 +13,10 @@ import SwiftUI
 /// behind the glass plus a margin is drawn into a bitmap and every pixel in
 /// the bevel samples it shifted along the edge normal. Done once per
 /// position on a background thread; no shaders needed.
+///
+/// Like Pro Notch, only the rim is drawn: the middle stays transparent and
+/// shows the real lock screen, so moving and dynamic wallpapers keep
+/// moving; towards the inside the rim fades out where its bend is gone.
 struct LiquidGlassView: View {
     let cornerRadius: CGFloat
     /// Width of the curved rim, in points.
@@ -29,8 +33,6 @@ struct LiquidGlassView: View {
                 if let rendered {
                     Image(decorative: rendered.image, scale: 2)
                         .resizable()
-                } else {
-                    WallpaperPiece()
                 }
             }
             .task(id: key) {
@@ -56,12 +58,6 @@ struct LiquidGlassView: View {
                                        .init(color: .white.opacity(0.75), location: 1)],
                                startPoint: .topLeading, endPoint: .bottomTrailing),
                 lineWidth: 1)
-        }
-        .background {
-            // Floats a little above the picture.
-            shape.fill(Color.black.opacity(0.28))
-                .blur(radius: 14)
-                .offset(y: 7)
         }
     }
 
@@ -158,9 +154,13 @@ enum LiquidGlassRenderer {
                     continue
                 }
                 var r: Float, g: Float, b: Float
-                // The whole slab magnifies a little, like a thick lens.
-                let zx = halfW + dx * 0.95, zy = halfH + dy * 0.95
-                if edge < bevelPx {
+                let zx = px, zy = py
+                // The middle: nothing drawn, the real lock screen shows.
+                var alpha = coverage
+                if edge >= bevelPx {
+                    out[index] = 0; out[index + 1] = 0; out[index + 2] = 0; out[index + 3] = 0
+                    continue
+                } else {
                     // 1 at the very edge, 0 where the bevel ends; the curve
                     // keeps the inside calm and bends hard near the rim.
                     let t = 1 - edge / bevelPx
@@ -179,15 +179,15 @@ enum LiquidGlassRenderer {
                     let away = max(0, (nx + ny) * 0.7071)
                     let glint = (pow(towardsLight, 4) * 120 + pow(away, 4) * 60) * t * t
                     r = r * lift + glint; g = g * lift + glint; b = b * lift + glint
-                } else {
-                    r = sample(zx, zy, 0) * 1.03
-                    g = sample(zx, zy, 1) * 1.03
-                    b = sample(zx, zy, 2) * 1.03
+                    // Fades out towards the inside, where the bend is gone
+                    // and the still picture would equal the live one anyway.
+                    let fade = min(1, t * 2.2)
+                    alpha *= fade * fade * (3 - 2 * fade)
                 }
-                out[index] = UInt8(min(255, r * coverage))
-                out[index + 1] = UInt8(min(255, g * coverage))
-                out[index + 2] = UInt8(min(255, b * coverage))
-                out[index + 3] = UInt8(255 * coverage)
+                out[index] = UInt8(min(255, r * alpha))
+                out[index + 1] = UInt8(min(255, g * alpha))
+                out[index + 2] = UInt8(min(255, b * alpha))
+                out[index + 3] = UInt8(min(255, 255 * alpha))
             }
         }
         return output.makeImage()

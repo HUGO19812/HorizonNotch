@@ -176,7 +176,6 @@ final class AppSettings: ObservableObject {
     @Published var lockGlassStyle: LockGlassStyle { didSet { defaults.set(lockGlassStyle.rawValue, forKey: "lockGlassStyle") } }
     /// Test mode: the lock screen's live wallpaper inside our window and the
     /// system's own Liquid Glass on the card (macOS 26).
-    @Published var lockSystemGlass: Bool { didSet { defaults.set(lockSystemGlass, forKey: "lockSystemGlass") } }
     @Published var lockScreenBackdrop: LockScreenBackdrop { didSet { defaults.set(lockScreenBackdrop.rawValue, forKey: "lockScreenBackdrop") } }
     /// Hide the island while another app or a video fills the screen.
     @Published var hideInFullscreen: Bool { didSet { defaults.set(hideInFullscreen, forKey: "hideInFullscreen") } }
@@ -220,6 +219,8 @@ final class AppSettings: ObservableObject {
     @Published var calendarDaysAhead: Int { didSet { defaults.set(calendarDaysAhead, forKey: "calendarDaysAhead") } }
     @Published var calendarShowAllDay: Bool { didSet { defaults.set(calendarShowAllDay, forKey: "calendarShowAllDay") } }
     @Published var calendarCountdown: Bool { didSet { defaults.set(calendarCountdown, forKey: "calendarCountdown") } }
+    /// System sound when Claude Code is done ("" = silent).
+    @Published var claudeDoneSound: String { didSet { defaults.set(claudeDoneSound, forKey: "claudeDoneSound") } }
     @Published var calendarLeadMinutes: Int { didSet { defaults.set(calendarLeadMinutes, forKey: "calendarLeadMinutes") } }
     /// Module colours (HUD bars, battery, timer …) or plain white.
     @Published var colorfulAccents: Bool { didSet { defaults.set(colorfulAccents, forKey: "colorfulAccents") } }
@@ -300,7 +301,6 @@ final class AppSettings: ObservableObject {
             accessoryStyle = .glyph
         }
         lockGlassStyle = LockGlassStyle(rawValue: defaults.string(forKey: "lockGlassStyle") ?? "") ?? .clear
-        lockSystemGlass = defaults.bool(forKey: "lockSystemGlass")
         lockScreenBackdrop = LockScreenBackdrop(rawValue: defaults.string(forKey: "lockScreenBackdrop") ?? "") ?? .cover
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true
@@ -341,6 +341,7 @@ final class AppSettings: ObservableObject {
         calendarDaysAhead = defaults.object(forKey: "calendarDaysAhead") as? Int ?? 14
         calendarShowAllDay = defaults.object(forKey: "calendarShowAllDay") as? Bool ?? true
         calendarCountdown = defaults.object(forKey: "calendarCountdown") as? Bool ?? true
+        claudeDoneSound = defaults.string(forKey: "claudeDoneSound") ?? "Glass"
         calendarLeadMinutes = defaults.object(forKey: "calendarLeadMinutes") as? Int ?? 10
         colorfulAccents = defaults.object(forKey: "colorfulAccents") as? Bool ?? true
         accentMode = AccentMode(rawValue: defaults.string(forKey: "accentMode") ?? "") ?? .cover

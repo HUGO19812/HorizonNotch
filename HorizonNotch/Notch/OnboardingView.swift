@@ -373,6 +373,38 @@ struct HelloView: View {
     }
 }
 
+/// The greeting on every launch: "hello" writes itself, then your name.
+struct GreetingView: View {
+    @State private var written: CGFloat = 0
+    @State private var showName = false
+
+    var body: some View {
+        VStack(spacing: 4) {
+            HelloShape()
+                .trim(from: 0, to: written)
+                .stroke(LinearGradient(colors: [Color(red: 0.55, green: 0.7, blue: 1), Color(red: 0.62, green: 0.5, blue: 1),
+                                                Color(red: 0.8, green: 0.5, blue: 0.95), Color(red: 0.95, green: 0.55, blue: 0.7)],
+                                       startPoint: .leading, endPoint: .trailing),
+                        style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                .frame(width: 150, height: 56)
+            Text(firstName)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.65))
+                .opacity(showName ? 1 : 0)
+                .offset(y: showName ? 0 : 5)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.7).delay(0.25)) { written = 1 }
+            withAnimation(.easeOut(duration: 0.4).delay(1.7)) { showName = true }
+        }
+    }
+
+    private var firstName: String {
+        NSFullUserName().split(separator: " ").first.map(String.init) ?? NSUserName()
+    }
+}
+
 /// The word "hello" as one monoline cursive stroke, drawn in a 250 × 100
 /// box and scaled to fit.
 private struct HelloShape: Shape {

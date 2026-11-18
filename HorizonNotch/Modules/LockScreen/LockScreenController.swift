@@ -44,10 +44,6 @@ final class LockScreenController {
         guard !isShowing, let screen = NSScreen.islandScreen(preferred: settings.displayID) else { return }
         state.reset()
         Wallpaper.shared.load(for: screen)
-        // The moving wallpaper for Apple's glass (see LiveWallpaperPiece).
-        if settings.lockSystemGlass {
-            LockWallpaperHost.current = LockWallpaperHost(displayID: screen.displayID, size: screen.frame.size)
-        }
         let panel = window ?? makeWindow()
         // The view only exists while shown, so nothing updates in the
         // background (the progress bar ticks twice a second while playing).
@@ -77,7 +73,6 @@ final class LockScreenController {
             guard self?.isShowing == false else { return }
             panel.orderOut(nil)
             panel.contentView = nil
-            LockWallpaperHost.current = nil
         })
     }
 

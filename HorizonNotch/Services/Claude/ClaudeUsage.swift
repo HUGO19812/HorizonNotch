@@ -18,6 +18,34 @@ final class ClaudeUsage: ObservableObject {
     @Published private(set) var blockEnds: Date?
     @Published private(set) var topModel: String?
 
+    /// One plan limit as Claude Code reports it.
+    struct Limit: Equatable {
+        /// 0…100.
+        let percent: Double
+        let resets: Date
+    }
+    /// The 5-hour and the weekly limit of a Pro/Max plan, from Claude
+    /// Code's status line (see ClaudeHooks); nil until it reported them.
+    @Published private(set) var fiveHour: Limit?
+    @Published private(set) var weekly: Limit?
+
+    private func readLimits() {
+        guard let data = try? Data(contentsOf: ClaudeHooks.statusURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let limits = json["rate_limits"] as? [String: Any] else { return }
+        func limit(_ key: String) -> Limit? {
+            guard let entry = limits[key] as? [String: Any],
+                  let percent = (entry["used_percentage"] as? NSNumber)?.doubleValue,
+                  let reset = (entry["resets_at"] as? NSNumber)?.doubleValue else { return nil }
+            let date = Date(timeIntervalSince1970: reset)
+            // A window that has started over counts as unused.
+            return date > Date() ? Limit(percent: percent, resets: date) : nil
+        }
+        let five = limit("five_hour"), week = limit("seven_day")
+        if five != fiveHour { fiveHour = five }
+        if week != weekly { weekly = week }
+    }
+
     private struct Entry {
         let time: Date
         let model: String
@@ -41,6 +69,7 @@ final class ClaudeUsage: ObservableObject {
     /// Reads what was appended to the logs since last time. Cheap to call
     /// often; callers do so when the page opens and after each turn.
     func refresh() {
+        readLimits()
         guard !refreshing else { return }
         refreshing = true
         queue.async { [weak self] in

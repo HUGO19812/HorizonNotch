@@ -31,6 +31,66 @@ enum ClaudeHooks {
 
     private static var command: String { "\"\(scriptURL.path)\"" }
 
+    // MARK: - Status line (plan usage)
+
+    /// Claude Code hands its status line command the plan limits
+    /// (rate_limits: 5-hour and weekly, in %, with their reset times). Our
+    /// status line keeps that JSON for the island and then runs the status
+    /// line you had before, if any, so yours looks the same as ever.
+    static let statusScriptURL = supportFolder.appendingPathComponent("claude-statusline.sh")
+    static let statusURL = supportFolder.appendingPathComponent("claude-status.json")
+    private static let originalStatusURL = supportFolder.appendingPathComponent("claude-statusline-original")
+
+    private static let statusScript = """
+    #!/bin/sh
+    # Horizon Notch: keeps Claude Code's plan usage for the island, then
+    # shows the status line you had before, if any.
+    dir="$HOME/Library/Application Support/HorizonNotch"
+    input=$(cat)
+    tmp="$dir/.status.$$"
+    printf '%s' "$input" > "$tmp" && mv "$tmp" "$dir/claude-status.json"
+    if [ -s "$dir/claude-statusline-original" ]; then
+      printf '%s' "$input" | sh -c "$(cat "$dir/claude-statusline-original")"
+    fi
+    exit 0
+
+    """
+
+    private static func isOurStatusLine(_ value: Any?) -> Bool {
+        ((value as? [String: Any])?["command"] as? String)?.contains("HorizonNotch/claude-statusline.sh") == true
+    }
+
+    /// Puts our status line in, remembering the one that was there.
+    private static func addStatusLine(to settings: inout [String: Any]) throws {
+        try statusScript.write(to: statusScriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: statusScriptURL.path)
+        guard !isOurStatusLine(settings["statusLine"]) else { return }
+        var line: [String: Any] = ["type": "command", "command": "\"\(statusScriptURL.path)\""]
+        if let previous = settings["statusLine"] as? [String: Any] {
+            try ((previous["command"] as? String) ?? "").write(to: originalStatusURL, atomically: true, encoding: .utf8)
+            for key in ["padding", "refreshInterval", "hideVimModeIndicator"] where previous[key] != nil {
+                line[key] = previous[key]
+            }
+        } else {
+            try? FileManager.default.removeItem(at: originalStatusURL)
+        }
+        settings["statusLine"] = line
+    }
+
+    /// Gives back the status line you had before.
+    private static func removeStatusLine(from settings: inout [String: Any]) {
+        guard isOurStatusLine(settings["statusLine"]) else { return }
+        let original = (try? String(contentsOf: originalStatusURL, encoding: .utf8)) ?? ""
+        if original.isEmpty {
+            settings["statusLine"] = nil
+        } else {
+            var line = settings["statusLine"] as? [String: Any] ?? [:]
+            line["command"] = original
+            settings["statusLine"] = line
+        }
+        try? FileManager.default.removeItem(at: originalStatusURL)
+    }
+
     static let testSessionID = "horizon-notch-test"
 
     /// Plays a short fake session (working → done) through the event
@@ -73,9 +133,17 @@ enum ClaudeHooks {
         let manager = FileManager.default
         try? manager.createDirectory(at: eventFolder, withIntermediateDirectories: true)
         let current = try? String(contentsOf: scriptURL, encoding: .utf8)
-        guard current != script || !manager.isExecutableFile(atPath: scriptURL.path) else { return }
-        try? script.write(to: scriptURL, atomically: true, encoding: .utf8)
-        try? manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        if current != script || !manager.isExecutableFile(atPath: scriptURL.path) {
+            try? script.write(to: scriptURL, atomically: true, encoding: .utf8)
+            try? manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        }
+        // Hooks set up before the plan usage existed get the status line too.
+        var settings = readSettings()
+        let currentStatus = try? String(contentsOf: statusScriptURL, encoding: .utf8)
+        if !isOurStatusLine(settings["statusLine"]) || currentStatus != statusScript {
+            try? addStatusLine(to: &settings)
+            try? writeSettings(settings)
+        }
     }
 
     /// Writes the script and adds one hook entry per event to
@@ -96,6 +164,7 @@ enum ClaudeHooks {
             hooks[event] = entries
         }
         settings["hooks"] = hooks
+        try addStatusLine(to: &settings)
         try writeSettings(settings)
     }
 
@@ -107,6 +176,7 @@ enum ClaudeHooks {
             hooks[event] = entries.isEmpty ? nil : entries
         }
         settings["hooks"] = hooks.isEmpty ? nil : hooks
+        removeStatusLine(from: &settings)
         try writeSettings(settings)
     }
 
