@@ -46,6 +46,75 @@ final class ClaudeCodeMonitor: ObservableObject {
     }
 
     @Published private(set) var sessions: [Session] = []
+    /// Sessions started today, from Claude Code's transcripts – also the
+    /// ones that ended or began before the app was running.
+    @Published private(set) var history: [Session] = []
+
+    /// Everything started today, the live state where known, latest first.
+    var today: [Session] {
+        let start = Calendar.current.startOfDay(for: Date())
+        var list = sessions
+        for old in history {
+            if let index = list.firstIndex(where: { $0.id == old.id }) {
+                if list[index].prompt == nil { list[index].prompt = old.prompt }
+                if list[index].started > old.started { list[index].started = old.started }
+            } else {
+                list.append(old)
+            }
+        }
+        return list.filter { $0.started >= start || $0.activity != .idle }
+            .sorted { $0.updated > $1.updated }
+    }
+
+    /// Reads today's transcripts in the background (only their beginning).
+    func loadToday() {
+        let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let manager = FileManager.default
+            let start = Calendar.current.startOfDay(for: Date())
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            var found: [Session] = []
+            let folders = (try? manager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
+            for folder in folders {
+                let files = (try? manager.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+                for file in files where file.pathExtension == "jsonl" {
+                    guard let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+                          modified >= start,
+                          let handle = FileHandle(forReadingAtPath: file.path) else { continue }
+                    let data = (try? handle.read(upToCount: 96_000)) ?? Data()
+                    try? handle.close()
+                    var first: Date?, cwd: String?, prompt: String?
+                    for line in data.split(separator: UInt8(ascii: "\n")) {
+                        guard let json = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { continue }
+                        if first == nil, let stamp = json["timestamp"] as? String { first = iso.date(from: stamp) }
+                        if cwd == nil, let value = json["cwd"] as? String { cwd = value }
+                        if prompt == nil, json["type"] as? String == "user",
+                           let message = json["message"] as? [String: Any] {
+                            if let text = message["content"] as? String {
+                                prompt = text
+                            } else if let parts = message["content"] as? [[String: Any]] {
+                                prompt = parts.first { $0["type"] as? String == "text" }?["text"] as? String
+                            }
+                            prompt = prompt?.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if prompt?.hasPrefix("<") == true { prompt = nil }
+                        }
+                        if first != nil, cwd != nil, prompt != nil { break }
+                    }
+                    guard let first, first >= start else { continue }
+                    let folderName = cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? folder.lastPathComponent
+                    var session = Session(id: file.deletingPathExtension().lastPathComponent, project: folderName,
+                                          activity: .idle, updated: modified)
+                    session.cwd = cwd ?? ""
+                    session.started = first
+                    session.prompt = prompt.map { String($0.prefix(240)) }
+                    session.transcriptPath = file.path
+                    found.append(session)
+                }
+            }
+            DispatchQueue.main.async { self?.history = found }
+        }
+    }
     /// Fires when a turn finished, so usage can be refreshed.
     let turnFinished = PassthroughSubject<Void, Never>()
 

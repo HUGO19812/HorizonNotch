@@ -146,6 +146,8 @@ enum LiquidGlassRenderer {
                 let qx = abs(dx) - innerW, qy = abs(dy) - innerH
                 // Distance to the rounded rectangle's edge and its outward normal.
                 var nx: Float, ny: Float, edge: Float
+                // How far along a straight side from the nearest corner.
+                var along: Float = 0
                 if qx > 0 && qy > 0 {
                     let length = (qx * qx + qy * qy).squareRoot()
                     edge = radius - length
@@ -154,10 +156,18 @@ enum LiquidGlassRenderer {
                 } else if qx > qy {
                     edge = radius - qx
                     nx = 1; ny = 0
+                    along = -qy
                 } else {
                     edge = radius - qy
                     nx = 0; ny = 1
+                    along = -qx
                 }
+                // Not the same all round, like a real poured slab: full in
+                // the corners, running out weaker along the sides, with a
+                // gentle swell here and there.
+                let side = Float(dx < 0 ? 1 : 0) + Float(dy < 0 ? 2 : 0)
+                let swell = 0.14 * sin(along / (radius * 2.1) + side * 1.7)
+                let strength = min(1, max(0.3, 0.32 + 0.68 * exp(-along / (radius * 1.5)) + swell))
                 if dx < 0 { nx = -nx }
                 if dy < 0 { ny = -ny }
 
@@ -178,7 +188,7 @@ enum LiquidGlassRenderer {
                     // 1 at the very edge, 0 where the bevel ends; the curve
                     // keeps the inside calm and bends hard near the rim.
                     let t = 1 - edge / bevelPx
-                    let bend = bevelPx * 1.5 * t * t * (0.3 + 0.7 * t)
+                    let bend = bevelPx * 1.5 * strength * t * t * (0.3 + 0.7 * t)
                     // Look further outwards: picture from beyond the edge is
                     // drawn in, squeezed into streaks along it. Red bends a
                     // little more than blue for the colour fringe.
@@ -196,7 +206,7 @@ enum LiquidGlassRenderer {
                     // Fades out towards the inside, where the bend is gone
                     // and the still picture would equal the live one anyway.
                     let fade = min(1, t * 2.2)
-                    alpha *= 0.82 * fade * fade * (3 - 2 * fade)
+                    alpha *= 0.82 * (0.55 + 0.45 * strength) * fade * fade * (3 - 2 * fade)
                 }
                 out[index] = UInt8(min(255, r * alpha))
                 out[index + 1] = UInt8(min(255, g * alpha))
