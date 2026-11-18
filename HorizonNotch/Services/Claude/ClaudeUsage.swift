@@ -28,6 +28,8 @@ final class ClaudeUsage: ObservableObject {
     /// Code's status line (see ClaudeHooks); nil until it reported them.
     @Published private(set) var fiveHour: Limit?
     @Published private(set) var weekly: Limit?
+    /// Why no plan usage arrived, if it did not (shown on the ring).
+    @Published private(set) var planProblem: String?
 
     private var lastFetch: Date?
 
@@ -39,14 +41,31 @@ final class ClaudeUsage: ObservableObject {
         if let lastFetch, Date().timeIntervalSince(lastFetch) < 60 { return }
         lastFetch = Date()
         queue.async { [weak self] in
-            guard let token = Self.claudeLogin(),
-                  let url = URL(string: "https://api.anthropic.com/api/oauth/usage") else { return }
+            let login = Self.claudeLogin()
+            guard case .success(let token) = login,
+                  let url = URL(string: "https://api.anthropic.com/api/oauth/usage") else {
+                if case .failure(let problem) = login { self?.report(problem.text) }
+                return
+            }
             var request = URLRequest(url: url, timeoutInterval: 10)
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
-            URLSession.shared.dataTask(with: request) { data, response, _ in
-                guard (response as? HTTPURLResponse)?.statusCode == 200, let data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                guard code == 200, let data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    NSLog("[HorizonNotch] plan usage: HTTP %ld %@", code, error?.localizedDescription ?? "")
+                    switch code {
+                    case 401, 403:
+                        self?.report(L("Claude-Login abgelaufen – einmal Claude Code benutzen, dann klappt es wieder.",
+                                       "Claude login expired – use Claude Code once and it works again."))
+                    case 0:
+                        self?.report(L("Keine Verbindung zu Claude.", "No connection to Claude."))
+                    default:
+                        self?.report(L("Claude antwortet mit Fehler \(code).", "Claude answered with error \(code)."))
+                    }
+                    return
+                }
                 func limit(_ key: String) -> Limit? {
                     guard let entry = json[key] as? [String: Any],
                           let percent = (entry["utilization"] as? NSNumber)?.doubleValue else { return nil }
@@ -56,6 +75,8 @@ final class ClaudeUsage: ObservableObject {
                 let five = limit("five_hour"), week = limit("seven_day")
                 DispatchQueue.main.async {
                     guard let self else { return }
+                    self.planProblem = five == nil && week == nil
+                        ? L("Dein Abo meldet keine Limits.", "Your plan reports no limits.") : nil
                     if let five, five != self.fiveHour { self.fiveHour = five }
                     if let week, week != self.weekly { self.weekly = week }
                 }
@@ -73,26 +94,39 @@ final class ClaudeUsage: ObservableObject {
         return formatter.date(from: text)
     }
 
+    private struct Problem: Error { let text: String }
+
+    private func report(_ text: String) {
+        DispatchQueue.main.async { [weak self] in self?.planProblem = text }
+    }
+
     /// Claude Code's login from the keychain (read through macOS'
-    /// `security` tool, as Claude Code itself does), if still valid.
-    private static func claudeLogin() -> String? {
+    /// `security` tool, as Claude Code itself does).
+    private static func claudeLogin() -> Result<String, Problem> {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
+        guard (try? process.run()) != nil else {
+            return .failure(Problem(text: L("Schlüsselbund nicht lesbar.", "Keychain not readable.")))
+        }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        guard process.terminationStatus == 0,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let login = json["claudeAiOauth"] as? [String: Any],
-              let token = login["accessToken"] as? String else { return nil }
-        if let expires = (login["expiresAt"] as? NSNumber)?.doubleValue, expires / 1000 < Date().timeIntervalSince1970 {
-            return nil
+        guard process.terminationStatus == 0 else {
+            NSLog("[HorizonNotch] plan usage: security exit %d", process.terminationStatus)
+            return .failure(Problem(text: process.terminationStatus == 44
+                ? L("Kein Claude-Code-Login im Schlüsselbund.", "No Claude Code login in the keychain.")
+                : L("Zugriff auf den Claude-Login nicht erlaubt (Schlüsselbund-Abfrage).",
+                    "Access to the Claude login was not allowed (keychain prompt).")))
         }
-        return token
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let login = json["claudeAiOauth"] as? [String: Any],
+              let token = login["accessToken"] as? String else {
+            return .failure(Problem(text: L("Claude-Login hat ein unbekanntes Format.", "Claude login has an unknown format.")))
+        }
+        return .success(token)
     }
 
     private func readLimits() {

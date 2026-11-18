@@ -622,14 +622,12 @@ private struct HeaderStatus: View {
         HStack(spacing: 12) {
             if settings.keepAwakeIcon || alwaysShowCup {
                 Button { awake.toggle() } label: {
-                    // On: the cup hops, swaps to the steaming one and the
-                    // steam keeps drifting; off: it settles back down.
+                    // A short hop and swap when switched on or off.
                     Image(systemName: awake.isOn ? "cup.and.heat.waves.fill" : "cup.and.saucer.fill")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(awake.isOn ? theme.tint(.orange) : .white.opacity(0.35))
                         .contentTransition(.symbolEffect(.replace.downUp))
                         .symbolEffect(.bounce.up, options: .speed(1.4), value: awake.isOn)
-                        .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .speed(0.4), isActive: awake.isOn)
                         .frame(height: 20)
                         .contentShape(Rectangle())
                 }

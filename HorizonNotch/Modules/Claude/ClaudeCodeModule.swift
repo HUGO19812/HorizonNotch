@@ -322,7 +322,7 @@ private struct ClaudePage: View {
 
     var body: some View {
         ZStack {
-            if let id = focused, let session = monitor.sessions.first(where: { $0.id == id }) {
+            if let id = focused, let session = monitor.today.first(where: { $0.id == id }) {
                 detail(session)
                     .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
                                             removal: .move(edge: .trailing).combined(with: .opacity)))
@@ -333,10 +333,13 @@ private struct ClaudePage: View {
             }
         }
         .animation(.spring(response: 0.34, dampingFraction: 0.88), value: focused)
-        .onAppear { usage.refresh() }
-        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in usage.refresh() }
-        .onChange(of: monitor.sessions.map(\.id)) { _, ids in
-            if let id = focused, !ids.contains(id) { focused = nil }
+        .onAppear {
+            usage.refresh()
+            monitor.loadToday()
+        }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+            usage.refresh()
+            monitor.loadToday()
         }
     }
 
@@ -348,22 +351,20 @@ private struct ClaudePage: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.45))
                     Spacer(minLength: 4)
-                    PlanGauge(fiveHour: usage.fiveHour, weekly: usage.weekly)
                 }
-                .zIndex(1)
                 if !ClaudeHooks.isInstalled {
                     Text(L("Hooks noch nicht eingerichtet – Einstellungen → Claude Code.",
                            "Hooks not set up yet – Settings → Claude Code."))
                         .font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.55))
-                } else if monitor.sessions.isEmpty {
-                    Text(L("Gerade läuft keine Sitzung.", "No session running."))
+                } else if monitor.today.isEmpty {
+                    Text(L("Heute noch keine Sitzung.", "No session today yet."))
                         .font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.55))
                 } else {
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 4) {
-                            ForEach(monitor.sessions) { session in
+                            ForEach(monitor.today) { session in
                                 SessionRow(session: session, isExpanded: false) { focused = session.id }
                             }
                         }
@@ -392,8 +393,9 @@ private struct ClaudePage: View {
                 }
                 .buttonStyle(.plain)
                 Spacer(minLength: 4)
-                PlanGauge(fiveHour: usage.fiveHour, weekly: usage.weekly)
+                PlanGauge(fiveHour: usage.fiveHour, weekly: usage.weekly, problem: usage.planProblem)
             }
+            .padding(.top, 6)
             .zIndex(1)
             ScrollView(.vertical, showsIndicators: false) {
                 SessionRow(session: session, isExpanded: true) { focused = nil }
@@ -413,7 +415,9 @@ private struct SessionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Circle().fill(session.activity.color).frame(width: 7, height: 7)
+                // Orange while Claude works or waits for you, grey otherwise.
+                Circle().fill(session.isActive ? ClaudeCodeModule.tint : Color.white.opacity(0.3))
+                    .frame(width: 7, height: 7)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(session.project).font(.system(size: 12, weight: .semibold)).lineLimit(1)
                     status
@@ -436,7 +440,7 @@ private struct SessionRow: View {
                 }
             }
             .contentShape(Rectangle())
-            .onTapGesture(perform: toggle)
+            .onTapGesture { if !isExpanded { toggle() } }
 
             if isExpanded {
                 details
@@ -453,7 +457,8 @@ private struct SessionRow: View {
         if case .waiting(let message) = session.activity {
             Text(message)
         } else if session.activity == .idle {
-            Text(L("bereit", "ready"))
+            Text(L("zuletzt ", "last ") + session.updated.formatted(date: .omitted, time: .shortened)
+                 + (session.prompt.map { " · " + $0 } ?? ""))
         } else if case .done = session.activity, let summary = session.summary {
             Text(summary)
         } else {
@@ -539,6 +544,7 @@ private struct SessionRow: View {
 private struct PlanGauge: View {
     let fiveHour: ClaudeUsage.Limit?
     let weekly: ClaudeUsage.Limit?
+    var problem: String?
     @State private var hovering = false
 
     private var main: ClaudeUsage.Limit? { fiveHour ?? weekly }
@@ -567,7 +573,7 @@ private struct PlanGauge: View {
                     if let fiveHour { row(L("5-Std.-Limit", "5-hour limit"), fiveHour, weekday: false) }
                     if let weekly { row(L("Wochenlimit", "Weekly limit"), weekly, weekday: true) }
                     if main == nil {
-                        Text(L("Noch keine Daten von deinem Claude-Abo.", "No data from your Claude plan yet."))
+                        Text(problem ?? L("Noch keine Daten von deinem Claude-Abo.", "No data from your Claude plan yet."))
                             .font(.system(size: 10.5, weight: .medium))
                             .foregroundStyle(.white.opacity(0.6))
                     }
@@ -633,6 +639,13 @@ private struct OpenButton: View {
 extension ClaudeCodeMonitor.Session {
     private static let claudeApp = "com.anthropic.claudefordesktop"
 
+    var isActive: Bool {
+        switch activity {
+        case .working, .waiting: return true
+        default: return false
+        }
+    }
+
     private var appURL: URL? {
         app.flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
     }
@@ -641,16 +654,19 @@ extension ClaudeCodeMonitor.Session {
         appURL.map { FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "") }
     }
 
+    /// Brings the app Claude runs in to the front. The island is a panel
+    /// that never becomes active, and macOS ignores `activate()` from an
+    /// inactive app – opening the app through Launch Services always works.
     func open() {
         let workspace = NSWorkspace.shared
-        if let bundle = app, let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first {
-            running.activate()
-            return
-        }
         let target = appURL ?? workspace.urlForApplication(withBundleIdentifier: Self.claudeApp)
             ?? workspace.urlForApplication(withBundleIdentifier: "com.apple.Terminal")
         guard let target else { return }
-        workspace.openApplication(at: target, configuration: NSWorkspace.OpenConfiguration())
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        workspace.openApplication(at: target, configuration: configuration) { _, error in
+            if let error { NSLog("[HorizonNotch] open Claude failed: %@", error.localizedDescription) }
+        }
     }
 }
 
@@ -659,6 +675,13 @@ private struct UsageCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(L("Claude-Abo", "Claude plan"))
+                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.5))
+                Spacer()
+                PlanGauge(fiveHour: usage.fiveHour, weekly: usage.weekly, problem: usage.planProblem)
+            }
+            .zIndex(1)
             row(L("Heute", "Today"), usage.today, detail: nil)
             if let ends = usage.blockEnds {
                 row(L("5-Std.-Fenster", "5-hour window"), usage.block,
