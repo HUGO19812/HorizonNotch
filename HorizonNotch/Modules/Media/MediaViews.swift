@@ -232,11 +232,8 @@ struct MediaExpandedView: View {
                             TitleBlock(info: info, titleSize: 17)
                                 .matchedGeometryEffect(id: "title", in: player, properties: .position, anchor: .topLeading)
                             Spacer(minLength: 8)
-                            // Visualizer, lyrics button and the playing app.
+                            // Lyrics button and the playing app.
                             HStack(spacing: 10) {
-                                AudioVisualizerView(color: NSColor(service.artwork != nil ? service.accent : .white),
-                                                    isPlaying: info.isPlaying)
-                                    .frame(width: 24, height: 16)
                                 ControlButton(symbol: "quote.bubble", size: 13, active: settings.showLyrics) {
                                     settings.showLyrics.toggle()
                                 }

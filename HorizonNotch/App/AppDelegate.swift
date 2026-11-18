@@ -141,11 +141,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else {
             // Every later start: a short hello in the notch, then it closes.
+            // The island counts as open from the first frame (see
+            // NotchViewModel.state), so no closed music notch shows first.
             controller.model.showGreeting = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { controller.expand() }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.8) { [weak controller] in
+            controller.expand()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { [weak controller] in
+                controller?.model.showGreeting = false
                 controller?.collapse()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { controller?.model.showGreeting = false }
             }
         }
         // Settings → "Try it": the card for a sample AirPods Pro or Max.

@@ -44,14 +44,16 @@ struct NotchRootView: View {
             .modifier(IslandShadow(enabled: !(state == .expanded && settings.appearance == .glass),
                                    strength: state == .expanded ? settings.islandShadow : 0,
                                    glow: state == .compact ? (coordinator.compactModule?.compactGlow ?? .clear) : .clear))
-            // Claude Code beside the music: a small bubble right of the island.
+            // Claude Code beside the music: a drop right of the island.
             .overlay(alignment: .topTrailing) {
                 if state == .compact, let bubble = coordinator.bubbleModule {
                     bubble.bubbleView()
-                        .frame(width: 30, height: 30)
-                        .background(Circle().fill(Color.black))
-                        .shadow(color: bubble.compactGlow ?? .clear, radius: 8)
-                        .offset(x: 38, y: max(0, (model.geometry.notchSize.height - 30) / 2))
+                        .frame(width: NotchViewModel.bubbleSize.width, height: NotchViewModel.bubbleSize.height)
+                        .background(Capsule().fill(Color.black))
+                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+                        .shadow(color: bubble.compactGlow ?? .black.opacity(0.25), radius: 8, y: 2)
+                        .offset(x: NotchViewModel.bubbleSize.width + 10,
+                                y: max(0, (model.geometry.notchSize.height - NotchViewModel.bubbleSize.height) / 2))
                         .transition(.scale(scale: 0.3, anchor: .leading).combined(with: .opacity))
                 }
             }
@@ -620,9 +622,14 @@ private struct HeaderStatus: View {
         HStack(spacing: 12) {
             if settings.keepAwakeIcon || alwaysShowCup {
                 Button { awake.toggle() } label: {
+                    // On: the cup hops, swaps to the steaming one and the
+                    // steam keeps drifting; off: it settles back down.
                     Image(systemName: awake.isOn ? "cup.and.heat.waves.fill" : "cup.and.saucer.fill")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(awake.isOn ? theme.tint(.orange) : .white.opacity(0.35))
+                        .contentTransition(.symbolEffect(.replace.downUp))
+                        .symbolEffect(.bounce.up, options: .speed(1.4), value: awake.isOn)
+                        .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .speed(0.4), isActive: awake.isOn)
                         .frame(height: 20)
                         .contentShape(Rectangle())
                 }
