@@ -1146,6 +1146,13 @@ private struct MusicSettings: View {
                 Toggle(L("Albumfarbe für Schein, Balken und Hervorhebungen", "Album colour for glow, bars and highlights"),
                        isOn: $settings.albumTint)
                 Toggle(L("Audio-Visualizer", "Audio visualizer"), isOn: $settings.showVisualizer)
+                if settings.showVisualizer {
+                    Picker(L("Rechts in der Notch", "Right of the notch"), selection: $settings.compactIndicator) {
+                        Text(L("Wellen", "Waves")).tag(CompactMusicIndicator.waves)
+                        Text(L("Fortschrittsring", "Progress ring")).tag(CompactMusicIndicator.ring)
+                        Text(L("Pulsierender Punkt", "Breathing dot")).tag(CompactMusicIndicator.dot)
+                    }
+                }
             }
             Section {
                 Toggle(L("Bei Start und Titelwechsel", "On play and track change"), isOn: $settings.sneakPeek)
@@ -1386,79 +1393,10 @@ private struct ShelfSettings: View {
     }
 }
 
-/// One 3D model slot (AirPods Pro or Max): choose, remove, credits.
-private struct DeviceModelRow: View {
-    let kind: CustomDeviceModel
-    let changed: () -> Void
-    @State private var installed: Bool
-
-    init(kind: CustomDeviceModel, changed: @escaping () -> Void) {
-        self.kind = kind
-        self.changed = changed
-        _installed = State(initialValue: kind.url != nil)
-    }
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(L("3D-Modell \(kind.title)", "3D model \(kind.title)"))
-                // The source line its licence asks for (CC BY), read-only.
-                if installed, !kind.credit.isEmpty {
-                    Text(kind.credit)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-            }
-            Spacer()
-                if installed {
-                    Button(L("Entfernen", "Remove")) {
-                        kind.remove()
-                        installed = false
-                        changed()
-                    }
-                }
-            Button(L("Modell wählen …", "Choose model …"), action: choose)
-        }
-    }
-
-    private func choose() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = CustomDeviceModel.fileTypes
-        panel.allowsMultipleSelection = false
-        NSApp.activate()
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try kind.install(from: url)
-            installed = true
-            AppSettings.shared.accessoryStyle = .model3D
-            changed()
-        } catch {
-            NSSound.beep()
-        }
-    }
-}
-
 private struct ConnectivitySettings: View {
     @ObservedObject private var settings = AppSettings.shared
     @State private var customPicture = NSImage(contentsOf: DevicePhotos.customURL)
     @State private var hasModel = CustomDeviceModel.pro.url != nil
-
-    private func choosePicture() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.png, .jpeg, .heic, .tiff]
-        panel.allowsMultipleSelection = false
-        NSApp.activate()
-        guard panel.runModal() == .OK, let url = panel.url, let image = NSImage(contentsOf: url),
-              let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
-              let png = bitmap.representation(using: .png, properties: [:]) else { return }
-        try? FileManager.default.createDirectory(at: DevicePhotos.customURL.deletingLastPathComponent(),
-                                                 withIntermediateDirectories: true)
-        try? png.write(to: DevicePhotos.customURL)
-        DevicePhotos.resetCache()
-        customPicture = image
-        settings.accessoryStyle = .model3D
-    }
 
     var body: some View {
         // Only the sections: the settings window puts them in one form.
@@ -1484,21 +1422,6 @@ private struct ConnectivitySettings: View {
                     ], pictureSize: 64)
                 }
                 HStack {
-                    Text(L("Eigenes Bild", "Own picture"))
-                    Spacer()
-                    if customPicture != nil {
-                        Button(L("Entfernen", "Remove")) {
-                            try? FileManager.default.removeItem(at: DevicePhotos.customURL)
-                            DevicePhotos.resetCache()
-                            customPicture = nil
-                        }
-                    }
-                    Button(L("Bild wählen …", "Choose picture …"), action: choosePicture)
-                }
-                ForEach(CustomDeviceModel.allCases) { kind in
-                    DeviceModelRow(kind: kind) { hasModel = CustomDeviceModel.pro.url != nil }
-                }
-                HStack {
                     Text(L("Ausprobieren", "Try it"))
                     Spacer()
                     ForEach(CustomDeviceModel.allCases) { kind in
@@ -1506,8 +1429,8 @@ private struct ConnectivitySettings: View {
                     }
                 }
             } footer: {
-                note("Links deine Kopfhörer: ein eigenes 3D-Modell (USDZ, über „Modell wählen …“), ein eigenes Bild oder sonst Apples AirPods-Bild aus macOS; rechts das schlichte Systemsymbol. Modell und Bild bleiben nur auf diesem Mac. Steht ein Modell unter CC BY, gehört die Quelle ins Feld „Credits“.",
-                     "Left your headphones: your own 3D model (USDZ, via “Choose model …”), your own picture or else Apple's AirPods picture from macOS; right the plain system glyph. Model and picture stay on this Mac only. For a CC BY model, put its source in the credits field.")
+                note("Links deine Kopfhörer als 3D-Modell oder Bild, rechts das schlichte Systemsymbol. „Ausprobieren“ zeigt die Karte beim Verbinden und Trennen.",
+                     "Left your headphones as a 3D model or picture, right the plain system glyph. “Try it” shows the card on connecting and disconnecting.")
             }
             Section {
                 Toggle(L("Alle Bluetooth-Geräte und AirPods-Akku", "All Bluetooth devices and AirPods battery"),

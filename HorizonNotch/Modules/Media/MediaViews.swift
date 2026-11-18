@@ -27,13 +27,66 @@ struct MediaCompactVisualizer: View {
     @Environment(\.islandTheme) private var theme
 
     var body: some View {
+        let color = visualizerColor(cover: service.accent, theme: theme)
+        let playing = service.info?.isPlaying == true
         if settings.showVisualizer {
-            AudioVisualizerView(color: NSColor(visualizerColor(cover: service.accent, theme: theme)), isPlaying: service.info?.isPlaying == true)
-                .frame(width: 24, height: 14)
+            switch settings.compactIndicator {
+            case .waves:
+                AudioVisualizerView(color: NSColor(color), isPlaying: playing)
+                    .frame(width: 24, height: 14)
+            case .ring:
+                CompactProgressRing(service: service, color: color)
+                    .frame(width: 14, height: 14)
+            case .dot:
+                BreathingDot(color: color, playing: playing)
+                    .frame(width: 14, height: 14)
+            }
         } else {
             Image(systemName: "waveform")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(service.accent)
+        }
+    }
+}
+
+/// A thin ring that fills with the song's progress; it stands still while
+/// paused because the position does.
+private struct CompactProgressRing: View {
+    @ObservedObject var service: NowPlayingService
+    let color: Color
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { context in
+            let info = service.info
+            let progress = (info?.duration ?? 0) > 0
+                ? min(1, max(0, (info?.elapsed(at: context.date) ?? 0) / (info?.duration ?? 1))) : 0
+            ZStack {
+                Circle().stroke(Color.white.opacity(0.2), lineWidth: 2)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.linear(duration: 0.5), value: progress)
+            }
+            .padding(1)
+        }
+    }
+}
+
+/// A dot that slowly grows and fades back while music plays, at rest when
+/// paused.
+private struct BreathingDot: View {
+    let color: Color
+    let playing: Bool
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !playing)) { context in
+            let phase = playing ? (sin(context.date.timeIntervalSinceReferenceDate * 2 * .pi / 2.4) + 1) / 2 : 0
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+                .scaleEffect(0.75 + 0.4 * phase)
+                .opacity(0.5 + 0.5 * phase)
         }
     }
 }

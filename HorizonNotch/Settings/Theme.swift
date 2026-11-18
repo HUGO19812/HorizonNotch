@@ -12,6 +12,17 @@ enum AccentMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// What the closed island shows right of the notch while music plays.
+enum CompactMusicIndicator: String, CaseIterable, Identifiable {
+    /// Moving bars.
+    case waves
+    /// A thin ring that fills with the song's progress.
+    case ring
+    /// A dot that breathes while music plays.
+    case dot
+    var id: String { rawValue }
+}
+
 /// Colour of the audio visualizer bars.
 enum VisualizerColorMode: String, CaseIterable, Identifiable {
     case cover, accent, white
