@@ -19,6 +19,18 @@ final class AudioOutput: ObservableObject {
 
     private var deviceID = AudioObjectID(kAudioObjectUnknown)
 
+    /// An output the sound can go to.
+    struct Device: Identifiable, Equatable {
+        let id: AudioObjectID
+        let name: String
+        let symbol: String
+    }
+
+    /// Every device with outputs, for the picker; kept current while
+    /// devices come and go.
+    @Published private(set) var devices: [Device] = []
+    var currentID: AudioObjectID { deviceID }
+
     private init() {
         refreshDevice()
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice,
@@ -28,6 +40,64 @@ final class AudioOutput: ObservableObject {
             self?.refreshDevice()
             self?.deviceChanged.send()
         }
+        refreshDevices()
+        var list = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+                                              mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &list, .main) { [weak self] _, _ in
+            self?.refreshDevices()
+        }
+    }
+
+    /// Sends the sound to another device (like the Sound menu does).
+    func select(_ device: Device) {
+        var id = device.id
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+                                                 mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        AudioObjectSetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil,
+                                   UInt32(MemoryLayout<AudioObjectID>.size), &id)
+    }
+
+    private func refreshDevices() {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+                                                 mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var size = UInt32(0)
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr, size > 0 else { return }
+        var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &ids) == noErr else { return }
+        devices = ids.compactMap { id in
+            // Only devices that play sound, not microphones or hidden aggregates.
+            var streams = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
+                                                     mScope: kAudioDevicePropertyScopeOutput,
+                                                     mElement: kAudioObjectPropertyElementMain)
+            var streamSize = UInt32(0)
+            guard AudioObjectGetPropertyDataSize(id, &streams, 0, nil, &streamSize) == noErr, streamSize > 0
+            else { return nil }
+            let transport = Self.uint32(id, kAudioDevicePropertyTransportType)
+            if transport == kAudioDeviceTransportTypeAggregate || transport == kAudioDeviceTransportTypeVirtual {
+                return nil
+            }
+            var nameAddress = AudioObjectPropertyAddress(mSelector: kAudioObjectPropertyName,
+                                                         mScope: kAudioObjectPropertyScopeGlobal,
+                                                         mElement: kAudioObjectPropertyElementMain)
+            var name: Unmanaged<CFString>?
+            var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+            AudioObjectGetPropertyData(id, &nameAddress, 0, nil, &nameSize, &name)
+            guard let text = name?.takeRetainedValue() as String?, !text.isEmpty else { return nil }
+            return Device(id: id, name: text, symbol: Self.symbol(name: text, transport: transport))
+        }
+    }
+
+    private static func uint32(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector) -> UInt32 {
+        var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var value = UInt32(0)
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        AudioObjectGetPropertyData(id, &address, 0, nil, &size, &value)
+        return value
     }
 
     // MARK: - Volume

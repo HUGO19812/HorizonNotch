@@ -161,7 +161,10 @@ final class CalendarModule: NotchModule {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let start = calendar.date(byAdding: .day, value: -Self.daysBack, to: today)!
-        let end = calendar.date(byAdding: .day, value: max(1, settings.calendarDaysAhead), to: today)!
+        let ahead = calendar.date(byAdding: .day, value: max(1, settings.calendarDaysAhead), to: today)!
+        // The week view always needs the whole current week.
+        let weekEnd = calendar.dateInterval(of: .weekOfYear, for: today)?.end ?? ahead
+        let end = max(ahead, weekEnd)
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
         events = store.events(matching: predicate)
             .filter { $0.status != .canceled && (settings.calendarShowAllDay || !$0.isAllDay) }
@@ -211,6 +214,17 @@ final class CalendarModule: NotchModule {
 
 extension EKEvent {
     var tint: Color { Color(nsColor: calendar?.color ?? .systemBlue) }
+
+    /// Shows the event in Calendar (or at least opens Calendar).
+    func openInCalendar() {
+        let id = calendarItemExternalIdentifier ?? ""
+        if let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+           let url = URL(string: "ical://ekevent/\(encoded)?method=show&options=more"),
+           NSWorkspace.shared.open(url) { return }
+        if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
+            NSWorkspace.shared.open(app)
+        }
+    }
 
     /// A video call link from the URL, location or notes, if any.
     var meetingURL: URL? {
@@ -271,75 +285,382 @@ private struct CalendarCompactTrailing: View {
 
 // MARK: - Page
 
-/// Month header, a snapping strip of days (one week back, the configured
-/// number of days ahead) and the chosen day's events below.
+/// Two views, switched top right: Week – seven columns with each day's
+/// events, today highlighted with a line for "now" – and Day – today in
+/// detail on an hour timeline, with the to-dos beside it.
 private struct CalendarPage: View {
     @ObservedObject var module: CalendarModule
     @ObservedObject private var settings = AppSettings.shared
-    @State private var selectedDay: Date? = Calendar.current.startOfDay(for: Date())
+    @AppStorage("calendarMode") private var mode = "week"
 
     var body: some View {
         if !module.hasAccess {
             AccessView(module: module)
         } else {
-            let day = selectedDay ?? Calendar.current.startOfDay(for: Date())
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(day.formatted(.dateTime.month(.abbreviated).locale(appLocale)))
-                            .font(.title3.weight(.semibold))
-                        Text(day.formatted(.dateTime.year()))
-                            .font(.title3.weight(.light))
-                            .foregroundStyle(.white.opacity(0.65))
-                    }
-                    .frame(width: 58, alignment: .leading)
-                    .contentTransition(.numericText())
-                    .animation(.easeInOut(duration: 0.2), value: day)
-                    DayStrip(days: days, selected: $selectedDay) { day, isSelected in
-                        DayCell(day: day, isSelected: isSelected)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    title
+                    Spacer(minLength: 8)
+                    ModeSwitch(mode: $mode)
+                        .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 6 }
+                }
+                ZStack {
+                    if mode == "day" {
+                        HStack(alignment: .top, spacing: 12) {
+                            DayTimeline(module: module)
+                                .frame(maxWidth: .infinity)
+                            if settings.calendarShowReminders {
+                                Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1)
+                                TodoColumn(module: module, day: Calendar.current.startOfDay(for: Date()))
+                                    .frame(width: 170)
+                            }
+                        }
+                        .transition(.opacity)
+                    } else {
+                        WeekGrid(module: module)
+                            .transition(.opacity)
                     }
                 }
-                .frame(height: 50)
-                HStack(alignment: .top, spacing: 12) {
-                    // Events and to-dos share the width equally.
-                    DayEvents(module: module, day: day)
-                        .frame(maxWidth: .infinity)
-                    if settings.calendarShowReminders {
-                        Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1)
-                        TodoColumn(module: module, day: day)
-                            .frame(maxWidth: .infinity)
-                    }
-                }
+                .frame(maxHeight: .infinity, alignment: .top)
+                .animation(.easeInOut(duration: 0.2), value: mode)
             }
         }
     }
 
-    private var days: [Date] {
+    private var title: some View {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        return (-CalendarModule.daysBack..<max(1, settings.calendarDaysAhead))
-            .compactMap { calendar.date(byAdding: .day, value: $0, to: today) }
+        let now = Date()
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if mode == "day" {
+                Text(now.formatted(.dateTime.weekday(.wide).locale(appLocale)))
+                    .font(.system(size: 16, weight: .bold))
+                Text(now.formatted(.dateTime.day().month(.wide).locale(appLocale)))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.5))
+            } else {
+                let week = calendar.component(.weekOfYear, from: now)
+                Text(L("KW \(week)", "Week \(week)"))
+                    .font(.system(size: 16, weight: .bold))
+                if let interval = calendar.dateInterval(of: .weekOfYear, for: now) {
+                    let last = interval.end.addingTimeInterval(-1)
+                    Text(interval.start.formatted(.dateTime.day().month(.abbreviated).locale(appLocale)) + " – "
+                         + last.formatted(.dateTime.day().month(.abbreviated).locale(appLocale)))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+            }
+        }
     }
 }
 
-private struct DayCell: View {
-    let day: Date
-    let isSelected: Bool
+/// "Day | Week" in a small capsule.
+private struct ModeSwitch: View {
+    @Binding var mode: String
+    @Namespace private var pill
 
     var body: some View {
-        let isToday = Calendar.current.isDateInToday(day)
-        VStack(spacing: 4) {
-            Text(day.formatted(.dateTime.weekday(.abbreviated).locale(appLocale)))
-                .font(.caption)
-                .foregroundStyle(isSelected ? .white : .white.opacity(0.55))
-                .lineLimit(1)
-            Text(day.formatted(.dateTime.day()))
-                .font(.body.weight(.medium).monospacedDigit())
-                .foregroundStyle(isToday ? .white : (isSelected ? .white : .white.opacity(0.6)))
-                .frame(width: 24, height: 24)
-                .background(Circle().fill(isToday ? Color.accentColor : .clear))
+        HStack(spacing: 0) {
+            item("day", L("Tag", "Day"))
+            item("week", L("Woche", "Week"))
         }
-        .modifier(DayCellBackground(isSelected: isSelected, isToday: isToday))
+        .padding(2)
+        .background(Capsule().fill(Color.white.opacity(0.08)))
+    }
+
+    private func item(_ value: String, _ label: String) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { mode = value }
+        } label: {
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(mode == value ? 1 : 0.5))
+                .padding(.horizontal, 10)
+                .frame(height: 20)
+                .background {
+                    if mode == value {
+                        Capsule().fill(Color.white.opacity(0.16)).matchedGeometryEffect(id: "pill", in: pill)
+                    }
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: Week
+
+private struct WeekGrid: View {
+    @ObservedObject var module: CalendarModule
+
+    var body: some View {
+        let calendar = Calendar.current
+        let start = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? calendar.startOfDay(for: Date())
+        let days = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: start) }
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            HStack(alignment: .top, spacing: 5) {
+                ForEach(days, id: \.self) { day in
+                    WeekColumn(day: day, events: module.events(on: day), now: context.date)
+                }
+            }
+        }
+    }
+}
+
+private struct WeekColumn: View {
+    let day: Date
+    let events: [EKEvent]
+    let now: Date
+
+    var body: some View {
+        let calendar = Calendar.current
+        let isToday = calendar.isDate(day, inSameDayAs: now)
+        let isPast = day < calendar.startOfDay(for: now)
+        VStack(spacing: 5) {
+            HStack(spacing: 4) {
+                Text(day.formatted(.dateTime.weekday(.abbreviated).locale(appLocale)).uppercased())
+                    .font(.system(size: 9.5, weight: .bold))
+                    .foregroundStyle(isToday ? Color.red : .white.opacity(isPast ? 0.35 : 0.55))
+                Text(day.formatted(.dateTime.day()))
+                    .font(.system(size: 12, weight: .bold).monospacedDigit())
+                    .foregroundStyle(isPast ? .white.opacity(0.4) : .white)
+                    .frame(minWidth: 20, minHeight: 20)
+                    .background(Circle().fill(isToday ? Color.red : .clear))
+            }
+            .lineLimit(1)
+            GeometryReader { proxy in
+                let allDay = events.filter(\.isAllDay)
+                let timed = events.filter { !$0.isAllDay }
+                // As many cards as fit; the rest as "+N".
+                let room = proxy.size.height - CGFloat(allDay.prefix(1).count) * 21
+                let fits = max(0, Int((room + 4) / 40))
+                let shown = timed.count > fits ? Array(timed.prefix(max(0, fits - 1))) : timed
+                let hidden = timed.count - shown.count
+                VStack(spacing: 4) {
+                    ForEach(allDay.prefix(1), id: \.calendarItemIdentifier) { event in
+                        Text(event.title ?? "")
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .lineLimit(1)
+                            .padding(.horizontal, 5)
+                            .frame(maxWidth: .infinity, minHeight: 17, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(event.tint.opacity(0.45)))
+                            .onTapGesture { event.openInCalendar() }
+                    }
+                    if timed.isEmpty && allDay.isEmpty {
+                        Text(L("Frei", "Free"))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.3))
+                            .padding(.top, 10)
+                    }
+                    ForEach(Array(shown.enumerated()), id: \.element.calendarItemIdentifier) { index, event in
+                        if isToday && event.startDate > now && (index == 0 || shown[index - 1].startDate <= now) {
+                            NowLine()
+                        }
+                        WeekCard(event: event, now: now)
+                    }
+                    if isToday, let last = shown.last, last.startDate <= now { NowLine() }
+                    if hidden > 0 {
+                        Text("+\(hidden)")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.45))
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(isToday ? 3 : 0)
+            .background {
+                if isToday {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.white.opacity(0.07))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct WeekCard: View {
+    let event: EKEvent
+    let now: Date
+
+    var body: some View {
+        let past = event.endDate < now
+        HStack(spacing: 4) {
+            Capsule().fill(event.tint).frame(width: 2.5).padding(.vertical, 4)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(event.title ?? "")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .lineLimit(1)
+                Text(event.startDate.formatted(.dateTime.hour().minute().locale(appLocale)))
+                    .font(.system(size: 9.5, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 4)
+        .frame(height: 36)
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(event.tint.opacity(0.3)))
+        .opacity(past ? 0.5 : 1)
+        .contentShape(Rectangle())
+        .onTapGesture { event.openInCalendar() }
+        .help(event.title ?? "")
+    }
+}
+
+/// A red dot and line: now.
+private struct NowLine: View {
+    var body: some View {
+        HStack(spacing: 0) {
+            Circle().fill(Color.red).frame(width: 6, height: 6)
+            Rectangle().fill(Color.red).frame(height: 1.5)
+        }
+        .frame(height: 6)
+    }
+}
+
+// MARK: Day
+
+/// Today on an hour timeline: every event as a block at its time and as
+/// long as it lasts, all-day ones on top, a red line at the current time.
+/// Opens scrolled to now.
+private struct DayTimeline: View {
+    @ObservedObject var module: CalendarModule
+    private let hourHeight: CGFloat = 34
+
+    var body: some View {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let events = module.events(on: today)
+        let allDay = events.filter(\.isAllDay)
+        let timed = events.filter { !$0.isAllDay }
+        VStack(alignment: .leading, spacing: 4) {
+            if !allDay.isEmpty {
+                HStack(spacing: 4) {
+                    ForEach(allDay, id: \.calendarItemIdentifier) { event in
+                        Text(event.title ?? "")
+                            .font(.system(size: 10, weight: .semibold))
+                            .lineLimit(1)
+                            .padding(.horizontal, 6)
+                            .frame(height: 18)
+                            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(event.tint.opacity(0.45)))
+                            .onTapGesture { event.openInCalendar() }
+                    }
+                }
+            }
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        ZStack(alignment: .topLeading) {
+                            VStack(spacing: 0) {
+                                ForEach(0..<24, id: \.self) { hour in
+                                    HStack(alignment: .top, spacing: 6) {
+                                        Text(String(format: "%02d", hour))
+                                            .font(.system(size: 9, weight: .medium).monospacedDigit())
+                                            .foregroundStyle(.white.opacity(0.35))
+                                            .frame(width: 16, alignment: .trailing)
+                                            .offset(y: -5)
+                                        Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
+                                    }
+                                    .frame(height: hourHeight, alignment: .top)
+                                    .id(hour)
+                                }
+                            }
+                            ForEach(layout(timed, day: today), id: \.event.calendarItemIdentifier) { item in
+                                block(item, now: context.date)
+                            }
+                            let minutes = context.date.timeIntervalSince(today) / 60
+                            NowLine()
+                                .padding(.leading, 19)
+                                .offset(y: CGFloat(minutes / 60) * hourHeight - 3)
+                        }
+                        .padding(.top, 5)
+                    }
+                }
+                .onAppear {
+                    let hour = max(0, calendar.component(.hour, from: Date()) - 1)
+                    proxy.scrollTo(hour, anchor: .top)
+                }
+            }
+            if events.isEmpty {
+                Text(L("Heute keine Termine – genieß deine freie Zeit!", "No events today – enjoy your free time!"))
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.white.opacity(0.45))
+            }
+        }
+    }
+
+    private struct Placed {
+        let event: EKEvent
+        let column: Int
+        let columns: Int
+    }
+
+    /// Overlapping events sit side by side.
+    private func layout(_ events: [EKEvent], day: Date) -> [Placed] {
+        var placed: [Placed] = []
+        var group: [(EKEvent, Int)] = []
+        var groupEnd = Date.distantPast
+        func flush() {
+            let count = (group.map(\.1).max() ?? 0) + 1
+            placed += group.map { Placed(event: $0.0, column: $0.1, columns: count) }
+            group = []
+        }
+        for event in events.sorted(by: { $0.startDate < $1.startDate }) {
+            if event.startDate >= groupEnd { flush() }
+            let used = Set(group.filter { $0.0.endDate > event.startDate }.map(\.1))
+            let column = (0...).first { !used.contains($0) }!
+            group.append((event, column))
+            groupEnd = max(groupEnd, event.endDate)
+        }
+        flush()
+        return placed
+    }
+
+    private func block(_ item: Placed, now: Date) -> some View {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: now)
+        let end = start.addingTimeInterval(86_400)
+        let from = max(item.event.startDate, start), to = min(item.event.endDate, end)
+        let top = CGFloat(from.timeIntervalSince(start) / 3600) * hourHeight
+        let height = max(18, CGFloat(to.timeIntervalSince(from) / 3600) * hourHeight - 2)
+        let past = item.event.endDate < now
+        return GeometryReader { proxy in
+            let width = (proxy.size.width - 24) / CGFloat(item.columns)
+            HStack(alignment: .top, spacing: 5) {
+                Capsule().fill(item.event.tint).frame(width: 3)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(item.event.title ?? "")
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(height > 40 ? 2 : 1)
+                    if height > 28 {
+                        Text(item.event.startDate.formatted(.dateTime.hour().minute().locale(appLocale)) + " – "
+                             + item.event.endDate.formatted(.dateTime.hour().minute().locale(appLocale))
+                             + (item.event.location.map { $0.isEmpty ? "" : " · " + $0 } ?? ""))
+                            .font(.system(size: 9.5, weight: .medium).monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+                if let link = item.event.meetingURL, !past, height > 24 {
+                    Button { NSWorkspace.shared.open(link) } label: {
+                        Image(systemName: "video.fill")
+                            .font(.system(size: 9, weight: .semibold))
+                            .frame(width: 22, height: 16)
+                            .background(Capsule().fill(item.event.tint))
+                    }
+                    .buttonStyle(PressScaleStyle())
+                    .help(L("Beitreten", "Join"))
+                }
+            }
+            .padding(.vertical, 3)
+            .padding(.horizontal, 4)
+            .frame(width: width - 2, height: height, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(item.event.tint.opacity(0.3)))
+            .opacity(past ? 0.5 : 1)
+            .contentShape(Rectangle())
+            .onTapGesture { item.event.openInCalendar() }
+            .offset(x: 24 + CGFloat(item.column) * width, y: top)
+        }
+        .frame(height: 24 * hourHeight)
     }
 }
 
@@ -437,114 +758,6 @@ private struct TodoColumn: View {
         }
         .buttonStyle(.plain)
         .help(overdue ? L("Überfällig", "Overdue") : "")
-    }
-}
-
-private struct DayEvents: View {
-    @ObservedObject var module: CalendarModule
-    let day: Date
-
-    var body: some View {
-        let events = module.events(on: day)
-        if events.isEmpty {
-            HStack(spacing: 10) {
-                Image(systemName: "calendar.badge.checkmark")
-                    .font(.title2)
-                    .foregroundStyle(.white.opacity(0.45))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(Calendar.current.isDateInToday(day) ? L("Heute keine Termine", "No events today")
-                                                             : L("Keine Termine", "No events"))
-                        .font(.subheadline.weight(.medium))
-                    Text(L("Genieß deine freie Zeit!", "Enjoy your free time!"))
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.55))
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            ScrollViewReader { proxy in
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        ForEach(Array(events.enumerated()), id: \.element.calendarItemIdentifier) { index, event in
-                            if index > 0 { Divider().overlay(Color.white.opacity(0.2)) }
-                            EventRow(event: event).id(event.calendarItemIdentifier)
-                        }
-                    }
-                }
-                .onAppear { scrollToFocus(events, proxy) }
-                .onChange(of: day) { _, _ in scrollToFocus(module.events(on: day), proxy) }
-            }
-        }
-    }
-
-    /// First upcoming timed event, else the first all-day one, else the last.
-    private func scrollToFocus(_ events: [EKEvent], _ proxy: ScrollViewProxy) {
-        let now = Date()
-        let target = events.first { !$0.isAllDay && $0.endDate > now } ?? events.first(where: \.isAllDay) ?? events.last
-        if let target { proxy.scrollTo(target.calendarItemIdentifier, anchor: .top) }
-    }
-}
-
-private struct EventRow: View {
-    let event: EKEvent
-
-    var body: some View {
-        let isPast = !event.isAllDay && event.endDate < Date()
-        HStack(alignment: .center, spacing: 8) {
-            Capsule().fill(event.tint).frame(width: 3)
-                .padding(.vertical, 2)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(event.title ?? "")
-                    .font(.callout.weight(.medium))
-                    .lineLimit(2)
-                if let location = event.location, !location.isEmpty {
-                    Text(location)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.55))
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: 6)
-            if let link = event.meetingURL, !isPast {
-                Button {
-                    NSWorkspace.shared.open(link)
-                } label: {
-                    Image(systemName: "video.fill")
-                        .font(.system(size: 10, weight: .semibold))
-                        .frame(width: 26, height: 20)
-                        .background(Capsule().fill(event.tint))
-                }
-                .buttonStyle(PressScaleStyle())
-                .help(L("Beitreten", "Join"))
-            }
-            VStack(alignment: .trailing, spacing: 1) {
-                if event.isAllDay {
-                    Text(L("Ganztägig", "All-day"))
-                } else {
-                    Text(time(event.startDate))
-                    Text(time(event.endDate)).foregroundStyle(.white.opacity(0.55))
-                }
-            }
-            .font(.caption.monospacedDigit())
-        }
-        .padding(.vertical, 5)
-        .opacity(isPast ? 0.6 : 1)
-        .contentShape(Rectangle())
-        .onTapGesture { openInCalendar() }
-    }
-
-    private func time(_ date: Date) -> String {
-        date.formatted(.dateTime.hour().minute().locale(appLocale))
-    }
-
-    private func openInCalendar() {
-        let id = event.calendarItemExternalIdentifier ?? ""
-        if let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-           let url = URL(string: "ical://ekevent/\(encoded)?method=show&options=more"),
-           NSWorkspace.shared.open(url) { return }
-        if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
-            NSWorkspace.shared.open(app)
-        }
     }
 }
 

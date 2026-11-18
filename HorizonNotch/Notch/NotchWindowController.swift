@@ -200,6 +200,22 @@ final class NotchWindowController {
         return rect
     }
 
+    /// The Claude bubble right of the closed island (music + Claude).
+    private var bubbleRect: CGRect? {
+        guard model.state == .compact, coordinator.bubbleModule != nil, let screen else { return nil }
+        let island = islandRect(for: .compact)
+        let top = screen.frame.maxY - model.geometry.topInset
+        let height = max(model.geometry.notchSize.height, 34)
+        return CGRect(x: island.maxX, y: top - height, width: 44, height: screen.frame.maxY + 1 - (top - height))
+    }
+
+    /// Hovering Claude (the bubble, or the island while Claude owns it)
+    /// opens straight onto the Claude tab, without the hover delay.
+    private func pointsAtClaude(_ location: CGPoint) -> Bool {
+        if bubbleRect?.contains(location) == true { return true }
+        return model.state == .compact && coordinator.compactModule?.id == "claude"
+    }
+
     // MARK: - Pointer
 
     private func installMonitors() {
@@ -245,13 +261,16 @@ final class NotchWindowController {
             collapseTimer = nil
             guard !model.isExpanded, hoverTimer == nil else { return }
             model.setHovering(true)
+            let claude = pointsAtClaude(location)
             let work = DispatchWorkItem { [weak self] in
-                self?.hoverTimer = nil
-                self?.model.setExpanded(true)
-                self?.updateMouseHandling(at: NSEvent.mouseLocation)
+                guard let self else { return }
+                self.hoverTimer = nil
+                self.model.setExpanded(true)
+                if claude { self.coordinator.showPage(id: "claude") }
+                self.updateMouseHandling(at: NSEvent.mouseLocation)
             }
             hoverTimer = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + settings.hoverDelay, execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + (claude ? 0.05 : settings.hoverDelay), execute: work)
         } else {
             hoverTimer?.cancel()
             hoverTimer = nil
@@ -323,7 +342,7 @@ final class NotchWindowController {
         // A little slack around an open island so it does not snap shut
         // when the pointer grazes its edge.
         if model.isExpanded { rect = rect.insetBy(dx: -8, dy: -8) }
-        let inside = rect.contains(location)
+        let inside = rect.contains(location) || bubbleRect?.contains(location) == true
         // Called on every pointer move anywhere: only touch the window
         // when something changes.
         if let panel, panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
@@ -331,8 +350,11 @@ final class NotchWindowController {
     }
 
     private func handleClick() {
-        guard !model.isExpanded, updateMouseHandling(at: NSEvent.mouseLocation) else { return }
+        let location = NSEvent.mouseLocation
+        guard !model.isExpanded, updateMouseHandling(at: location) else { return }
+        let claude = pointsAtClaude(location)
         expand()
+        if claude { coordinator.showPage(id: "claude") }
     }
 
     /// Marks scroll events the day strips re-sent with vertical turned

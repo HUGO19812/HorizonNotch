@@ -25,6 +25,24 @@ final class ClaudeCodeMonitor: ObservableObject {
         var detail: String?
         /// The end of Claude's last answer, shown when a turn is done.
         var summary: String?
+        /// Working folder of the session.
+        var cwd: String = ""
+        /// When the island first heard of it.
+        var started = Date()
+        /// What you asked last (shortened).
+        var prompt: String?
+        /// Tools used in the current turn.
+        var toolCount = 0
+        /// The last few steps, newest first.
+        var recent: [Step] = []
+        /// Bundle ID of the app Claude runs in, if known.
+        var app: String?
+        var transcriptPath: String?
+    }
+
+    struct Step: Equatable {
+        let text: String
+        let date: Date
     }
 
     @Published private(set) var sessions: [Session] = []
@@ -89,7 +107,12 @@ final class ClaudeCodeMonitor: ObservableObject {
         for file in files {
             defer { try? manager.removeItem(at: file) }
             guard let data = try? Data(contentsOf: file),
-                  let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+                  var event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            // "<time>-<pid>@<bundle id>.json" (see ClaudeHooks).
+            let name = file.deletingPathExtension().lastPathComponent
+            if let at = name.firstIndex(of: "@"), !name[name.index(after: at)...].isEmpty {
+                event["horizon_app"] = String(name[name.index(after: at)...])
+            }
             apply(event)
         }
     }
@@ -102,6 +125,9 @@ final class ClaudeCodeMonitor: ObservableObject {
         let project = URL(fileURLWithPath: cwd).lastPathComponent
         var session = sessions.first { $0.id == id } ?? Session(id: id, project: project, activity: .idle, updated: Date())
         if !project.isEmpty { session.project = project }
+        if !cwd.isEmpty { session.cwd = cwd }
+        if let app = event["horizon_app"] as? String { session.app = app }
+        if let path = event["transcript_path"] as? String { session.transcriptPath = path }
         session.updated = Date()
         doneTimers[id]?.cancel()
 
@@ -114,11 +140,21 @@ final class ClaudeCodeMonitor: ObservableObject {
             session.turnStarted = Date()
             session.detail = L("Denkt nach", "Thinking")
             session.summary = nil
+            session.toolCount = 0
+            session.recent = []
+            if let prompt = (event["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !prompt.isEmpty {
+                session.prompt = String(prompt.prefix(240))
+            }
         case "PreToolUse":
             let tool = event["tool_name"] as? String
             session.activity = .working(tool: tool)
             session.detail = Self.describe(tool: tool, input: event["tool_input"] as? [String: Any])
             if session.turnStarted == nil { session.turnStarted = Date() }
+            session.toolCount += 1
+            if let detail = session.detail {
+                session.recent.insert(Step(text: detail, date: Date()), at: 0)
+                if session.recent.count > 4 { session.recent.removeLast() }
+            }
         case "Notification":
             session.activity = .waiting(event["message"] as? String ?? L("Wartet auf dich", "Waiting for you"))
         case "Stop":

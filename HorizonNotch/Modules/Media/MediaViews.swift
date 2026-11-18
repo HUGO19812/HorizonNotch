@@ -190,6 +190,8 @@ struct MediaExpandedView: View {
     /// Cover, title, progress bar and controls glide between the two
     /// layouts instead of fading; only the lyrics field is new.
     @Namespace private var player
+    /// The output picker lies over the player.
+    @State private var showOutputs = false
 
     var body: some View {
         content
@@ -246,8 +248,17 @@ struct MediaExpandedView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         ProgressScrubber(service: service, info: info, inline: true)
                             .matchedGeometryEffect(id: "progress", in: player)
-                        CanopyControls(service: service, info: info)
+                        CanopyControls(service: service, info: info, showOutputs: $showOutputs)
                             .matchedGeometryEffect(id: "controls", in: player)
+                    }
+                    .opacity(showOutputs ? 0 : 1)
+                    .overlay {
+                        if showOutputs {
+                            OutputPicker(close: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showOutputs = false }
+                            })
+                            .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                        }
                     }
                     .padding(.top, 2)
                     // Room between the buttons and the island's edge.
@@ -354,25 +365,16 @@ private struct ProControls: View {
 }
 
 /// Heart, back, play/pause, forward and the output device, spread evenly
-/// across the width – like Canopy.
+/// across the width – like Canopy. The output button opens the output
+/// picker over the player (see MediaExpandedView).
 private struct CanopyControls: View {
     @ObservedObject var service: NowPlayingService
     @ObservedObject private var output = AudioOutput.shared
     let info: NowPlayingInfo
-    /// The buttons give way to a volume bar after a click on the output.
-    @State private var showVolume = false
+    @Binding var showOutputs: Bool
 
     var body: some View {
-        ZStack {
-            if showVolume {
-                VolumeRow(close: { withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showVolume = false } })
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
-            } else {
-                buttons
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
-            }
-        }
-        .frame(height: 32)
+        buttons.frame(height: 32)
     }
 
     private var buttons: some View {
@@ -399,7 +401,7 @@ private struct CanopyControls: View {
             ControlButton(symbol: "forward.fill", size: 18) { service.send(.next) }
             Spacer(minLength: 0)
             Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showVolume = true }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showOutputs = true }
             } label: {
                 Image(systemName: output.symbol)
                     .font(.system(size: 16, weight: .regular))
@@ -408,8 +410,53 @@ private struct CanopyControls: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(PressScaleStyle())
-            .help(L("Lautstärke – \(output.deviceName)", "Volume – \(output.deviceName)"))
+            .help(L("Ausgabe – \(output.deviceName)", "Output – \(output.deviceName)"))
         }
+    }
+}
+
+/// Where the sound goes: the volume on top, below every output device –
+/// a click switches to it. Closes by itself after a few quiet seconds.
+private struct OutputPicker: View {
+    let close: () -> Void
+    @ObservedObject private var output = AudioOutput.shared
+
+    var body: some View {
+        VStack(spacing: 8) {
+            VolumeRow(close: close)
+                .frame(height: 30)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 2) {
+                    ForEach(output.devices) { device in
+                        let current = device.id == output.currentID
+                        Button { output.select(device) } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: device.symbol)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .frame(width: 22)
+                                Text(device.name)
+                                    .font(.system(size: 12.5, weight: current ? .semibold : .medium))
+                                    .lineLimit(1)
+                                Spacer(minLength: 4)
+                                if current {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 11, weight: .bold))
+                                }
+                            }
+                            .foregroundStyle(.white.opacity(current ? 1 : 0.7))
+                            .padding(.horizontal, 10)
+                            .frame(height: 30)
+                            .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(Color.white.opacity(current ? 0.12 : 0.04)))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PressScaleStyle())
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
     }
 }
 
