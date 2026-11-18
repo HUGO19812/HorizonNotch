@@ -262,8 +262,12 @@ private struct LiquidPlayerCard<Artwork: View>: View {
     @ViewBuilder var artwork: Artwork
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 30, style: .continuous)
-        let solid = 1 - min(max(settings.lockScreenTransparency, 0), 1)
+        let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
+        let crafted = overWallpaper && Wallpaper.shared.image != nil
+        // Clear glass over the picture has no tint at all; the transparency
+        // slider shades the other looks.
+        let solid = crafted && settings.lockGlassStyle != .frosted
+            ? 0 : 1 - min(max(settings.lockScreenTransparency, 0), 1)
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
                 artwork
@@ -340,10 +344,9 @@ private struct LiquidPlayerCard<Artwork: View>: View {
     }
 }
 
-/// Glass made by hand over the wallpaper piece behind the card, in
-/// Canopy's two looks:
-/// - clear: the picture stays sharp, but a thick lens bends it strongly
-///   towards the rim, with a red/blue colour fringe where it bends most;
+/// Glass made by hand over the wallpaper behind the card, in two looks:
+/// - clear: real Liquid Glass, sharp in the middle and refracting along a
+///   convex rim (see LiquidGlassView);
 /// - frosted: the picture is blurred and lightened, with a soft diagonal
 ///   sheen across the glass and a light rim.
 private struct CraftedGlass: View {
@@ -352,47 +355,12 @@ private struct CraftedGlass: View {
     var frost: Double = 0
 
     var body: some View {
-        ZStack {
-            if frost > 0.5 {
-                frosted
-            } else {
-                clear
-            }
+        if frost > 0.5 {
+            frosted.compositingGroup()
+        } else {
+            // Real refraction along a convex rim, sharp in the middle.
+            LiquidGlassView(cornerRadius: shape.cornerSize.width)
         }
-        .compositingGroup()
-    }
-
-    /// Bands from the middle out to the rim, each a little more magnified:
-    /// together they bend the picture more and more towards the edge, like
-    /// a thick lens (Canopy's distortion).
-    private static let lensBands: [(width: CGFloat, zoom: CGFloat)] = [
-        (90, 1.04), (64, 1.09), (46, 1.15), (32, 1.22), (21, 1.3), (12, 1.4),
-    ]
-
-    private var clear: some View {
-        ZStack {
-            WallpaperPiece()
-            ForEach(Self.lensBands.indices, id: \.self) { index in
-                let band = Self.lensBands[index]
-                WallpaperPiece(zoom: band.zoom)
-                    .mask(rim(width: band.width, blur: band.width * 0.35))
-            }
-            // A hint of colour where the glass bends most.
-            WallpaperPiece(zoom: 1.46)
-                .colorMultiply(Color(red: 1, green: 0.55, blue: 0.5))
-                .mask(rim(width: 6, blur: 3))
-                .blendMode(.plusLighter)
-                .opacity(0.2)
-            WallpaperPiece(zoom: 1.34)
-                .colorMultiply(Color(red: 0.5, green: 0.65, blue: 1))
-                .mask(rim(width: 8, blur: 3))
-                .blendMode(.plusLighter)
-                .opacity(0.18)
-            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.3), .white.opacity(0.03), .white.opacity(0.15)],
-                                              startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
-                .blendMode(.plusLighter)
-        }
-        .clipShape(shape)
     }
 
     /// Like Canopy's frosted card: the picture still recognisable but soft,
@@ -426,9 +394,6 @@ private struct CraftedGlass: View {
         .clipShape(shape)
     }
 
-    private func rim(width: CGFloat, blur: CGFloat) -> some View {
-        shape.strokeBorder(Color.white, lineWidth: width).blur(radius: blur)
-    }
 }
 
 /// The part of the desktop picture that lies exactly behind this view
@@ -469,6 +434,8 @@ struct WallpaperPiece: View {
 final class Wallpaper: ObservableObject {
     static let shared = Wallpaper()
     @Published private(set) var image: NSImage?
+    /// The same picture decoded once, for the refracting glass.
+    private(set) var cgImage: CGImage?
     private(set) var screenSize: CGSize = .zero
     private var loadedURL: URL?
 
@@ -480,8 +447,10 @@ final class Wallpaper: ObservableObject {
         var isDirectory: ObjCBool = false
         if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue,
            let loaded = NSImage(contentsOf: url), !Self.isNearlyBlack(loaded) {
+            cgImage = loaded.cgImage(forProposedRect: nil, context: nil, hints: nil)
             image = loaded
         } else {
+            cgImage = nil
             image = nil
         }
     }
