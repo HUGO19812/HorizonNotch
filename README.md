@@ -68,7 +68,7 @@ Das App-Symbol wird mit `swift scripts/make-icon.swift` neu gezeichnet.
 | Ablage | Datei-Ablage und AirDrop | NSSharingService |
 | Kalender | Nächste Termine, Countdown 10 Min. vor Meetings, „Beitreten" für Zoom/Teams/Meet | EventKit |
 | Wetter | Aktuell, Höchst- und Tiefstwert, scrollbare Stundenleiste (24 h) | Open-Meteo, CoreLocation oder gesuchter Ort |
-| Rechner | Wissenschaftlich: drei breite Tastenreihen (sin/cos/tan, π, e, x², √, Klammern, ln, log, xʸ, %), DEG/RAD, Live-Ergebnis beim Tippen; Verlauf als ein-/ausklappbare Seitenleiste links (Klick übernimmt ein Ergebnis); per Tastatur bedienbar, ⌘C oder Klick auf die Anzeige kopiert | – |
+| Rechner | Verlauf links (ein-/ausklappbar, Klick übernimmt ein Ergebnis), große Anzeige in der Mitte, kompaktes Tastenfeld rechts; per Tastatur auch Klammern, ^, %, π, e, sin/cos/tan (s/c/t) und √ (r); Live-Ergebnis beim Tippen, ⌘C oder Klick auf die Anzeige kopiert | – |
 | Verbindungen | Kopfhörer verbunden/getrennt, WLAN, optional alle Bluetooth-Geräte mit AirPods-Akku und Fokus | CoreAudio, Network, CoreWLAN, IOBluetooth, Intents |
 | Benachrichtigungen | Fertige Downloads (optional) | kqueue auf ~/Downloads |
 | Sperrbildschirm & Bildschirmschoner | Kleiner Player in klarem Liquid Glass, Wetter/Akku/Kopfhörer unter der Uhr; Klick aufs Cover lässt das Album den Bildschirm füllen, mit Glas-Uhr in den Cover-Farben und Songtext Wort für Wort. Optional als Bildschirmschoner | SkyLight (siehe unten), LRCLIB |
