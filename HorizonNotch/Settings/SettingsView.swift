@@ -1386,26 +1386,62 @@ private struct ShelfSettings: View {
     }
 }
 
-private struct ConnectivitySettings: View {
-    @ObservedObject private var settings = AppSettings.shared
-    @State private var customPicture = NSImage(contentsOf: DevicePhotos.customURL)
-    @State private var hasModel = CustomDeviceModel.url != nil
-    @AppStorage(CustomDeviceModel.creditKey) private var modelCredit = ""
+/// One 3D model slot (AirPods Pro or Max): choose, remove, credits.
+private struct DeviceModelRow: View {
+    let kind: CustomDeviceModel
+    let changed: () -> Void
+    @State private var installed: Bool
+    @AppStorage private var credit: String
 
-    private func chooseModel() {
+    init(kind: CustomDeviceModel, changed: @escaping () -> Void) {
+        self.kind = kind
+        self.changed = changed
+        _installed = State(initialValue: kind.url != nil)
+        _credit = AppStorage(wrappedValue: "", kind.creditKey)
+    }
+
+    var body: some View {
+        Group {
+            HStack {
+                Text(L("3D-Modell \(kind.title)", "3D model \(kind.title)"))
+                Spacer()
+                if installed {
+                    Button(L("Entfernen", "Remove")) {
+                        kind.remove()
+                        installed = false
+                        changed()
+                    }
+                }
+                Button(L("Modell wählen …", "Choose model …"), action: choose)
+            }
+            if installed {
+                TextField(L("Quelle / Credits", "Source / credits"), text: $credit, axis: .vertical)
+                    .lineLimit(1...3)
+            }
+        }
+    }
+
+    private func choose() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = CustomDeviceModel.fileTypes
         panel.allowsMultipleSelection = false
         NSApp.activate()
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try CustomDeviceModel.install(from: url)
-            hasModel = true
-            settings.accessoryStyle = .model3D
+            try kind.install(from: url)
+            installed = true
+            AppSettings.shared.accessoryStyle = .model3D
+            changed()
         } catch {
             NSSound.beep()
         }
     }
+}
+
+private struct ConnectivitySettings: View {
+    @ObservedObject private var settings = AppSettings.shared
+    @State private var customPicture = NSImage(contentsOf: DevicePhotos.customURL)
+    @State private var hasModel = CustomDeviceModel.pro.url != nil
 
     private func choosePicture() {
         let panel = NSOpenPanel()
@@ -1433,7 +1469,7 @@ private struct ConnectivitySettings: View {
                         StageItem(value: AccessoryStyle.model3D, picture: AnyView(
                             Group {
                                 if hasModel {
-                                    DeviceModelView(spinning: false)
+                                    DeviceModelView(model: .pro, spinning: false)
                                 } else if let custom = customPicture {
                                     Image(nsImage: custom).resizable().scaledToFit()
                                 } else {
@@ -1458,20 +1494,14 @@ private struct ConnectivitySettings: View {
                     }
                     Button(L("Bild wählen …", "Choose picture …"), action: choosePicture)
                 }
-                HStack {
-                    Text(L("3D-Modell", "3D model"))
-                    Spacer()
-                    if hasModel {
-                        Button(L("Entfernen", "Remove")) {
-                            CustomDeviceModel.remove()
-                            hasModel = false
-                        }
-                    }
-                    Button(L("Modell wählen …", "Choose model …"), action: chooseModel)
+                ForEach(CustomDeviceModel.allCases) { kind in
+                    DeviceModelRow(kind: kind) { hasModel = CustomDeviceModel.pro.url != nil }
                 }
-                if hasModel {
-                    TextField(L("Quelle / Credits", "Source / credits"), text: $modelCredit, axis: .vertical)
-                        .lineLimit(1...3)
+                HStack {
+                    Text(L("Ausprobieren", "Try it"))
+                    Spacer()
+                    Button("AirPods Pro") { NotificationCenter.default.post(name: .testDeviceCard, object: "AirPods Pro") }
+                    Button("AirPods Max") { NotificationCenter.default.post(name: .testDeviceCard, object: "AirPods Max") }
                 }
             } footer: {
                 note("Links deine Kopfhörer: ein eigenes 3D-Modell (USDZ, über „Modell wählen …“), ein eigenes Bild oder sonst Apples AirPods-Bild aus macOS; rechts das schlichte Systemsymbol. Modell und Bild bleiben nur auf diesem Mac. Steht ein Modell unter CC BY, gehört die Quelle ins Feld „Credits“.",

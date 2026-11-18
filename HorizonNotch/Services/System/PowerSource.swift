@@ -12,6 +12,8 @@ final class PowerSource: ObservableObject {
         var isPluggedIn = false
         /// Minutes until full or empty; nil while macOS is still estimating.
         var minutesRemaining: Int?
+        /// Low Power Mode is on (the battery turns yellow, like on iPhone).
+        var isLowPower = false
     }
 
     static let shared = PowerSource()
@@ -30,6 +32,13 @@ final class PowerSource: ObservableObject {
         }, context)?.takeRetainedValue() {
             runLoopSource = source
             CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
+        }
+        // Low Power Mode is not a power-source change; it has its own signal.
+        NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil,
+                                               queue: .main) { [weak self] _ in
+            guard let self else { return }
+            let new = PowerSource.read()
+            if new != self.state { self.state = new }
         }
     }
 
@@ -62,6 +71,7 @@ final class PowerSource: ObservableObject {
 
     private static func read() -> State {
         var state = State()
+        state.isLowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
         guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
               let list = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef] else { return state }
         for source in list {
