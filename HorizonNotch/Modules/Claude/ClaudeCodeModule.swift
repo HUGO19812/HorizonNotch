@@ -31,13 +31,14 @@ final class ClaudeCodeModule: NotchModule {
 
     private var activity: ClaudeCodeMonitor.Activity { monitor.visible.first?.activity ?? .idle }
 
-    /// Working is a little narrower than the two alerts.
+    /// Kept slim: working only needs the spark and the timer, the two
+    /// alerts a short badge; the line below stays one small row.
     var compactWingWidth: CGFloat {
-        if case .working = activity { return 78 }
-        return 108
+        if case .working = activity { return 52 }
+        return 84
     }
     var isPeeking: Bool { isActive }
-    var peekHeight: CGFloat { 28 }
+    var peekHeight: CGFloat { 20 }
     var compactGlow: Color? {
         switch activity {
         case .waiting, .done: return Self.tint.opacity(0.42)
@@ -146,7 +147,7 @@ private struct ClaudeLeading: View {
         .transition(.scale(scale: 0.6).combined(with: .opacity))
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: session?.activity.kind)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.leading, 18)
+        .padding(.leading, 12)
     }
 }
 
@@ -161,23 +162,24 @@ private struct ClaudeTrailing: View {
             case .working:
                 if let start = session?.turnStarted {
                     Text(start, style: .timer)
-                        .font(.system(size: 13, weight: .bold).monospacedDigit())
+                        .font(.system(size: 12, weight: .bold).monospacedDigit())
                         .foregroundStyle(.white)
                 }
             case .waiting:
                 Text(L("BRAUCHT DICH", "NEEDS YOU"))
-                    .font(.system(size: 10, weight: .bold)).kerning(0.7)
+                    .font(.system(size: 9, weight: .bold)).kerning(0.4)
                     .foregroundStyle(Color(red: 1, green: 0.62, blue: 0.27))
             case .done:
                 Text(L("FERTIG", "DONE"))
-                    .font(.system(size: 10, weight: .bold)).kerning(0.7)
+                    .font(.system(size: 9, weight: .bold)).kerning(0.4)
                     .foregroundStyle(Color(red: 0.93, green: 0.6, blue: 0.46))
             default: EmptyView()
             }
         }
         .lineLimit(1)
+        .fixedSize()
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .padding(.trailing, 18)
+        .padding(.trailing, 10)
     }
 }
 
@@ -206,7 +208,7 @@ private struct ClaudeLine: View {
 
     private func plain(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 12, weight: .semibold))
+            .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(Color(white: 0.82))
             .lineLimit(1)
             .truncationMode(.tail)
@@ -239,7 +241,7 @@ private struct ShimmerText: View {
             // Gradient stops must stay in order within 0…1.
             let at = { (x: Double) in min(max(x, 0), 1) }
             Text(text)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .foregroundStyle(LinearGradient(
