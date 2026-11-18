@@ -143,10 +143,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Settings → "Try it": the card for a sample AirPods Pro or Max.
         NotificationCenter.default.addObserver(forName: .testDeviceCard, object: nil, queue: .main) { [weak self] note in
             let name = note.object as? String ?? "AirPods Pro"
-            let card = name.lowercased().contains("max")
-                ? DeviceCard(name: name, symbol: "airpodsmax", connected: true, single: 72)
-                : DeviceCard(name: name, symbol: "airpodspro", connected: true, left: 85, right: 80, caseLevel: 60)
+            let kind = CustomDeviceModel.kind(for: name) ?? .pro
+            var card: DeviceCard
+            switch kind {
+            case .pro: card = DeviceCard(name: name, symbol: "airpodspro", connected: true, left: 85, right: 80, caseLevel: 60)
+            case .max: card = DeviceCard(name: name, symbol: "airpodsmax", connected: true, single: 72)
+            case .speakers: card = DeviceCard(name: name, symbol: "hifispeaker.2.fill", connected: true)
+            }
             self?.devices.show(card)
+            // Then disconnect again, so the way back can be seen too.
+            card.connected = false
+            card.left = nil; card.right = nil; card.caseLevel = nil; card.single = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in self?.devices.show(card) }
         }
         #if DEBUG
         installDebugHooks()
