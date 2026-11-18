@@ -174,6 +174,9 @@ final class AppSettings: ObservableObject {
     @Published var islandDesign: IslandDesign { didSet { defaults.set(islandDesign.rawValue, forKey: "islandDesign") } }
     @Published var accessoryStyle: AccessoryStyle { didSet { defaults.set(accessoryStyle.rawValue, forKey: "accessoryStyle") } }
     @Published var lockGlassStyle: LockGlassStyle { didSet { defaults.set(lockGlassStyle.rawValue, forKey: "lockGlassStyle") } }
+    /// Test mode: the lock screen's live wallpaper inside our window and the
+    /// system's own Liquid Glass on the card (macOS 26).
+    @Published var lockSystemGlass: Bool { didSet { defaults.set(lockSystemGlass, forKey: "lockSystemGlass") } }
     @Published var lockScreenBackdrop: LockScreenBackdrop { didSet { defaults.set(lockScreenBackdrop.rawValue, forKey: "lockScreenBackdrop") } }
     /// Hide the island while another app or a video fills the screen.
     @Published var hideInFullscreen: Bool { didSet { defaults.set(hideInFullscreen, forKey: "hideInFullscreen") } }
@@ -297,6 +300,7 @@ final class AppSettings: ObservableObject {
             accessoryStyle = .glyph
         }
         lockGlassStyle = LockGlassStyle(rawValue: defaults.string(forKey: "lockGlassStyle") ?? "") ?? .clear
+        lockSystemGlass = defaults.bool(forKey: "lockSystemGlass")
         lockScreenBackdrop = LockScreenBackdrop(rawValue: defaults.string(forKey: "lockScreenBackdrop") ?? "") ?? .cover
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true

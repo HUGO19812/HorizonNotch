@@ -1620,7 +1620,10 @@ private struct LockScreenSettings: View {
             }
             Section {
                 GlassStylePicker(selection: $settings.lockGlassStyle)
-                ScreenCaptureRow()
+                Toggle(L("Systemglas (Test, wie Canopy)", "System glass (test, like Canopy)"), isOn: $settings.lockSystemGlass)
+                if !settings.lockSystemGlass {
+                    ScreenCaptureRow()
+                }
             } header: {
                 Text(L("Glas", "Glass style"))
             } footer: {
