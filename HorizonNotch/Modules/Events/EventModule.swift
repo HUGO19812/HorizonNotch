@@ -27,7 +27,13 @@ final class EventModule: NotchModule {
     let priority = ModulePriority.notification
     let compactWingWidth: CGFloat = 124
 
-    @Published private(set) var current: IslandEvent?
+    @Published private(set) var current: IslandEvent? {
+        didSet { if let current { lastShown = current } }
+    }
+    /// What the views draw: the current event, or the last one while the
+    /// island fades it out (instead of going blank at once).
+    private(set) var lastShown: IslandEvent?
+    var shown: IslandEvent? { current ?? lastShown }
     private var queue: [IslandEvent] = []
     private var hideWork: DispatchWorkItem?
     private let settings = AppSettings.shared
@@ -87,11 +93,11 @@ private struct EventPill: View {
 
     var body: some View {
         ZStack {
-            if let event = module.current {
+            if let event = module.shown {
                 pill(event)
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: module.current?.id)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: module.shown?.id)
     }
 
     private func pill(_ event: IslandEvent) -> some View {
@@ -138,7 +144,7 @@ private struct EventLeading: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            if let event = module.current {
+            if let event = module.shown {
                 Group {
                     if let image = event.image {
                         Image(nsImage: image).resizable().frame(width: 18, height: 18)
@@ -157,13 +163,13 @@ private struct EventLeading: View {
                     .truncationMode(.tail)
             }
         }
-        .id(module.current?.id)
+        .id(module.shown?.id)
         .transition(.opacity.combined(with: .move(edge: .leading)))
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 10)
         .contentShape(Rectangle())
         .onTapGesture {
-            if let action = module.current?.action {
+            if let action = module.shown?.action {
                 action()
                 module.dismiss()
             }
@@ -176,12 +182,12 @@ private struct EventTrailing: View {
     @Environment(\.islandTheme) private var theme
 
     var body: some View {
-        Text(module.current?.detail ?? "")
+        Text(module.shown?.detail ?? "")
             .font(.system(size: 11, weight: .medium).monospacedDigit())
-            .foregroundStyle(theme.tint(module.current?.tint ?? .white).opacity(0.9))
+            .foregroundStyle(theme.tint(module.shown?.tint ?? .white).opacity(0.9))
             .lineLimit(1)
             .truncationMode(.tail)
-            .id(module.current?.id)
+            .id(module.shown?.id)
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.trailing, 10)
     }

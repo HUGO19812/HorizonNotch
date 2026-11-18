@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import IOKit
 import IOKit.ps
 
 /// Internal battery state, updated by IOKit power-source notifications.
@@ -30,6 +31,29 @@ final class PowerSource: ObservableObject {
             runLoopSource = source
             CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
         }
+    }
+
+    /// Minutes until full when macOS has no estimate yet (right after
+    /// plugging in it often reports nothing for minutes): the battery's own
+    /// average from the smart battery, else the charge still missing
+    /// divided by the current flowing in.
+    static func estimatedMinutesToFull() -> Int? {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+        func number(_ key: String) -> Int? {
+            (IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? NSNumber)?.intValue
+        }
+        if let average = number("AvgTimeToFull"), average > 0, average < 65535 { return average }
+        if let full = number("TimeToFull"), full > 0, full < 65535 { return full }
+        let current = number("AppleRawCurrentCapacity") ?? number("CurrentCapacity")
+        let max = number("AppleRawMaxCapacity") ?? number("MaxCapacity")
+        guard let current, let max, max > 100, let amperage = number("Amperage") ?? number("InstantAmperage"),
+              amperage > 50 else { return nil }
+        // Charging slows down near full; add a little for the last stretch.
+        let minutes = Double(max - current) / Double(amperage) * 60 * 1.15
+        return minutes > 0 && minutes < 24 * 60 ? Int(minutes.rounded()) : nil
     }
 
     private static func read() -> State {

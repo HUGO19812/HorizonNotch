@@ -79,6 +79,10 @@ struct NotchRootView: View {
                 CompactContent(module: module, geometry: model.geometry,
                                wing: module.compactWingWidth, peeking: module.isPeeking)
                     .id(module.id)
+                    // A live activity or notice fades in and out softly.
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.9, anchor: .top)),
+                        removal: .opacity.combined(with: .scale(scale: 0.94, anchor: .top))))
                     .opacity(state == .compact ? 1 : 0)
                     .scaleEffect(state == .compact ? 1 : 0.9, anchor: .top)
                     .allowsHitTesting(state == .compact)
@@ -95,6 +99,7 @@ struct NotchRootView: View {
                         removal: .opacity.animation(.easeOut(duration: 0.12))))
             }
         }
+        .animation(spring, value: coordinator.compactModule?.id)
     }
 }
 
@@ -204,6 +209,7 @@ private struct CompactContent: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .padding(.horizontal, 2)
+        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: peeking)
     }
 }
 
