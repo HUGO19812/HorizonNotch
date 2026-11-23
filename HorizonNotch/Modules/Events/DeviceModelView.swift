@@ -4,11 +4,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// 3D models of the user's audio devices, picked in the settings (USDZ,
-/// USD or SceneKit): AirPods / AirPods Pro, AirPods Max and speakers. They
+/// USD or SceneKit): AirPods / AirPods Pro, AirPods Max, speakers and the
+/// Magic Mouse. They
 /// are copied to Application Support and never part of the app or the
 /// repository; each keeps its credit line, as licences like CC BY require.
 enum CustomDeviceModel: String, CaseIterable, Identifiable {
-    case pro, max, speakers
+    case pro, max, speakers, mouse
 
     var id: String { rawValue }
 
@@ -17,6 +18,7 @@ enum CustomDeviceModel: String, CaseIterable, Identifiable {
         case .pro: return "AirPods / AirPods Pro"
         case .max: return "AirPods Max"
         case .speakers: return L("Lautsprecher (KRK)", "Speakers (KRK)")
+        case .mouse: return "Magic Mouse"
         }
     }
 
@@ -26,6 +28,7 @@ enum CustomDeviceModel: String, CaseIterable, Identifiable {
         case .pro: return "AirPods Pro"
         case .max: return "AirPods Max"
         case .speakers: return "KRK Classic 5"
+        case .mouse: return "Magic Mouse"
         }
     }
 
@@ -33,6 +36,7 @@ enum CustomDeviceModel: String, CaseIterable, Identifiable {
     static func kind(for deviceName: String) -> CustomDeviceModel? {
         let name = deviceName.lowercased()
         if name.contains("krk") { return .speakers }
+        if name.contains("mouse") || name.contains("maus") { return .mouse }
         guard name.contains("airpods") else { return nil }
         return name.contains("max") ? .max : .pro
     }
@@ -44,6 +48,7 @@ enum CustomDeviceModel: String, CaseIterable, Identifiable {
         case .pro: return "deviceModelCredit"
         case .max: return "deviceModelCreditMax"
         case .speakers: return "deviceModelCreditSpeakers"
+        case .mouse: return "deviceModelCreditMouse"
         }
     }
 

@@ -29,6 +29,43 @@ final class TimerModule: NotchModule {
 
     private var finishWork: DispatchWorkItem?
     private var dismissWork: DispatchWorkItem?
+    /// Timers from the Clock app are mirrored here; the Clock app rings
+    /// itself, so the mirror stays silent.
+    private let systemTimers = SystemTimerWatcher()
+    private(set) var mirrorsSystemTimer = false
+
+    init() {
+        systemTimers.onChange = { [weak self] status in self?.mirror(status) }
+        systemTimers.start()
+    }
+
+    private func mirror(_ status: SystemTimerWatcher.Status?) {
+        // The island's own countdown is never replaced.
+        let ownRunning = (endDate != nil || pausedRemaining != nil) && !mirrorsSystemTimer
+        guard !ownRunning else { return }
+        switch status {
+        case .running(let end, let length)?:
+            mirrorsSystemTimer = true
+            mode = .timer
+            finished = false
+            pausedRemaining = nil
+            runLength = length
+            endDate = end
+            scheduleFinish(at: end)
+        case .paused(let remaining, let length)?:
+            mirrorsSystemTimer = true
+            finishWork?.cancel()
+            endDate = nil
+            runLength = length
+            pausedRemaining = remaining
+        case nil:
+            guard mirrorsSystemTimer else { return }
+            mirrorsSystemTimer = false
+            finishWork?.cancel()
+            endDate = nil
+            pausedRemaining = nil
+        }
+    }
 
     var isActive: Bool {
         endDate != nil || pausedRemaining != nil || finished || stopwatchStart != nil
@@ -56,6 +93,7 @@ final class TimerModule: NotchModule {
     // MARK: - Countdown
 
     func startTimer() {
+        mirrorsSystemTimer = false
         let length = pausedRemaining ?? duration
         guard length > 0 else { return }
         if pausedRemaining == nil { runLength = length }
@@ -74,6 +112,7 @@ final class TimerModule: NotchModule {
     }
 
     func resetTimer() {
+        mirrorsSystemTimer = false
         finishWork?.cancel()
         dismissWork?.cancel()
         endDate = nil
@@ -111,6 +150,15 @@ final class TimerModule: NotchModule {
     private func timerFinished() {
         endDate = nil
         finished = true
+        if mirrorsSystemTimer {
+            // The Clock app rings; just show "Done" for a moment.
+            mirrorsSystemTimer = false
+            dismissWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.finished = false }
+            dismissWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: work)
+            return
+        }
         NSSound(named: "Glass")?.play()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
             if self?.finished == true { NSSound(named: "Glass")?.play() }

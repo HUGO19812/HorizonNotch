@@ -147,10 +147,12 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
         if name.contains("keyboard") || name.contains("tastatur") { return "keyboard" }
         if name.contains("mouse") || name.contains("maus") { return "magicmouse" }
         if name.contains("trackpad") { return "rectangle.and.hand.point.up.left" }
+        if name.contains("iphone") { return "iphone.gen3.radiowaves.left.and.right" }
+        if name.contains("ipad") { return "ipad" }
         switch device.deviceClassMajor {
         case 0x04: return "headphones"            // audio/video
         case 0x05: return "keyboard"              // peripheral
-        case 0x02: return "iphone"                // phone
+        case 0x02: return "iphone.gen3.radiowaves.left.and.right" // phone
         default: return "dot.radiowaves.left.and.right"
         }
     }
@@ -169,9 +171,13 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
 
     // MARK: - Wi-Fi
 
+    private var lastWasHotspot = false
+
     private func pathChanged(_ path: NWPath) {
         let connected = path.status == .satisfied && path.usesInterfaceType(.wifi)
-        defer { wifiConnected = connected }
+        // An iPhone's Personal Hotspot marks the network as expensive.
+        let hotspot = connected && path.isExpensive
+        defer { wifiConnected = connected; lastWasHotspot = hotspot }
         guard let previous = wifiConnected, previous != connected, !isQuiet else {
             if wifiConnected == nil { lastSSID = CWWiFiClient.shared().interface()?.ssid() }
             return
@@ -180,12 +186,18 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
                 let ssid = CWWiFiClient.shared().interface()?.ssid()
                 self?.lastSSID = ssid
-                self?.post(IslandEvent(symbol: "wifi", tint: .blue, title: ssid ?? "WLAN",
-                                       detail: L("Verbunden", "Connected")))
+                if hotspot {
+                    self?.post(IslandEvent(symbol: "personalhotspot", tint: .green, title: ssid ?? "Hotspot",
+                                           detail: L("Hotspot verbunden", "Hotspot connected")))
+                } else {
+                    self?.post(IslandEvent(symbol: "wifi", tint: .blue, title: ssid ?? "WLAN",
+                                           detail: L("Verbunden", "Connected")))
+                }
             }
         } else {
-            post(IslandEvent(symbol: "wifi.slash", tint: .white.opacity(0.6), title: lastSSID ?? "WLAN",
-                             detail: L("Getrennt", "Disconnected")))
+            let wasHotspot = lastWasHotspot
+            post(IslandEvent(symbol: wasHotspot ? "personalhotspot.slash" : "wifi.slash", tint: .white.opacity(0.6),
+                             title: lastSSID ?? (wasHotspot ? "Hotspot" : "WLAN"), detail: L("Getrennt", "Disconnected")))
         }
     }
 
@@ -196,7 +208,9 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
             defer { if ssid != nil { self.lastSSID = ssid } }
             // Joining from "no Wi-Fi" is reported by the path monitor.
             guard let ssid, let previous = self.lastSSID, ssid != previous, self.wifiConnected == true, !self.isQuiet else { return }
-            self.post(IslandEvent(symbol: "wifi", tint: .blue, title: ssid, detail: L("Gewechselt", "Switched")))
+            let hotspot = self.lastWasHotspot
+            self.post(IslandEvent(symbol: hotspot ? "personalhotspot" : "wifi", tint: hotspot ? .green : .blue,
+                                  title: ssid, detail: L("Gewechselt", "Switched")))
         }
     }
 
