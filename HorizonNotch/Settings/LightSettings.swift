@@ -110,9 +110,12 @@ private struct MoodEditor: View {
                     Slider(value: Binding(get: { kelvin }, set: { mood.kind = .white(kelvin: $0) }), in: 2200...6500)
                     Text("\(Int(kelvin)) K").monospacedDigit().foregroundStyle(.secondary).frame(width: 56, alignment: .trailing)
                 case .color(let hex):
-                    ColorPicker(L("Farbe", "Colour"), selection: Binding(
-                        get: { Color(nsColor: NSColor(hex: hex) ?? .systemBlue) },
-                        set: { mood.kind = .color(hex: NSColor($0).hexString) }), supportsOpacity: false)
+                    // Same colour field as in the island, no extra window.
+                    let parts = SpectrumPicker.components(of: NSColor(hex: hex) ?? .systemBlue)
+                    SpectrumPicker(hue: Binding(get: { parts.hue }, set: { _ in }),
+                                   saturation: Binding(get: { parts.saturation }, set: { _ in }),
+                                   cornerRadius: 7) { color in mood.kind = .color(hex: color.hexString) }
+                        .frame(height: 34)
                 case .cover:
                     EmptyView()
                 }

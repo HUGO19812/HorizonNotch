@@ -168,6 +168,7 @@ private struct LightPage: View {
     @ObservedObject var module: LightModule
     @ObservedObject var light: HueBluetoothLight
     @ObservedObject var moods: LightMoods
+    @State private var pickingColor = false
 
     var body: some View {
         Group {
@@ -179,9 +180,19 @@ private struct LightPage: View {
                     BrightnessTile(light: light)
                         .disabled(!connected)
                         .opacity(connected ? 1 : 0.35)
-                    MoodGrid(module: module, moods: moods)
-                        .disabled(!connected)
-                        .opacity(connected ? 1 : 0.35)
+                    Group {
+                        if pickingColor {
+                            ColorPane(module: module, light: light) {
+                                withAnimation(.easeInOut(duration: 0.2)) { pickingColor = false }
+                            }
+                        } else {
+                            MoodGrid(module: module, moods: moods) {
+                                withAnimation(.easeInOut(duration: 0.2)) { pickingColor = true }
+                            }
+                        }
+                    }
+                    .disabled(!connected)
+                    .opacity(connected ? 1 : 0.35)
                 }
             }
         }
@@ -210,23 +221,18 @@ private struct PowerButton: View {
                 if state == .disconnected { light.refresh() } else { light.toggle() }
             } label: {
                 ZStack {
-                    if state == .on {
-                        Circle().fill(light.color.opacity(0.4)).blur(radius: 14).frame(width: 82, height: 82)
-                    }
-                    Circle().fill(fill(state))
-                    if state == .disconnected || state == .connecting {
-                        Circle().strokeBorder(Color.white.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
-                    }
                     if state == .connecting {
                         ProgressView().controlSize(.small)
                     } else {
-                        Image(systemName: state == .disconnected ? "antenna.radiowaves.left.and.right.slash" : "power")
-                            .font(.system(size: 21, weight: .semibold))
-                            .foregroundStyle(state == .on ? Color.black.opacity(0.72) : .white.opacity(state == .off ? 0.85 : 0.4))
+                        Image(systemName: symbol(state))
+                            .font(.system(size: 24, weight: .medium))
+                            .foregroundStyle(state == .on ? Color.white : .white.opacity(state == .off ? 0.85 : 0.4))
+                            .shadow(color: state == .on ? .black.opacity(0.25) : .clear, radius: 2, y: 1)
                             .contentTransition(.symbolEffect(.replace))
                     }
                 }
-                .frame(width: 70, height: 70)
+                .frame(width: 66, height: 66)
+                .modifier(GlassDisc(tint: state == .on ? light.color : nil, dimmed: state == .disconnected || state == .connecting))
                 .contentShape(Circle())
             }
             .buttonStyle(PressScaleStyle())
@@ -240,13 +246,11 @@ private struct PowerButton: View {
         .animation(.easeInOut(duration: 0.25), value: state)
     }
 
-    private func fill(_ state: State) -> AnyShapeStyle {
+    private func symbol(_ state: State) -> String {
         switch state {
-        case .on:
-            return AnyShapeStyle(LinearGradient(colors: [light.color, light.color.opacity(0.8)],
-                                                startPoint: .top, endPoint: .bottom))
-        case .off: return AnyShapeStyle(Color.white.opacity(0.14))
-        default: return AnyShapeStyle(Color.white.opacity(0.06))
+        case .on: return "lightbulb.led.wide.fill"
+        case .off: return "lightbulb.led.wide"
+        default: return "antenna.radiowaves.left.and.right.slash"
         }
     }
 
@@ -261,6 +265,31 @@ private struct PowerButton: View {
             case .unauthorized: return L("Kein Zugriff", "No access")
             default: return L("Nicht verbunden", "Not connected")
             }
+        }
+    }
+}
+
+/// The button's disc: Liquid Glass on macOS 26 and later, tinted with the
+/// light's colour while it's on; a soft material circle before that.
+private struct GlassDisc: ViewModifier {
+    let tint: Color?
+    let dimmed: Bool
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .background {
+                    // The light's colour glowing under the glass.
+                    if let tint { Circle().fill(tint.opacity(0.55)).blur(radius: 12).scaleEffect(1.15) }
+                }
+                .glassEffect(tint.map { Glass.regular.tint($0.opacity(0.75)).interactive() } ?? Glass.regular.interactive(),
+                             in: Circle())
+                .opacity(dimmed ? 0.55 : 1)
+        } else {
+            content
+                .background(Circle().fill(tint.map { AnyShapeStyle($0.opacity(0.85)) } ?? AnyShapeStyle(.ultraThinMaterial)))
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
+                .opacity(dimmed ? 0.55 : 1)
         }
     }
 }
@@ -308,6 +337,7 @@ private struct BrightnessTile: View {
 private struct MoodGrid: View {
     @ObservedObject var module: LightModule
     @ObservedObject var moods: LightMoods
+    let pickColor: () -> Void
 
     private let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
 
@@ -317,7 +347,7 @@ private struct MoodGrid: View {
                 ForEach(moods.all) { mood in
                     tile(mood)
                 }
-                FreeColorTile(active: module.activeMoodID == "free") { module.applyFree($0) }
+                FreeColorTile(active: module.activeMoodID == "free", action: pickColor)
                 Button {
                     NotificationCenter.default.post(name: .openSettings, object: SettingsTab.light.rawValue)
                 } label: {
@@ -364,14 +394,13 @@ private struct MoodGrid: View {
     }
 }
 
-/// "Own": opens the system colour panel; every colour picked there goes to
-/// the light.
+/// "Own": opens the colour field in place of the moods.
 private struct FreeColorTile: View {
     let active: Bool
-    let pick: (NSColor) -> Void
+    let action: () -> Void
 
     var body: some View {
-        Button { ColorPanelBridge.shared.show(pick) } label: {
+        Button(action: action) {
             HStack(spacing: 6) {
                 Circle()
                     .fill(AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red], center: .center))
@@ -391,28 +420,47 @@ private struct FreeColorTile: View {
     }
 }
 
-/// Target for NSColorPanel, which reports changes through target/action.
-final class ColorPanelBridge: NSObject {
-    static let shared = ColorPanelBridge()
-    private var handler: ((NSColor) -> Void)?
-    private var lastSent = Date.distantPast
+/// Free colour right in the island: drag across the field, the strip
+/// follows; "Done" goes back to the moods.
+private struct ColorPane: View {
+    @ObservedObject var module: LightModule
+    @ObservedObject var light: HueBluetoothLight
+    let done: () -> Void
+    @AppStorage("lightFreeHue") private var hue = 0.08
+    @AppStorage("lightFreeSaturation") private var saturation = 0.8
+    @State private var lastSent = Date.distantPast
 
-    func show(_ handler: @escaping (NSColor) -> Void) {
-        self.handler = handler
-        let panel = NSColorPanel.shared
-        panel.setTarget(self)
-        panel.setAction(#selector(changed(_:)))
-        panel.isContinuous = true
-        panel.showsAlpha = false
-        panel.level = .statusBar + 1
-        panel.orderFrontRegardless()
-    }
-
-    @objc private func changed(_ panel: NSColorPanel) {
-        // Not every drag step needs a Bluetooth write.
-        guard Date().timeIntervalSince(lastSent) > 0.12 else { return }
-        lastSent = Date()
-        handler?(panel.color)
+    var body: some View {
+        VStack(spacing: 8) {
+            SpectrumPicker(hue: $hue, saturation: $saturation) { color in
+                // Not every drag step needs a Bluetooth write.
+                guard Date().timeIntervalSince(lastSent) > 0.1 else { return }
+                lastSent = Date()
+                module.applyFree(color)
+            }
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Color(nsColor: SpectrumPicker.color(hue: hue, saturation: saturation)))
+                    .frame(width: 16, height: 16)
+                    .overlay(Circle().strokeBorder(Color.white.opacity(0.3), lineWidth: 1))
+                Text(L("Eigene Farbe", "Own colour"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.7))
+                Spacer()
+                Button {
+                    module.applyFree(SpectrumPicker.color(hue: hue, saturation: saturation))
+                    done()
+                } label: {
+                    Text(L("Fertig", "Done"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 12)
+                        .frame(height: 22)
+                        .background(Capsule().fill(Color.white))
+                }
+                .buttonStyle(PressScaleStyle())
+            }
+        }
     }
 }
 
