@@ -824,7 +824,14 @@ final class HiResArtwork: ObservableObject {
                                       bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
         context.interpolationQuality = .medium
         context.draw(cg, in: CGRect(x: 0, y: 0, width: side, height: side))
-        return stride(from: 0, to: data.count, by: 4).flatMap { [data[$0], data[$0 + 1], data[$0 + 2]] }
+        var rgb: [UInt8] = []
+        rgb.reserveCapacity(side * side * 3)
+        for i in stride(from: 0, to: data.count, by: 4) {
+            rgb.append(data[i])
+            rgb.append(data[i + 1])
+            rgb.append(data[i + 2])
+        }
+        return rgb
     }
 }
 
