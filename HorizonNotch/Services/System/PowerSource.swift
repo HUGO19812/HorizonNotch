@@ -46,6 +46,30 @@ final class PowerSource: ObservableObject {
     /// plugging in it often reports nothing for minutes): the battery's own
     /// average from the smart battery, else the charge still missing
     /// divided by the current flowing in.
+    /// Minutes until full from the current charge rate alone; the last
+    /// 20 % go slower (the battery tapers its current there). Steadier than
+    /// macOS's estimate, which jumps when Optimised Charging holds at 80 %.
+    static func chargeRateMinutesToFull() -> Int? {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+        func number(_ key: String) -> Int? {
+            (IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? NSNumber)?.intValue
+        }
+        let data = IORegistryEntryCreateCFProperty(service, "BatteryData" as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? [String: Any]
+        guard let current = (data?["RemainingCapacity"] as? NSNumber)?.intValue ?? number("AppleRawCurrentCapacity"),
+              let max = (data?["FullChargeCapacity"] as? NSNumber)?.intValue ?? number("AppleRawMaxCapacity"),
+              max > 100, let amperage = number("Amperage") ?? number("InstantAmperage"), amperage > 50 else { return nil }
+        let knee = Double(max) * 0.8
+        let fast = Swift.max(0, knee - Double(current)) / Double(amperage) * 60
+        // Above 80 % the current falls to roughly half on average.
+        let slow = (Double(max) - Swift.max(knee, Double(current))) / Double(amperage) * 60 * 2
+        let minutes = fast + slow
+        return minutes > 0 && minutes < 24 * 60 ? Int(minutes.rounded()) : nil
+    }
+
     static func estimatedMinutesToFull() -> Int? {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
         guard service != 0 else { return nil }

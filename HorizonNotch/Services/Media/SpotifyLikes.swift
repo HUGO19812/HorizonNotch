@@ -41,8 +41,41 @@ enum SpotifyLikes {
             if let button = likeButton() { return button }
             if attempt < 2 { Thread.sleep(forTimeInterval: 0.35) }
         }
-        NSLog("[HorizonNotch] Spotify like: button not found")
+        // Some builds only open their tree for VoiceOver's switch.
+        if let button = likeButton(enhanced: true) { return button }
+        writeDiagnostics()
         return nil
+    }
+
+    /// When the heart can't be found: what Spotify's window offers, written
+    /// to Application Support/HorizonNotch/spotify-like-debug.txt (only
+    /// roles, labels and positions of its controls).
+    private static func writeDiagnostics() {
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else { return }
+        let element = AXUIElementCreateApplication(app.processIdentifier)
+        var lines = ["\(Date())"]
+        for window in (attribute(element, kAXWindowsAttribute) as? [AXUIElement]) ?? [] {
+            lines.append("window \(frame(of: window).map { "\($0)" } ?? "?")")
+            var visited = 0
+            collect(window, into: &lines, visited: &visited)
+        }
+        let folder = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/HorizonNotch")
+        try? lines.joined(separator: "\n").write(to: folder.appendingPathComponent("spotify-like-debug.txt"),
+                                                  atomically: true, encoding: .utf8)
+    }
+
+    private static func collect(_ element: AXUIElement, into lines: inout [String], visited: inout Int) {
+        guard visited < 6000, lines.count < 400 else { return }
+        visited += 1
+        let role = role(of: element)
+        if role == kAXButtonRole as String || role == kAXCheckBoxRole as String {
+            let value = attribute(element, kAXValueAttribute).map { "\($0)" } ?? "-"
+            lines.append("\(role) [\(text(of: element))] value=\(value) \(frame(of: element).map { "\($0)" } ?? "?")")
+        }
+        for child in (attribute(element, kAXChildrenAttribute) as? [AXUIElement]) ?? [] {
+            collect(child, into: &lines, visited: &visited)
+        }
     }
 
     private static func pressShortcut() -> Bool {
@@ -62,7 +95,8 @@ enum SpotifyLikes {
     /// "Add to Liked Songs" while not liked; afterwards Spotify relabels the
     /// button ("Add to playlist") and marks it checked.
     private static let notLikedWords = ["liked songs", "lieblingssongs", "titres likés", "canciones que te gustan",
-                                        "brani che ti piacciono", "gelikete nummers"]
+                                        "brani che ti piacciono", "gelikete nummers", "your library", "bibliothek",
+                                        "save to", "speichern"]
     private static let likedWords = ["playlist", "remove", "entfernen"]
 
     /// Spotify marks the liked heart as checked (aria-checked); that wins.
@@ -85,11 +119,16 @@ enum SpotifyLikes {
         return liked
     }
 
-    private static func likeButton() -> AXUIElement? {
+    private static func likeButton(enhanced: Bool = false) -> AXUIElement? {
         guard AXIsProcessTrusted(),
               let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else { return nil }
         let element = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetAttributeValue(element, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        if enhanced {
+            AXUIElementSetAttributeValue(element, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        defer { if enhanced { AXUIElementSetAttributeValue(element, "AXEnhancedUserInterface" as CFString, kCFBooleanFalse) } }
         guard let windows = attribute(element, kAXWindowsAttribute) as? [AXUIElement] else { return nil }
         for window in windows {
             guard let frame = frame(of: window), frame.height > 200 else { continue }
@@ -103,11 +142,9 @@ enum SpotifyLikes {
     }
 
     private static func search(_ element: AXUIElement, bar: CGRect, visited: inout Int) -> AXUIElement? {
-        guard visited < 8000 else { return nil }
+        guard visited < 15000 else { return nil }
         visited += 1
         let box = frame(of: element)
-        // Skip whole subtrees that lie above the bar.
-        if let box, box.height > 0, box.maxY < bar.minY { return nil }
         let role = role(of: element)
         if role == kAXButtonRole as String || role == kAXCheckBoxRole as String,
            let box, bar.contains(CGPoint(x: box.midX, y: box.midY)) {
