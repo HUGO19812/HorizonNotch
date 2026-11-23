@@ -37,6 +37,27 @@ final class LyricsService: ObservableObject {
         return max(1, sung)
     }
 
+    /// How much of `lines[index]` has been sung at `position`, in characters
+    /// (fractional, so a word can light up letter by letter). Spaces count.
+    func sungCharacters(in index: Int, at position: Double) -> Double {
+        let line = lines[index]
+        let words = line.words
+        let total = Double(line.text.count)
+        guard !words.isEmpty, position >= line.time else { return 0 }
+        let next = lines.indices.contains(index + 1) ? lines[index + 1].time : line.time + 6
+        if let times = line.wordTimes, times.count == words.count {
+            guard let current = times.lastIndex(where: { $0 <= position + 0.05 }) else { return 0 }
+            let before = Double(words.prefix(current).reduce(0) { $0 + $1.count + 1 })
+            let length = Double(words[current].count)
+            let end = current + 1 < times.count ? times[current + 1] : min(next, times[current] + max(0.3, length * 0.09))
+            let fraction = end > times[current] ? (position - times[current]) / (end - times[current]) : 1
+            return min(total, before + length * min(max(fraction, 0), 1))
+        }
+        let span = min(next - line.time, max(1.2, total * 0.075))
+        let progress = span > 0 ? (position - line.time) / (span * 0.92) : 1
+        return min(total, max(0, progress) * total)
+    }
+
     enum State: Equatable {
         case idle, loading, unavailable, loaded
     }

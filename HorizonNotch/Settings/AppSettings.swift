@@ -167,6 +167,9 @@ final class AppSettings: ObservableObject {
     @Published var lockWidgetEvent: Bool { didSet { defaults.set(lockWidgetEvent, forKey: "lockWidgetEvent") } }
     /// The clock over the large cover takes the cover's colour.
     @Published var lockClockTint: Bool { didSet { defaults.set(lockClockTint, forKey: "lockClockTint") } }
+    /// Cover and lyrics on the lock screen in the Spicy Lyrics look (off =
+    /// the cover with the card and the lyrics beside it).
+    @Published var lockScreenSpicyLyrics: Bool { didSet { defaults.set(lockScreenSpicyLyrics, forKey: "lockScreenSpicyLyrics") } }
     @Published var lockScreenStart: LockScreenStart { didSet { defaults.set(lockScreenStart.rawValue, forKey: "lockScreenStart") } }
     /// How see-through the lock screen player card is (0 = solid glass, 1 = almost invisible).
     @Published var lockScreenTransparency: Double { didSet { defaults.set(lockScreenTransparency, forKey: "lockScreenTransparency") } }
@@ -288,6 +291,7 @@ final class AppSettings: ObservableObject {
         lockWidgetHeadphones = defaults.object(forKey: "lockWidgetHeadphones") as? Bool ?? true
         lockWidgetEvent = defaults.object(forKey: "lockWidgetEvent") as? Bool ?? false
         lockClockTint = defaults.bool(forKey: "lockClockTint")
+        lockScreenSpicyLyrics = defaults.object(forKey: "lockScreenSpicyLyrics") as? Bool ?? true
         lockScreenStart = LockScreenStart(rawValue: defaults.string(forKey: "lockScreenStart") ?? "") ?? .compact
         // Clearer glass by default; the old default 0.6 moves up once.
         let storedTransparency = defaults.object(forKey: "lockScreenTransparency") as? Double
