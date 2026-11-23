@@ -20,7 +20,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastRainNotice: Date?
     let calendar = CalendarModule()
     let reminders = RemindersModule()
-    private(set) lazy var light = LightModule(nowPlaying: nowPlaying)
+    private(set) lazy var light = LightModule(nowPlaying: nowPlaying, claude: claude.monitor)
+    private(set) lazy var overview = OverviewModule(nowPlaying: nowPlaying, calendar: calendar, reminders: reminders,
+                                                    claude: claude.monitor) { [weak self] id in
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) { self?.coordinator.showPage(id: id) }
+    }
     let weather = WeatherModule()
     let calculator = CalculatorModule()
     let claude = ClaudeCodeModule()
@@ -58,7 +62,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Updater.shared.start()
 
         coordinator.register(hud)
+        coordinator.register(overview)
         coordinator.register(media)
+        // The new start page comes first, also for a custom tab order.
+        let order = AppSettings.shared.moduleOrder
+        if !order.isEmpty, !order.contains(overview.id) {
+            AppSettings.shared.moduleOrder = [overview.id] + order
+        }
         coordinator.register(timer)
         coordinator.register(shelf)
         coordinator.register(clipboard)

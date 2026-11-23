@@ -92,14 +92,33 @@ final class LightModule: NotchModule {
     @AppStorage("lightCoverSync") var coverSync = false
     @AppStorage("lightOffOnLock") var offOnLock = false
     @AppStorage("lightMoodID") var activeMoodID = ""
+    /// Claude light: pulses in Claude's orange while Claude waits for you,
+    /// flashes green when it's done.
+    @AppStorage("lightClaude") var claudeLight = true
+
+    private let claude: ClaudeCodeMonitor
+    private var beforeEffect: HueBluetoothLight.Snapshot?
+    private var pulseTimer: Timer?
+    private var pulseHigh = false
+    private var flashWork: DispatchWorkItem?
+    private static let claudeOrange = NSColor(srgbRed: 0.85, green: 0.47, blue: 0.34, alpha: 1)
 
     var headerInfo: HeaderInfo? {
         guard light.isPaired, light.hasState else { return nil }
         return .text(light.isOn ? "\(Int((light.brightness * 100).rounded())) %" : L("Aus", "Off"))
     }
 
-    init(nowPlaying: NowPlayingService) {
+    init(nowPlaying: NowPlayingService, claude: ClaudeCodeMonitor) {
         self.nowPlaying = nowPlaying
+        self.claude = claude
+        claude.$sessions
+            .map { sessions in sessions.contains { if case .waiting = $0.activity { return true }; return false } }
+            .removeDuplicates()
+            .sink { [weak self] waiting in DispatchQueue.main.async { self?.claudeWaiting(waiting) } }
+            .store(in: &subscriptions)
+        claude.turnFinished
+            .sink { [weak self] in DispatchQueue.main.async { self?.claudeDone() } }
+            .store(in: &subscriptions)
         light.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &subscriptions)
         moods.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &subscriptions)
         nowPlaying.$accent.removeDuplicates().dropFirst()
@@ -136,6 +155,54 @@ final class LightModule: NotchModule {
         guard coverSync || force, light.isPaired, light.isOn || force else { return }
         let color = nowPlaying.artwork != nil ? NSColor(nowPlaying.accent) : NSColor(srgbRed: 1, green: 0.62, blue: 0.3, alpha: 1)
         light.setColor(color, switchOn: force)
+    }
+
+    // MARK: - Claude light
+
+    private var claudeLightReady: Bool { claudeLight && light.isPaired && light.reachable }
+
+    private func claudeWaiting(_ waiting: Bool) {
+        if waiting {
+            guard claudeLightReady, pulseTimer == nil else { return }
+            if beforeEffect == nil { beforeEffect = light.snapshot() }
+            flashWork?.cancel()
+            light.setColor(Self.claudeOrange)
+            // Slow breathing: up and down every 1.4 s.
+            let timer = Timer.scheduledTimer(withTimeInterval: 1.4, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                self.pulseHigh.toggle()
+                self.light.setBrightness(self.pulseHigh ? 0.85 : 0.2)
+            }
+            pulseTimer = timer
+        } else {
+            stopPulse()
+            restoreAfterEffect(delay: 0.2)
+        }
+    }
+
+    private func claudeDone() {
+        guard claudeLightReady else { return }
+        stopPulse()
+        if beforeEffect == nil { beforeEffect = light.snapshot() }
+        light.setColor(NSColor(srgbRed: 0.2, green: 0.85, blue: 0.4, alpha: 1))
+        light.setBrightness(0.9)
+        restoreAfterEffect(delay: 1.6)
+    }
+
+    private func stopPulse() {
+        pulseTimer?.invalidate()
+        pulseTimer = nil
+    }
+
+    private func restoreAfterEffect(delay: Double) {
+        flashWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.pulseTimer == nil, let before = self.beforeEffect else { return }
+            self.beforeEffect = nil
+            self.light.restore(before)
+        }
+        flashWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     private func locked() {
