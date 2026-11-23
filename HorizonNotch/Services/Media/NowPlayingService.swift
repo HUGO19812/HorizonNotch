@@ -79,6 +79,16 @@ final class NowPlayingService: ObservableObject {
             // also while the screen is locked and for Spotify Connect.
             let position = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), seconds)
             likeQueue.async { Self.runScript("tell application \"\(name)\" to set player position to \(position)") }
+            // With Spotify Connect the song plays on another device and the
+            // reported position lags: read the real one back after the seek.
+            let title = info?.title ?? ""
+            for delay in [1.0, 3.5] {
+                likeQueue.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    let read = Self.runScript("tell application \"\(name)\" to get player position")
+                    guard let read, let value = Double(read.replacingOccurrences(of: ",", with: ".")) else { return }
+                    DispatchQueue.main.async { self?.adoptPosition(value, title: title) }
+                }
+            }
         } else {
             bridge.send("seek \(seconds)")
         }
@@ -94,6 +104,15 @@ final class NowPlayingService: ObservableObject {
     func toggleShuffle() {
         guard let current = info, !usingFallback else { return }
         bridge.send("shuffle \(current.isShuffling ? 1 : 3)")
+    }
+
+    /// Takes a position read from the player itself (after a seek).
+    private func adoptPosition(_ seconds: Double, title: String) {
+        guard var current = info, current.title == title, seconds.isFinite, seconds >= 0 else { return }
+        current.elapsed = current.duration > 0 ? min(seconds, current.duration) : seconds
+        current.timestamp = Date()
+        pendingSeek = (current.elapsed, current.timestamp, title)
+        info = current
     }
 
     private var scriptablePlayerName: String? {
