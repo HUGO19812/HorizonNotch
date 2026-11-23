@@ -1639,6 +1639,9 @@ private struct LockScreenSettings: View {
                 Toggle(L("Uhr nimmt beim großen Cover dessen Farbe an", "Clock takes the cover's colour with the large cover"),
                        isOn: $settings.lockClockTint)
                     .disabled(!settings.lockScreenWidgets)
+                Toggle(L("Cover und Songtext im Spicy-Lyrics-Stil", "Cover and lyrics in the Spicy Lyrics look"),
+                       isOn: $settings.lockScreenSpicyLyrics)
+                    .disabled(!settings.lockScreenWidgets)
                 TilePicker(title: L("Beim Sperren zeigen", "When locking, show"), selection: $settings.lockScreenStart, options: [
                     TileOption(value: LockScreenStart.compact, title: L("Kleiner Player", "Small player"), symbol: "play.rectangle"),
                     TileOption(value: LockScreenStart.cover, title: L("Großes Cover", "Large cover"), symbol: "photo"),

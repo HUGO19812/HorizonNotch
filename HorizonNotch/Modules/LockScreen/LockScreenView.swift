@@ -49,7 +49,16 @@ struct LockScreenView: View {
         GeometryReader { proxy in
             let size = proxy.size
             ZStack {
-                if let info = nowPlaying.info, state.large {
+                if let info = nowPlaying.info, state.large, state.lyrics, settings.lockScreenSpicyLyrics {
+                    // Lyrics: the Spicy Lyrics look, the clock on top.
+                    SpicyLockScreen(nowPlaying: nowPlaying, lyrics: lyrics, info: info, size: size,
+                                    artwork: settings.lockScreenBackdrop == .tinted ? nil : hiRes.image) {
+                        state.lyrics = false
+                    }
+                    .transition(.opacity)
+                    LockClock(size: size, tint: settings.lockClockTint && nowPlaying.artwork != nil ? nowPlaying.accent : nil)
+                        .transition(.opacity)
+                } else if let info = nowPlaying.info, state.large {
                     Backdrop(image: settings.lockScreenBackdrop == .tinted ? nowPlaying.artwork
                                 : (hiRes.image ?? nowPlaying.artwork),
                              tint: nowPlaying.accent, size: size,
@@ -205,7 +214,7 @@ private struct Backdrop: View {
 /// The clock over the large cover, where and how macOS draws its own:
 /// LoginUIKit's real date and time views; tinted by the cover (a setting)
 /// or without LoginUIKit, a glass copy in the same font, size and place.
-private struct LockClock: View {
+struct LockClock: View {
     let size: CGSize
     let tint: Color?
 
@@ -657,7 +666,7 @@ final class Wallpaper: ObservableObject {
 }
 
 /// Draggable progress bar with elapsed time left and remaining time right.
-private struct LockProgress: View {
+struct LockProgress: View {
     @ObservedObject var service: NowPlayingService
     let info: NowPlayingInfo
     @State private var dragValue: Double?
@@ -705,7 +714,7 @@ private struct LockProgress: View {
     }
 }
 
-private struct LockButton: View {
+struct LockButton: View {
     let symbol: String
     var size: CGFloat = 17
     let action: () -> Void
