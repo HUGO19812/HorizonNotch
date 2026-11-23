@@ -2,22 +2,25 @@ import AppKit
 import SwiftUI
 
 /// Cover and lyrics on the lock screen in the look of Spicetify's Spicy
-/// Lyrics: the cover large in the upper left, fading into black; the
-/// lyrics on the right, big and bold – the line being sung bright, its
-/// words lighting up letter by letter with a soft glow, the other lines
-/// dimmer and more blurred the farther away they are; background vocals
-/// "(…)" small under their line. Title, progress and controls sit in the
-/// lower left; the buttons fade out while the pointer rests.
+/// Lyrics, everything below the clock: on the left the cover as a card
+/// (Apple Music's moving cover when the album has one), the progress, title
+/// and artist under it; on the right the lyrics, big and bold – the line
+/// being sung bright, its words filling letter by letter with a soft glow,
+/// the others translucent and softly blurred. Behind it all a slowly moving
+/// wash of the cover's colours that swells with the music.
 struct SpicyLockScreen: View {
     @ObservedObject var nowPlaying: NowPlayingService
     @ObservedObject var lyrics: LyricsService
     let info: NowPlayingInfo
     let size: CGSize
-    /// A sharper copy of the cover for the backdrop, if one was found.
+    /// A sharper copy of the cover, if one was found.
     var artwork: NSImage?
     /// Back to the large cover without lyrics.
     let onClose: () -> Void
 
+    @StateObject private var motion = MotionArtwork()
+    @State private var motionReady = false
+    @State private var palette: [Color] = []
     @State private var controlsVisible = true
     @State private var lastMouse = NSEvent.mouseLocation
     @State private var hideWork: DispatchWorkItem?
@@ -25,26 +28,38 @@ struct SpicyLockScreen: View {
     /// pointer is looked at a few times a second instead.
     private let mouseTick = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
 
-    private var lineSize: CGFloat { max(28, size.height * 0.042) }
-    private var lyricsLeft: CGFloat { size.width * 0.48 }
-    private var lyricsWidth: CGFloat { size.width - lyricsLeft - size.width * 0.03 }
+    /// Everything starts below the clock; behind the clock is only the
+    /// background.
+    private var top: CGFloat { size.height * 0.27 }
+    private var lineSize: CGFloat { max(28, size.height * 0.045) }
+    private var coverSide: CGFloat { min(size.height * 0.44, size.width * 0.27) }
+    private var lyricsLeft: CGFloat { size.width * 0.5 }
+    private var lyricsWidth: CGFloat { size.width - lyricsLeft - size.width * 0.04 }
+    private var image: NSImage? { artwork ?? nowPlaying.artwork }
 
     var body: some View {
+        let current = nowPlaying.info ?? info
         ZStack(alignment: .topLeading) {
-            SpicyBackdrop(image: artwork ?? nowPlaying.artwork, size: size)
-            SpicyLyrics(lyrics: lyrics, info: nowPlaying.info ?? info, fontSize: lineSize) { nowPlaying.seek(to: $0) }
-                .frame(width: lyricsWidth, height: size.height)
-                .position(x: lyricsLeft + lyricsWidth / 2, y: size.height / 2)
-            player
-                .frame(width: min(380, size.width * 0.27))
-                .position(x: size.width * 0.02 + min(380, size.width * 0.27) / 2, y: size.height - 92)
+            ReactiveBackdrop(palette: palette, playing: current.isPlaying, size: size)
+            SpicyLyrics(lyrics: lyrics, info: current, fontSize: lineSize) { nowPlaying.seek(to: $0) }
+                .frame(width: lyricsWidth, height: size.height - top + size.height * 0.02)
+                .position(x: lyricsLeft + lyricsWidth / 2, y: (top - size.height * 0.02 + size.height) / 2)
+            leftColumn(current)
+                .frame(width: coverSide + 40)
+                .position(x: size.width * 0.25, y: top + (size.height - top) * 0.47)
         }
         .frame(width: size.width, height: size.height)
         .onAppear {
             lyrics.load(for: info)
+            updatePalette()
             scheduleHide()
         }
         .onChange(of: info.title + info.artist) { _, _ in lyrics.load(for: info) }
+        .onChange(of: image) { _, _ in updatePalette() }
+        .task(id: current.artist + "|" + current.title) {
+            motionReady = false
+            await motion.load(for: current)
+        }
         .onReceive(mouseTick) { _ in
             let mouse = NSEvent.mouseLocation
             guard mouse != lastMouse else { return }
@@ -54,6 +69,12 @@ struct SpicyLockScreen: View {
         }
     }
 
+    private func updatePalette() {
+        guard let image else { palette = []; return }
+        let colors = ColorExtractor.palette(of: image).map { Color(nsColor: $0) }
+        withAnimation(.easeInOut(duration: 1.2)) { palette = colors }
+    }
+
     private func scheduleHide() {
         hideWork?.cancel()
         let work = DispatchWorkItem { withAnimation(.easeInOut(duration: 0.6)) { controlsVisible = false } }
@@ -61,90 +82,89 @@ struct SpicyLockScreen: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
     }
 
-    // MARK: - Player (lower left)
+    // MARK: - Cover, progress, title (left)
 
-    private var player: some View {
-        let current = nowPlaying.info ?? info
-        return VStack(alignment: .leading, spacing: 6) {
-            Text(current.title)
-                .font(.system(size: 17, weight: .bold))
-                .lineLimit(1)
-            Text(current.artist.isEmpty ? (current.appName ?? "") : current.artist)
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(.white.opacity(0.7))
-                .lineLimit(1)
+    private func leftColumn(_ current: NowPlayingInfo) -> some View {
+        VStack(spacing: 0) {
+            ZStack {
+                CoverArt(image: image, cornerRadius: 14)
+                if let url = motion.url {
+                    LoopingVideo(url: url, ready: $motionReady)
+                        .opacity(motionReady ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.8), value: motionReady)
+                }
+            }
+            .frame(width: coverSide, height: coverSide)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .shadow(color: .black.opacity(0.35), radius: 30, y: 14)
             LockProgress(service: nowPlaying, info: current)
-                .padding(.top, 6)
-            HStack(spacing: 0) {
+                .frame(width: coverSide)
+                .padding(.top, 22)
+            Text(current.title)
+                .font(.system(size: 26, weight: .heavy))
+                .lineLimit(1)
+                .padding(.top, 14)
+            Text(current.artist.isEmpty ? (current.appName ?? "") : current.artist)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(.white.opacity(0.85))
+                .lineLimit(1)
+                .padding(.top, 2)
+            HStack(spacing: 4) {
                 if nowPlaying.canLike {
-                    LockButton(symbol: nowPlaying.liked ? "heart.fill" : "heart", size: 17) { nowPlaying.toggleLike() }
+                    LockButton(symbol: nowPlaying.liked ? "heart.fill" : "heart", size: 15) { nowPlaying.toggleLike() }
                         .foregroundStyle(nowPlaying.liked ? Color(red: 0.98, green: 0.33, blue: 0.47) : .white)
                         .symbolEffect(.bounce, value: nowPlaying.likePulse)
-                } else {
-                    Color.clear.frame(width: 44, height: 34)
                 }
-                Spacer(minLength: 0)
-                LockButton(symbol: "shuffle", size: 14) { nowPlaying.toggleShuffle() }
-                    .opacity(current.isShuffling ? 1 : 0.5)
                 LockButton(symbol: "backward.fill", size: 17) { nowPlaying.send(.previous) }
                 LockButton(symbol: current.isPlaying ? "pause.fill" : "play.fill", size: 24) {
                     nowPlaying.send(.togglePlayPause)
                 }
                 LockButton(symbol: "forward.fill", size: 17) { nowPlaying.send(.next) }
-                LockButton(symbol: current.repeatMode == 2 ? "repeat.1" : "repeat", size: 14) { nowPlaying.cycleRepeat() }
-                    .opacity(current.repeatMode == 1 ? 0.5 : 1)
-                Spacer(minLength: 0)
                 LockButton(symbol: "quote.bubble.fill", size: 14, action: onClose)
                     .help(L("Songtext ausblenden", "Hide lyrics"))
             }
+            .padding(.top, 10)
             .opacity(controlsVisible ? 1 : 0)
             .allowsHitTesting(controlsVisible)
         }
         .foregroundStyle(.white)
-        .shadow(color: .black.opacity(0.35), radius: 4, y: 1)
+        .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
     }
 }
 
-// MARK: - Backdrop
+// MARK: - Background
 
-/// The cover fills the left side at full height and fades out to the
-/// right into a colourful, heavily blurred wash of its own colours.
-private struct SpicyBackdrop: View {
-    let image: NSImage?
+/// Soft blobs in the cover's colours drifting slowly over a deeper base;
+/// they swell a little on each beat while music plays (when the audio
+/// level is available). Radial gradients, no blur, so it stays light.
+private struct ReactiveBackdrop: View {
+    let palette: [Color]
+    let playing: Bool
     let size: CGSize
 
     var body: some View {
-        let side = size.height
-        ZStack(alignment: .topLeading) {
-            Color.black
-            if let image {
-                // The wash: the cover huge, blurred and more saturated.
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: size.width, height: size.height)
-                    .scaleEffect(1.3)
-                    .blur(radius: 110, opaque: true)
-                    .saturation(1.7)
-                    .brightness(-0.08)
-                    .clipped()
-                Color.black.opacity(0.28)
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: side, height: side)
-                    .clipped()
-                    // Only the right part fades into the wash.
-                    .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.5),
-                                                 .init(color: .clear, location: 0.96)],
-                                         startPoint: .leading, endPoint: .trailing))
+        let colors = palette.isEmpty ? [Color(white: 0.25), Color(white: 0.15)] : palette
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let levels = AudioLevelMeter.shared.levels
+            let beat = playing && levels.hasSignal ? Double(levels.beat) : 0
+            ZStack {
+                colors[0].brightness(-0.25)
+                ForEach(0..<5, id: \.self) { i in
+                    let color = colors[i % colors.count]
+                    let speed = playing ? 1.0 : 0.35
+                    let x = 0.5 + 0.42 * sin(t * 0.045 * speed * Double(i + 1) + Double(i) * 1.9)
+                    let y = 0.5 + 0.42 * cos(t * 0.037 * speed * Double(i + 2) + Double(i) * 2.7)
+                    let radius = max(size.width, size.height) * (0.42 + 0.06 * sin(t * 0.09 + Double(i))) * (1 + 0.1 * beat)
+                    RadialGradient(colors: [color.opacity(0.9), color.opacity(0)],
+                                   center: UnitPoint(x: x, y: y), startRadius: 0, endRadius: radius)
+                }
+                Color.black.opacity(0.12)
             }
-            // A little darker at the bottom for the player.
-            LinearGradient(colors: [.clear, .black.opacity(0.45)], startPoint: UnitPoint(x: 0.5, y: 0.62), endPoint: .bottom)
         }
         .frame(width: size.width, height: size.height)
-        .clipped()
+        .onAppear { AudioLevelMeter.shared.acquire() }
+        .onDisappear { AudioLevelMeter.shared.release() }
         .allowsHitTesting(false)
     }
 }
@@ -206,13 +226,13 @@ private struct SpicyScroller: View {
             }
             .scrollDisabled(true)
             // Soft edges, wider at the top where the clock is.
-            .mask(LinearGradient(stops: [.init(color: .clear, location: 0.12), .init(color: .black, location: 0.24),
-                                         .init(color: .black, location: 0.92), .init(color: .clear, location: 1)],
+            .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.1),
+                                         .init(color: .black, location: 0.9), .init(color: .clear, location: 1)],
                                  startPoint: .top, endPoint: .bottom))
-            .onAppear { proxy.scrollTo(current ?? 0, anchor: UnitPoint(x: 0, y: 0.45)) }
+            .onAppear { proxy.scrollTo(current ?? 0, anchor: UnitPoint(x: 0, y: 0.42)) }
             .onChange(of: current) { _, index in
                 withAnimation(.spring(response: 0.7, dampingFraction: 0.86)) {
-                    proxy.scrollTo(index ?? 0, anchor: UnitPoint(x: 0, y: 0.45))
+                    proxy.scrollTo(index ?? 0, anchor: UnitPoint(x: 0, y: 0.42))
                 }
             }
         }
@@ -230,10 +250,10 @@ private struct SpicyScroller: View {
             } else if isCurrent {
                 SpicyActiveLine(lyrics: lyrics, index: index, info: info, fontSize: fontSize)
             } else {
-                SpicyStillLine(line: line, fontSize: fontSize, opacity: isHovered ? 0.85 : (isPast ? 0.45 : 0.55))
+                SpicyStillLine(line: line, fontSize: fontSize, opacity: isHovered ? 0.85 : (isPast ? 0.38 : 0.45))
             }
         }
-        .blur(radius: isCurrent || isHovered ? 0 : min(2, 0.3 + Double(distance) * 0.35))
+        .blur(radius: isCurrent || isHovered ? 0 : min(3, Double(max(distance - 1, 0)) * 0.6))
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, fontSize * 0.35)
         .padding(.vertical, fontSize * 0.15)

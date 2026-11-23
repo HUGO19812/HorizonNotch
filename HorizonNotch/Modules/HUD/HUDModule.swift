@@ -68,6 +68,9 @@ final class HUDModule: NotchModule {
             value = (value / step).rounded() * step
             output.volume = value
             if output.isMuted && key == .volumeUp { output.isMuted = false }
+            // Some devices (AirPods, some speakers) still play quietly at a
+            // volume of 0: the lowest step mutes them for real.
+            if key == .volumeDown && value <= 0.001 && !output.isMuted { output.isMuted = true }
             show(.volume, level: output.volume, muted: output.isMuted || output.volume <= 0)
         case .mute:
             output.isMuted.toggle()
