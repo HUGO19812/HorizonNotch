@@ -31,7 +31,7 @@
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Horizon Notch misst nur die Lautstärke der laufenden Musik, damit Punkt und Wellen in der Notch im Takt mitgehen. Es wird nichts aufgenommen oder gespeichert.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Horizon Notch zeigt verbundene Bluetooth-Geräte und den Akkustand deiner AirPods.</string>
+	<string>Horizon Notch zeigt verbundene Bluetooth-Geräte und den Akkustand deiner AirPods und steuert deine Hue-Lampe.</string>
 	<key>NSFocusStatusUsageDescription</key>
 	<string>Horizon Notch zeigt kurz an, wenn ein Fokus ein- oder ausgeschaltet wird.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
