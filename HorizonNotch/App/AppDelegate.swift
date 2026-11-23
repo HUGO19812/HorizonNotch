@@ -122,8 +122,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &displaySubscriptions)
 
         statusBar = StatusBarController(appDelegate: self)
-        NotificationCenter.default.addObserver(forName: .openSettings, object: nil, queue: .main) { [weak self] _ in
-            self?.showSettings()
+        NotificationCenter.default.addObserver(forName: .openSettings, object: nil, queue: .main) { [weak self] note in
+            // The object may name a page ("light" for the light's moods).
+            self?.showSettings(tab: (note.object as? String).flatMap(SettingsTab.init(rawValue:)) ?? .general)
         }
         lockScreen?.onLockChange = { [weak controller, weak self] locked in
             controller?.collapse()

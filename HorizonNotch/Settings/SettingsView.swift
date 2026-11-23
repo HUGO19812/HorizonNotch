@@ -59,6 +59,8 @@ private let settingsGroups: [SettingsGroup] = [
                       keywords: "Verbindungen connectivity Bluetooth AirPods Kopfhörer headphones WLAN WiFi Fokus focus Benachrichtigungen notifications Mitteilungen Downloads Fortschritt progress"),
         SettingsEntry(tab: .calendar, de: "Kalender", en: "Calendar", symbol: "calendar",
                       keywords: "Termine events ganztägig all-day Meeting Countdown Zoom Teams Meet Ansicht view"),
+        SettingsEntry(tab: .light, de: "Licht", en: "Light", symbol: "lightbulb.led.wide.fill",
+                      keywords: "Hue Philips Lichtstreifen light strip Lampe lamp Bluetooth Stimmung mood Farbe colour color Helligkeit brightness"),
         SettingsEntry(tab: .weather, de: "Wetter", en: "Weather", symbol: "cloud.sun.fill",
                       keywords: "Standort location Ort place Stadt city suchen search Einheiten units Celsius Fahrenheit Temperatur"),
         SettingsEntry(tab: .shelf, de: "Ablage", en: "Shelf", symbol: "tray.full.fill",
@@ -234,6 +236,7 @@ struct SettingsView: View {
             NotificationSettings()
             DownloadSettings()
         case .calendar: CalendarSettings()
+        case .light: LightSettings()
         case .weather: WeatherSettings()
         case .shelf: ShelfSettings()
         case .claude: ClaudeSettings()
