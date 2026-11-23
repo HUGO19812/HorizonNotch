@@ -1,4 +1,5 @@
 import AppKit
+import EventKit
 import OpenDirectory
 import SwiftUI
 
@@ -82,8 +83,12 @@ struct LockScreenView: View {
         .animation(spring, value: state.large)
         .animation(spring, value: state.lyrics)
         .animation(.easeInOut(duration: 0.4), value: settings.lockScreenBackdrop)
-        .task(id: (nowPlaying.info?.artist ?? "") + "|" + (nowPlaying.info?.title ?? "")) {
-            await hiRes.load(for: nowPlaying.info)
+        .task(id: (nowPlaying.info?.artist ?? "") + "|" + (nowPlaying.info?.title ?? "") + "|"
+                  + String(nowPlaying.info?.artworkID ?? 0)) {
+            // Wait for the player's own artwork: it decides whether a hi-res
+            // hit is the same cover.
+            if nowPlaying.info?.artworkID != 0 && nowPlaying.artwork == nil { return }
+            await hiRes.load(for: nowPlaying.info, artwork: nowPlaying.artwork)
         }
     }
 
@@ -106,9 +111,16 @@ struct LockScreenView: View {
     /// With lyrics, cover and card move left and the lyrics appear right.
     private func large(info: NowPlayingInfo, size: CGSize) -> some View {
         let cardY = size.height * 0.705
-        let top = size.height * 0.285 + 34
+        // Below the round widgets of the status row.
+        let top = size.height * 0.285 + max(50, size.height * 0.05) / 2 + 16
         let cover = min(380, cardY - 74 - top - 24)
-        let shift: CGFloat = state.lyrics ? -min(330, size.width * 0.2) : 0
+        // With lyrics, cover + card and the lyrics sit side by side as one
+        // centred pair with a small gap.
+        let column = max(cover, 330)
+        let lyricsWidth = min(540, size.width * 0.36)
+        let gap: CGFloat = 56
+        let pairLeft = (size.width - column - gap - lyricsWidth) / 2
+        let columnX = state.lyrics ? pairLeft + column / 2 : size.width / 2
         return ZStack {
             CoverArt(image: nowPlaying.artwork, cornerRadius: 10)
                 .matchedGeometryEffect(id: "cover", in: player)
@@ -116,20 +128,17 @@ struct LockScreenView: View {
                 .shadow(color: .black.opacity(0.45), radius: 30, y: 14)
                 .onTapGesture { state.large = false; state.lyrics = false }
                 .help(L("Klein anzeigen", "Show small"))
-                .position(x: size.width / 2 + shift, y: top + (cardY - 74 - top) / 2)
+                .position(x: columnX, y: top + (cardY - 74 - top) / 2)
+            // The large cover is right above: no small one in the card.
             LiquidPlayerCard(service: nowPlaying, info: info, lyricsOn: state.lyrics,
-                             onLyrics: { state.lyrics.toggle() }) {
-                CoverArt(image: nowPlaying.artwork, cornerRadius: 9)
-                    .frame(width: 56, height: 56)
-                    .onTapGesture { state.large = false; state.lyrics = false }
-            }
-            .frame(width: 330)
-            .position(x: size.width / 2 + shift, y: cardY)
-            .transition(.opacity)
+                             onLyrics: { state.lyrics.toggle() }) { EmptyView() }
+                .frame(width: 330)
+                .position(x: columnX, y: cardY)
+                .transition(.opacity)
             if state.lyrics {
                 LyricsPanel(lyrics: lyrics, info: info, large: true, fontSize: 30) { nowPlaying.seek(to: $0) }
-                    .frame(width: 540, height: cardY + 60 - top)
-                    .position(x: size.width / 2 + 330 + 40, y: top + (cardY + 60 - top) / 2)
+                    .frame(width: lyricsWidth, height: cardY + 60 - top)
+                    .position(x: pairLeft + column + gap + lyricsWidth / 2, y: top + (cardY + 60 - top) / 2)
                     .transition(.opacity.combined(with: .offset(x: 40)))
             }
         }
@@ -247,45 +256,97 @@ private struct LockClock: View {
     }
 }
 
-/// The widgets under the clock, as chosen in Settings → Lock Screen:
-/// weather, battery, headphones and the next appointment.
+/// The widgets under the clock, as chosen in Settings → Lock Screen, in
+/// the look of iOS lock screen widgets: round accessory widgets on a soft
+/// translucent disc (weather, battery as a ring, headphones) and the next
+/// appointment as a rectangular one.
 private struct StatusRow: View {
     let screenHeight: CGFloat
     @ObservedObject private var power = PowerSource.shared
     @ObservedObject private var output = AudioOutput.shared
     @ObservedObject private var settings = AppSettings.shared
 
+    private var side: CGFloat { max(50, screenHeight * 0.05) }
+
     var body: some View {
-        HStack(spacing: 22) {
+        HStack(spacing: side * 0.28) {
             if settings.lockWidgetWeather, let report = LockScreenSources.weather?.report {
-                item(WeatherCode.symbol(report.code, isDay: report.isDay), "\(Int(report.temperature.rounded()))°")
+                circular(progress: nil) {
+                    Image(systemName: WeatherCode.symbol(report.code, isDay: report.isDay))
+                        .font(.system(size: side * 0.3, weight: .semibold))
+                        .symbolRenderingMode(.hierarchical)
+                    Text("\(Int(report.temperature.rounded()))°")
+                        .font(.system(size: side * 0.27, weight: .semibold, design: .rounded))
+                }
             }
             if settings.lockWidgetBattery, power.state.hasBattery {
-                item(power.state.isCharging || power.state.isPluggedIn ? "bolt.fill" : "battery.75percent",
-                     "\(power.state.percent) %")
+                circular(progress: Double(power.state.percent) / 100,
+                         ringColor: power.state.isCharging ? .green : (power.state.percent <= 20 ? .red : .white)) {
+                    Image(systemName: power.state.isCharging || power.state.isPluggedIn ? "bolt.fill" : "laptopcomputer")
+                        .font(.system(size: side * 0.22, weight: .bold))
+                    Text("\(power.state.percent)")
+                        .font(.system(size: side * 0.27, weight: .semibold, design: .rounded))
+                }
             }
             if settings.lockWidgetHeadphones, output.isBluetooth {
-                item(output.symbol, nil)
+                circular(progress: nil) {
+                    Image(systemName: output.symbol)
+                        .font(.system(size: side * 0.36, weight: .medium))
+                }
             }
             if settings.lockWidgetEvent, let event = LockScreenSources.calendar?.nextEvent,
                Calendar.current.isDateInToday(event.startDate) {
-                item("calendar", event.startDate.formatted(.dateTime.hour().minute().locale(appLocale))
-                     + " " + (event.title ?? ""))
-                    .lineLimit(1)
-                    .frame(maxWidth: 320)
+                rectangular(event)
             }
         }
-        .font(.system(size: max(16, screenHeight * 0.022), weight: .semibold))
-        .foregroundStyle(.white.opacity(0.85))
-        .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
+        .foregroundStyle(.white)
+        .monospacedDigit()
+        .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
         .allowsHitTesting(false)
     }
 
-    private func item(_ symbol: String, _ text: String?) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: symbol)
-            if let text { Text(text).monospacedDigit() }
+    /// Accessory disc: content stacked in the middle, an optional ring.
+    private func circular<Content: View>(progress: Double?, ringColor: Color = .white,
+                                         @ViewBuilder content: () -> Content) -> some View {
+        ZStack {
+            Circle().fill(Color.white.opacity(0.16))
+            Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.75)
+            if let progress {
+                Circle()
+                    .inset(by: side * 0.06)
+                    .stroke(Color.white.opacity(0.22), style: StrokeStyle(lineWidth: side * 0.07, lineCap: .round))
+                Circle()
+                    .inset(by: side * 0.06)
+                    .trim(from: 0, to: min(max(progress, 0), 1))
+                    .stroke(ringColor, style: StrokeStyle(lineWidth: side * 0.07, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            VStack(spacing: 0) { content() }
         }
+        .frame(width: side, height: side)
+        .background(Circle().fill(.ultraThinMaterial).opacity(0.35))
+    }
+
+    private func rectangular(_ event: EKEvent) -> some View {
+        HStack(spacing: 8) {
+            Capsule().fill(event.tint).frame(width: 3.5)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(event.title ?? "")
+                    .font(.system(size: side * 0.26, weight: .semibold))
+                    .lineLimit(1)
+                Text(event.startDate.formatted(.dateTime.hour().minute().locale(appLocale)))
+                    .font(.system(size: side * 0.22, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+        }
+        .padding(.vertical, side * 0.14)
+        .padding(.leading, side * 0.16)
+        .padding(.trailing, side * 0.26)
+        .frame(height: side)
+        .frame(maxWidth: side * 4.4, alignment: .leading)
+        .fixedSize(horizontal: true, vertical: false)
+        .background(RoundedRectangle(cornerRadius: side * 0.3, style: .continuous).fill(Color.white.opacity(0.16)))
+        .background(RoundedRectangle(cornerRadius: side * 0.3, style: .continuous).fill(.ultraThinMaterial).opacity(0.35))
     }
 }
 
@@ -311,12 +372,19 @@ private struct LiquidPlayerCard<Artwork: View>: View {
     let onLyrics: () -> Void
     @ViewBuilder var artwork: Artwork
 
+    private static var systemGlass: Bool {
+        if #available(macOS 26.0, *) { return true }
+        return false
+    }
+
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
         let crafted = overWallpaper && Wallpaper.shared.image != nil
         // Clear glass over the picture has no tint at all; the transparency
         // slider shades the other looks.
-        let solid = crafted && settings.lockGlassStyle != .frosted
+        // Over our own cover backdrop the system's clear Liquid Glass sees
+        // the picture, so it needs no shade either.
+        let solid = (crafted && settings.lockGlassStyle != .frosted) || (!overWallpaper && Self.systemGlass)
             ? 0 : 1 - min(max(settings.lockScreenTransparency, 0), 1)
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
@@ -325,18 +393,21 @@ private struct LiquidPlayerCard<Artwork: View>: View {
                     Text(info.title)
                         .font(.system(size: 14, weight: .semibold))
                         .lineLimit(1)
+                        .multilineTextAlignment(Artwork.self == EmptyView.self ? .center : .leading)
                     Text(info.artist.isEmpty ? (info.appName ?? "") : info.artist)
                         .font(.system(size: 12.5, weight: .medium))
                         .foregroundStyle(.white.opacity(0.75))
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: Artwork.self == EmptyView.self ? .center : .leading)
-                Image(systemName: "waveform")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.4))
-                    .symbolEffect(.variableColor.iterative, isActive: info.isPlaying)
-                    .frame(width: 26)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                if Artwork.self != EmptyView.self {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .symbolEffect(.variableColor.iterative, isActive: info.isPlaying)
+                        .frame(width: 26)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                }
             }
             .fixedSize(horizontal: false, vertical: true)
             LockProgress(service: service, info: info)
@@ -379,7 +450,7 @@ private struct LiquidPlayerCard<Artwork: View>: View {
                 if overWallpaper && Wallpaper.shared.image != nil {
                     CraftedGlass(shape: shape, frost: frosted ? 1 : 0)
                 } else if #available(macOS 26.0, *) {
-                    Color.clear.glassEffect(frosted ? .regular : .clear, in: shape)
+                    Color.clear.glassEffect(overWallpaper && frosted ? .regular : .clear, in: shape)
                 } else {
                     shape.fill(.ultraThinMaterial).opacity(0.3 + solid * 0.7)
                 }
@@ -682,38 +753,78 @@ private struct LockButton: View {
 /// The cover in high resolution for the full-screen backdrop: the player
 /// only hands over a small thumbnail (often 300 px), which turns to mush
 /// when stretched over the screen. Looks the song up in the iTunes catalogue
-/// and takes its artwork at 3000 px.
+/// and takes its artwork at 3000 px – but only when it is really the same
+/// cover: artist and title must match, and the picture must look like the
+/// player's own artwork. Otherwise the player's artwork is used.
 @MainActor
 final class HiResArtwork: ObservableObject {
     @Published private(set) var image: NSImage?
     private var key = ""
     private static var cache: [String: NSImage] = [:]
 
-    func load(for info: NowPlayingInfo?) async {
-        guard let info, !info.title.isEmpty else { image = nil; return }
+    func load(for info: NowPlayingInfo?, artwork: NSImage?) async {
+        guard let info, !info.title.isEmpty else { image = nil; key = ""; return }
         let key = info.artist + "|" + info.title
         guard key != self.key else { return }
         self.key = key
         image = Self.cache[key]
         guard image == nil else { return }
         var components = URLComponents(string: "https://itunes.apple.com/search")!
-        components.queryItems = [URLQueryItem(name: "term", value: "\(info.artist) \(info.title)"),
+        components.queryItems = [URLQueryItem(name: "term", value: "\(info.artist) \(Self.normalized(info.title))"),
                                  URLQueryItem(name: "entity", value: "song"),
-                                 URLQueryItem(name: "limit", value: "5")]
+                                 URLQueryItem(name: "limit", value: "10")]
         guard let url = components.url,
               let (data, _) = try? await URLSession.shared.data(from: url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let results = json["results"] as? [[String: Any]] else { return }
-        // Same artist if possible, else the first hit.
-        let artist = info.artist.lowercased()
-        let hit = results.first { ($0["artistName"] as? String)?.lowercased().contains(artist.prefix(12)) == true }
-            ?? results.first
-        guard let small = hit?["artworkUrl100"] as? String,
-              let big = URL(string: small.replacingOccurrences(of: "100x100bb", with: "3000x3000bb")),
-              let (imageData, _) = try? await URLSession.shared.data(from: big),
-              let loaded = NSImage(data: imageData), key == self.key else { return }
-        Self.cache[key] = loaded
-        image = loaded
+        let artist = Self.normalized(info.artist), title = Self.normalized(info.title)
+        let hits = results.filter { result in
+            let hitArtist = Self.normalized(result["artistName"] as? String ?? "")
+            let hitTitle = Self.normalized(result["trackName"] as? String ?? "")
+            let artistMatches = !artist.isEmpty && (hitArtist.contains(artist) || artist.contains(hitArtist)) && !hitArtist.isEmpty
+            return artistMatches && hitTitle == title
+        }
+        for hit in hits.prefix(3) {
+            guard let small = hit["artworkUrl100"] as? String,
+                  let big = URL(string: small.replacingOccurrences(of: "100x100bb", with: "3000x3000bb")),
+                  let (imageData, _) = try? await URLSession.shared.data(from: big),
+                  let loaded = NSImage(data: imageData), key == self.key else { continue }
+            // Same song on another release can carry another cover.
+            if let artwork, !Self.looksAlike(loaded, artwork) { continue }
+            Self.cache[key] = loaded
+            image = loaded
+            return
+        }
+    }
+
+    /// Lowercased, without "(feat. …)", "- Radio Edit", punctuation.
+    static func normalized(_ text: String) -> String {
+        var value = text.lowercased()
+        for separator in [" (", " [", " - ", " feat.", " ft."] {
+            if let range = value.range(of: separator) { value = String(value[..<range.lowerBound]) }
+        }
+        return value.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(String.init).joined()
+    }
+
+    /// Compares both covers at 8 × 8 pixels: the mean colour difference must
+    /// stay small.
+    static func looksAlike(_ a: NSImage, _ b: NSImage) -> Bool {
+        guard let pa = pixels(a), let pb = pixels(b) else { return true }
+        var total = 0
+        for i in 0..<pa.count { total += abs(Int(pa[i]) - Int(pb[i])) }
+        return Double(total) / Double(pa.count) < 38
+    }
+
+    private static func pixels(_ image: NSImage) -> [UInt8]? {
+        let side = 8
+        guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        var data = [UInt8](repeating: 0, count: side * side * 4)
+        guard let context = CGContext(data: &data, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        context.interpolationQuality = .medium
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: side, height: side))
+        return stride(from: 0, to: data.count, by: 4).flatMap { [data[$0], data[$0 + 1], data[$0 + 2]] }
     }
 }
 
