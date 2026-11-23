@@ -251,8 +251,7 @@ private struct RemindersPage: View {
         if !module.hasAccess {
             RemindersAccessView(module: module)
         } else if creating {
-            NewReminderForm(module: module) { withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { creating = false } }
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            NewReminderForm(module: module) { withAnimation(.easeInOut(duration: 0.2)) { creating = false } }
         } else {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -264,7 +263,6 @@ private struct RemindersPage: View {
                 .frame(width: 196)
                 listCard
             }
-            .transition(.opacity)
         }
     }
 
@@ -341,13 +339,19 @@ private struct RemindersPage: View {
                 .buttonStyle(.plain)
                 .help(L("In Erinnerungen öffnen", "Open in Reminders"))
                 Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { creating = true }
+                    withAnimation(.easeInOut(duration: 0.2)) { creating = true }
                 } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Color.blue)
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus").font(.system(size: 9.5, weight: .heavy))
+                        Text(L("Neu", "New")).font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.blue)
+                    .padding(.horizontal, 9)
+                    .frame(height: 20)
+                    .background(Capsule().fill(Color.blue.opacity(0.18)))
+                    .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressScaleStyle())
                 .help(L("Neue Erinnerung", "New reminder"))
             }
             if items.isEmpty {
@@ -449,7 +453,7 @@ private struct NewReminderForm: View {
     private enum Field { case title, notes }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 10) {
                 Button(L("Abbrechen", "Cancel"), action: close)
                     .buttonStyle(.plain)
@@ -487,20 +491,6 @@ private struct NewReminderForm: View {
                                 .controlSize(.small)
                                 .fixedSize()
                                 .onTapGesture { askForKeyboard(nil) }
-                            // Apple's quick picks.
-                            Menu {
-                                Button(L("Heute", "Today")) { setDay(0) }
-                                Button(L("Morgen", "Tomorrow")) { setDay(1) }
-                                Button(L("Wochenende", "Weekend")) { setWeekend() }
-                                Button(L("Nächste Woche", "Next week")) { setDay(7) }
-                            } label: {
-                                Image(systemName: "chevron.down.circle.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Color.blue)
-                            }
-                            .menuStyle(.button)
-                            .buttonStyle(.plain)
-                            .fixedSize()
                         }
                         Toggle("", isOn: $draft.hasDate.animation()).labelsHidden().toggleStyle(.switch).controlSize(.mini)
                     }
@@ -552,11 +542,43 @@ private struct NewReminderForm: View {
                     }
                 }
             }
+            if draft.hasDate {
+                // Apple's quick picks for the day.
+                HStack(spacing: 6) {
+                    chip(L("Heute", "Today"), Calendar.current.isDateInToday(draft.date)) { setDay(0) }
+                    chip(L("Morgen", "Tomorrow"), Calendar.current.isDateInTomorrow(draft.date)) { setDay(1) }
+                    chip(L("Wochenende", "Weekend"), isWeekend) { setWeekend() }
+                    chip(L("Nächste Woche", "Next week"), isNextWeek) { setDay(7) }
+                }
+                .transition(.opacity)
+            }
         }
         .onAppear {
             draft.listID = module.list(withID: lastListID) != nil ? lastListID : (module.defaultList?.calendarIdentifier ?? "")
             askForKeyboard(.title)
         }
+    }
+
+    private func chip(_ title: String, _ active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(active ? Color.black : .white.opacity(0.75))
+                .padding(.horizontal, 8)
+                .frame(height: 19)
+                .background(Capsule().fill(active ? Color.white : Color.white.opacity(0.1)))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var isWeekend: Bool {
+        let day = Calendar.current.component(.weekday, from: draft.date)
+        return (day == 7 || day == 1) && draft.date.timeIntervalSinceNow < 7 * 86_400
+    }
+
+    private var isNextWeek: Bool {
+        Calendar.current.isDate(draft.date, inSameDayAs: Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date())
     }
 
     private var divider: some View {
@@ -582,7 +604,7 @@ private struct NewReminderForm: View {
             trailing()
         }
         .padding(.horizontal, 7)
-        .frame(height: 25)
+        .frame(height: 21)
     }
 
     private func picker<Items: View>(_ title: String, dot: Color? = nil, @ViewBuilder items: () -> Items) -> some View {

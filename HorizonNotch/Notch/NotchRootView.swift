@@ -238,6 +238,21 @@ private struct ExpandedContent: View {
                 .onReceive(infoChanges) { refreshInfos() }
                 .onChange(of: settings.headerLiveInfo) { refreshInfos() }
                 .onChange(of: coordinator.pages.map(\.id)) { refreshInfos() }
+                // Volume and brightness show in the header, over the tabs on
+                // the left, so the page below stays as it is.
+                .overlay(alignment: .leading) {
+                    if let hud = coordinator.transientModule, hud.id == "hud" {
+                        hud.transientView()
+                            .padding(.horizontal, 10)
+                            .frame(height: 24)
+                            .background(Capsule().fill(Color(white: 0.1))
+                                .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1)))
+                            .fixedSize()
+                            .padding(.leading, 2)
+                            .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .leading)))
+                    }
+                }
+                .animation(.spring(response: 0.3, dampingFraction: 0.85), value: coordinator.transientModule?.id == "hud")
             ZStack {
                 if model.showHello {
                     OnboardingView { NotificationCenter.default.post(name: .helloFinished, object: nil) }
@@ -261,8 +276,7 @@ private struct ExpandedContent: View {
             .padding(.horizontal, 22)
             .padding(.bottom, 14)
             .overlay(alignment: .bottom) {
-                // Volume and brightness don't cover the open island: it
-                // stays as it is while they change.
+                // Volume and brightness show in the header instead (above).
                 if let transient = coordinator.transientModule, transient.id != "hud" {
                     if transient.id == "devices" {
                         // A connected device covers the whole page as a

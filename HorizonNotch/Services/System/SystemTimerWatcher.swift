@@ -1,10 +1,12 @@
-import Foundation
+import AppKit
 
 /// Timers started in macOS's Clock app (or with Siri). mobiletimerd keeps
 /// them in its preferences ("MTTimers"): a running timer's fire time is a
 /// date, a paused one a remaining interval, a stopped one has state 1.
-/// The preferences folder is watched, and while a timer exists it is looked
-/// at every few seconds to notice pausing and stopping.
+/// mobiletimerd can't be asked directly (its service only answers Apple's
+/// apps), and its file is written late. The preferences daemon has the new
+/// values at once, though: they're read every 1.5 s while the Clock app runs
+/// or a timer exists, otherwise only when the preferences folder changes.
 final class SystemTimerWatcher {
     enum Status: Equatable {
         case running(end: Date, length: TimeInterval)
@@ -18,8 +20,21 @@ final class SystemTimerWatcher {
     private var poll: Timer?
     private var last: Status?
     private var checkScheduled = false
+    private var observers: [NSObjectProtocol] = []
+    private static let clockApp = "com.apple.clock"
+
+    private var clockRunning: Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: Self.clockApp).isEmpty
+    }
 
     func start() {
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                if app?.bundleIdentifier == Self.clockApp { self?.check() }
+            })
+        }
         let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences").path
         let fd = open(folder, O_EVTONLY)
         if fd >= 0 {
@@ -45,11 +60,12 @@ final class SystemTimerWatcher {
         let status = read()
         // Keep looking while one exists: pausing and stopping only reach
         // the file after a while.
-        if status != nil, poll == nil {
-            let timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.check() }
-            timer.tolerance = 1
+        let watch = status != nil || clockRunning
+        if watch, poll == nil {
+            let timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in self?.check() }
+            timer.tolerance = 0.3
             poll = timer
-        } else if status == nil {
+        } else if !watch {
             poll?.invalidate()
             poll = nil
         }
