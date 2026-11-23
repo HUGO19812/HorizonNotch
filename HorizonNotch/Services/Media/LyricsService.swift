@@ -24,9 +24,8 @@ final class LyricsService: ObservableObject {
         if let times = line.wordTimes, times.count == words.count {
             return max(1, times.filter { $0 <= position + 0.05 }.count)
         }
-        let next = lines.indices.contains(index + 1) ? lines[index + 1].time : line.time + 6
-        let span = min(next - line.time, max(1.2, Double(line.text.count) * 0.075))
-        let progress = span > 0 ? (position - line.time) / (span * 0.92) : 1
+        let span = singingSpan(of: index)
+        let progress = span > 0 ? (position - line.time) / span : 1
         let total = Double(words.reduce(0) { $0 + $1.count + 1 })
         var before = 0.0
         var sung = 0
@@ -53,9 +52,21 @@ final class LyricsService: ObservableObject {
             let fraction = end > times[current] ? (position - times[current]) / (end - times[current]) : 1
             return min(total, before + length * min(max(fraction, 0), 1))
         }
-        let span = min(next - line.time, max(1.2, total * 0.075))
-        let progress = span > 0 ? (position - line.time) / (span * 0.92) : 1
+        let span = singingSpan(of: index)
+        let progress = span > 0 ? (position - line.time) / span : 1
         return min(total, max(0, progress) * total)
+    }
+
+    /// How long the singer takes for a line without word stamps: nearly
+    /// all the time until the next line (singers rarely stop early), but at
+    /// most ~4 characters a second slower than normal speech, so a long
+    /// instrumental gap after it doesn't stretch it.
+    private func singingSpan(of index: Int) -> Double {
+        let line = lines[index]
+        let next = lines.indices.contains(index + 1) ? lines[index + 1].time : line.time + 6
+        let gap = max(0.4, next - line.time)
+        let slowest = max(1.6, Double(line.text.count) * 0.24)
+        return min(gap * 0.88, slowest)
     }
 
     enum State: Equatable {

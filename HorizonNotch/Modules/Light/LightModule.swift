@@ -370,11 +370,20 @@ private struct GlassDisc: ViewModifier {
     }
 }
 
-/// Tall brightness tile like Control Center: drag up and down.
+/// Tall brightness tile like Control Center: drag up and down; all the way
+/// down switches the light off.
 private struct BrightnessTile: View {
     @ObservedObject var light: HueBluetoothLight
     @State private var dragValue: Double?
     @State private var lastSent = Date.distantPast
+
+    private func apply(_ value: Double) {
+        if value < 0.03 {
+            if light.isOn { light.setOn(false) }
+        } else {
+            light.setBrightness(value)
+        }
+    }
 
     var body: some View {
         let value = dragValue ?? (light.isOn ? light.brightness : 0)
@@ -392,16 +401,16 @@ private struct BrightnessTile: View {
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { drag in
-                    let new = min(max(1 - drag.location.y / proxy.size.height, 0.01), 1)
+                    let new = min(max(1 - drag.location.y / proxy.size.height, 0), 1)
                     dragValue = new
                     // A Bluetooth write each ~80 ms is plenty.
                     if Date().timeIntervalSince(lastSent) > 0.08 {
                         lastSent = Date()
-                        light.setBrightness(new)
+                        apply(new)
                     }
                 }
                 .onEnded { _ in
-                    if let value = dragValue { light.setBrightness(value) }
+                    if let value = dragValue { apply(value) }
                     dragValue = nil
                 })
         }
