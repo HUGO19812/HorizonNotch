@@ -144,6 +144,7 @@ final class CalendarModule: NotchModule {
 
     func compactLeading() -> AnyView { AnyView(CalendarCompactLeading(module: self)) }
     func compactTrailing() -> AnyView { AnyView(CalendarCompactTrailing(module: self)) }
+    func bubbleView() -> AnyView { AnyView(CalendarBubble(module: self)) }
     func expandedView() -> AnyView { AnyView(CalendarPage(module: self)) }
 }
 
@@ -193,6 +194,34 @@ private struct CalendarCompactLeading: View {
         .font(.system(size: 11, weight: .semibold))
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 10)
+    }
+}
+
+/// Beside the music: calendar icon and the countdown to the meeting.
+private struct CalendarBubble: View {
+    @ObservedObject var module: CalendarModule
+    @Environment(\.islandTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "calendar")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(theme.tint(module.imminent?.tint ?? .white))
+            if let event = module.imminent {
+                Group {
+                    if event.startDate > Date() {
+                        Text(timerInterval: Date()...event.startDate, countsDown: true)
+                    } else {
+                        Text(L("Jetzt", "Now"))
+                    }
+                }
+                .font(.system(size: 12, weight: .bold).monospacedDigit())
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            }
+        }
+        .padding(.horizontal, 8)
     }
 }
 

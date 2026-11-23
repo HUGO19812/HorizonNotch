@@ -44,7 +44,7 @@ struct NotchRootView: View {
             .modifier(IslandShadow(enabled: !(state == .expanded && settings.appearance == .glass),
                                    strength: state == .expanded ? settings.islandShadow : 0,
                                    glow: state == .compact ? (coordinator.compactModule?.compactGlow ?? .clear) : .clear))
-            // Claude Code beside the music: a drop right of the island.
+            // Claude Code, timer, … beside the music: a drop right of the island.
             .overlay(alignment: .topTrailing) {
                 if state == .compact, let bubble = coordinator.bubbleModule {
                     bubble.bubbleView()

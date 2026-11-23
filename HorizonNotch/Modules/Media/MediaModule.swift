@@ -39,6 +39,8 @@ final class MediaModule: NotchModule {
     /// The live activity stays while media is paused; only the
     /// visualizer stops moving.
     var isActive: Bool { service.info != nil || peek != nil }
+    /// Music is playing (not just paused): it keeps the closed island.
+    var isPlaying: Bool { service.info?.isPlaying == true }
 
     private var peekInline: Bool { peek != nil && settings.sneakPeekStyle == .inline }
     /// Standard style: a line with the song below the notch.
