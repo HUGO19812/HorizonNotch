@@ -410,72 +410,116 @@ private struct BrightnessTile: View {
     }
 }
 
+/// The scenes as panels. Up to 5 sit in one row of big panels (with names
+/// up to 3), 6–8 in two rows where each row fills the width on its own, so
+/// there's never a gap; more go on further pages (dots top right). The
+/// active scene's name stands above. "Own" is the last panel.
 private struct MoodGrid: View {
     @ObservedObject var module: LightModule
     @ObservedObject var moods: LightMoods
     let pickColor: () -> Void
+    @State private var page = 0
 
-    private let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
-
-    var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LazyVGrid(columns: columns, spacing: 8) {
-                ForEach(moods.all) { mood in
-                    tile(mood)
-                }
-                FreeColorTile(active: module.activeMoodID == "free", action: pickColor)
-            }
-        }
+    private enum Entry: Identifiable {
+        case mood(LightMood), free
+        var id: String { if case .mood(let mood) = self { return mood.id.uuidString }; return "free" }
     }
 
-    private func tile(_ mood: LightMood) -> some View {
-        let active = module.activeMoodID == mood.id.uuidString
-        let dark = { if case .white = mood.kind { return true }; return false }()
-        return Button { module.apply(mood) } label: {
-            HStack(spacing: 6) {
-                Image(systemName: mood.symbol).font(.system(size: 11, weight: .bold))
-                Text(mood.name)
-                    .font(.system(size: 11, weight: .semibold))
+    private static let perPage = 8
+
+    var body: some View {
+        let entries = moods.all.map(Entry.mood) + [.free]
+        let pages = max(1, (entries.count + Self.perPage - 1) / Self.perPage)
+        let current = min(page, pages - 1)
+        let shown = Array(entries.dropFirst(current * Self.perPage).prefix(Self.perPage))
+        let rows = shown.count <= 5 ? 1 : 2
+        let perRow = (shown.count + rows - 1) / rows
+        let withNames = shown.count <= 3
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(activeName)
+                    .font(.system(size: 14, weight: .bold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                Spacer(minLength: 0)
+                Spacer()
+                if pages > 1 {
+                    HStack(spacing: 5) {
+                        ForEach(0..<pages, id: \.self) { index in
+                            Circle()
+                                .fill(Color.white.opacity(index == current ? 0.85 : 0.25))
+                                .frame(width: 6, height: 6)
+                                .contentShape(Rectangle().inset(by: -4))
+                                .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { page = index } }
+                        }
+                    }
+                }
             }
-            .foregroundStyle(dark ? Color.black.opacity(0.7) : .white)
-            .padding(.horizontal, 10)
-            .frame(height: 50)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(LinearGradient(colors: mood.colors, startPoint: .topLeading, endPoint: .bottomTrailing)))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(active ? Color.white : .clear, lineWidth: 2))
-            .contentShape(Rectangle())
+            VStack(spacing: 8) {
+                ForEach(0..<rows, id: \.self) { row in
+                    HStack(spacing: 8) {
+                        ForEach(Array(shown.dropFirst(row * perRow).prefix(perRow))) { entry in
+                            tile(entry, withName: withNames)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: .infinity)
+            .id(current)
+            .transition(.opacity)
         }
-        .buttonStyle(PressScaleStyle())
+        .contentShape(Rectangle())
+        .gesture(DragGesture(minimumDistance: 20).onEnded { drag in
+            guard pages > 1, abs(drag.translation.width) > abs(drag.translation.height) else { return }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                page = drag.translation.width < 0 ? min(current + 1, pages - 1) : max(current - 1, 0)
+            }
+        })
     }
-}
 
-/// "Own": opens the colour field in place of the moods.
-private struct FreeColorTile: View {
-    let active: Bool
-    let action: () -> Void
+    private var activeName: String {
+        if module.activeMoodID == "free" { return L("Eigene Farbe", "Own colour") }
+        return moods.all.first { $0.id.uuidString == module.activeMoodID }?.name ?? L("Szenen", "Scenes")
+    }
 
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red], center: .center))
-                    .frame(width: 16, height: 16)
-                Text(L("Eigene", "Own")).font(.system(size: 11, weight: .semibold))
-                Spacer(minLength: 0)
+    @ViewBuilder
+    private func tile(_ entry: Entry, withName: Bool) -> some View {
+        switch entry {
+        case .mood(let mood):
+            let active = module.activeMoodID == mood.id.uuidString
+            let dark = { if case .white = mood.kind { return true }; return false }()
+            Button { module.apply(mood) } label: {
+                panel(fill: AnyShapeStyle(LinearGradient(colors: mood.colors, startPoint: .topLeading, endPoint: .bottomTrailing)),
+                      active: active) {
+                    Image(systemName: mood.symbol).font(.system(size: withName ? 12 : 13, weight: .bold))
+                    if withName {
+                        Text(mood.name).font(.system(size: 11.5, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.75)
+                    }
+                }
+                .foregroundStyle(dark ? Color.black.opacity(0.7) : .white)
             }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 10)
-            .frame(height: 50)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.09)))
+            .buttonStyle(PressScaleStyle())
+            .help(mood.name)
+        case .free:
+            Button(action: pickColor) {
+                panel(fill: AnyShapeStyle(Color.white.opacity(0.09)), active: module.activeMoodID == "free") {
+                    Circle()
+                        .fill(AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red], center: .center))
+                        .frame(width: 16, height: 16)
+                    if withName { Text(L("Eigene", "Own")).font(.system(size: 11.5, weight: .semibold)) }
+                }
+                .foregroundStyle(.white)
+            }
+            .buttonStyle(PressScaleStyle())
+            .help(L("Eigene Farbe", "Own colour"))
+        }
+    }
+
+    private func panel<Content: View>(fill: AnyShapeStyle, active: Bool, @ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 6) { content() }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(fill))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(active ? Color.white : .clear, lineWidth: 2))
             .contentShape(Rectangle())
-        }
-        .buttonStyle(PressScaleStyle())
     }
 }
 
