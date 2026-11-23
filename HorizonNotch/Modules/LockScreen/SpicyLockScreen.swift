@@ -25,19 +25,19 @@ struct SpicyLockScreen: View {
     /// pointer is looked at a few times a second instead.
     private let mouseTick = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
 
-    private var lineSize: CGFloat { max(28, size.height * 0.043) }
+    private var lineSize: CGFloat { max(28, size.height * 0.042) }
     private var lyricsLeft: CGFloat { size.width * 0.48 }
-    private var lyricsWidth: CGFloat { size.width - lyricsLeft - size.width * 0.05 }
+    private var lyricsWidth: CGFloat { size.width - lyricsLeft - size.width * 0.03 }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             SpicyBackdrop(image: artwork ?? nowPlaying.artwork, size: size)
             SpicyLyrics(lyrics: lyrics, info: nowPlaying.info ?? info, fontSize: lineSize) { nowPlaying.seek(to: $0) }
-                .frame(width: lyricsWidth, height: size.height * 0.84)
-                .position(x: lyricsLeft + lyricsWidth / 2, y: size.height * 0.52)
+                .frame(width: lyricsWidth, height: size.height)
+                .position(x: lyricsLeft + lyricsWidth / 2, y: size.height / 2)
             player
-                .frame(width: min(420, size.width * 0.3))
-                .position(x: size.width * 0.035 + min(420, size.width * 0.3) / 2, y: size.height - 110)
+                .frame(width: min(380, size.width * 0.27))
+                .position(x: size.width * 0.02 + min(380, size.width * 0.27) / 2, y: size.height - 92)
         }
         .frame(width: size.width, height: size.height)
         .onAppear {
@@ -67,10 +67,10 @@ struct SpicyLockScreen: View {
         let current = nowPlaying.info ?? info
         return VStack(alignment: .leading, spacing: 6) {
             Text(current.title)
-                .font(.system(size: 21, weight: .bold))
+                .font(.system(size: 17, weight: .bold))
                 .lineLimit(1)
             Text(current.artist.isEmpty ? (current.appName ?? "") : current.artist)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 12.5, weight: .medium))
                 .foregroundStyle(.white.opacity(0.7))
                 .lineLimit(1)
             LockProgress(service: nowPlaying, info: current)
@@ -107,44 +107,41 @@ struct SpicyLockScreen: View {
 
 // MARK: - Backdrop
 
-/// The cover large in the upper left, its edges fading into black, over a
-/// dark, blurred copy that fills the screen.
+/// The cover fills the left side at full height and fades out to the
+/// right into a colourful, heavily blurred wash of its own colours.
 private struct SpicyBackdrop: View {
     let image: NSImage?
     let size: CGSize
 
     var body: some View {
-        let side = min(size.height * 0.95, size.width * 0.55)
+        let side = size.height
         ZStack(alignment: .topLeading) {
             Color.black
             if let image {
+                // The wash: the cover huge, blurred and more saturated.
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: size.width, height: size.height)
-                    .blur(radius: 80, opaque: true)
-                    .opacity(0.26)
+                    .scaleEffect(1.3)
+                    .blur(radius: 110, opaque: true)
+                    .saturation(1.7)
+                    .brightness(-0.08)
                     .clipped()
+                Color.black.opacity(0.28)
                 Image(nsImage: image)
                     .resizable()
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fill)
                     .frame(width: side, height: side)
                     .clipped()
-                    // Fades out towards the lyrics and towards the bottom,
-                    // so no edge of the square shows.
-                    .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.45),
-                                                 .init(color: .clear, location: 0.98)],
-                                         startPoint: .leading, endPoint: .trailing))
+                    // Only the right part fades into the wash.
                     .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.5),
-                                                 .init(color: .clear, location: 0.98)],
-                                         startPoint: .top, endPoint: .bottom))
-                    .offset(y: -size.height * 0.03)
+                                                 .init(color: .clear, location: 0.96)],
+                                         startPoint: .leading, endPoint: .trailing))
             }
-            // Darker towards the lower left (player) and the right (lyrics).
-            LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: UnitPoint(x: 0.5, y: 0.45), endPoint: .bottom)
-            LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: UnitPoint(x: 0.35, y: 0.5),
-                           endPoint: .trailing)
+            // A little darker at the bottom for the player.
+            LinearGradient(colors: [.clear, .black.opacity(0.45)], startPoint: UnitPoint(x: 0.5, y: 0.62), endPoint: .bottom)
         }
         .frame(width: size.width, height: size.height)
         .clipped()
@@ -199,23 +196,23 @@ private struct SpicyScroller: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: fontSize * 0.55) {
+                VStack(alignment: .leading, spacing: fontSize * 0.3) {
                     ForEach(Array(lyrics.lines.enumerated()), id: \.offset) { index, line in
                         row(index, line)
                             .id(index)
                     }
                 }
-                .padding(.vertical, fontSize * 6)
+                .padding(.vertical, fontSize * 8)
             }
             .scrollDisabled(true)
             // Soft edges, wider at the top where the clock is.
-            .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.3),
-                                         .init(color: .black, location: 0.82), .init(color: .clear, location: 1)],
+            .mask(LinearGradient(stops: [.init(color: .clear, location: 0.12), .init(color: .black, location: 0.24),
+                                         .init(color: .black, location: 0.92), .init(color: .clear, location: 1)],
                                  startPoint: .top, endPoint: .bottom))
-            .onAppear { proxy.scrollTo(current ?? 0, anchor: UnitPoint(x: 0, y: 0.42)) }
+            .onAppear { proxy.scrollTo(current ?? 0, anchor: UnitPoint(x: 0, y: 0.45)) }
             .onChange(of: current) { _, index in
                 withAnimation(.spring(response: 0.7, dampingFraction: 0.86)) {
-                    proxy.scrollTo(index ?? 0, anchor: UnitPoint(x: 0, y: 0.42))
+                    proxy.scrollTo(index ?? 0, anchor: UnitPoint(x: 0, y: 0.45))
                 }
             }
         }
@@ -233,11 +230,17 @@ private struct SpicyScroller: View {
             } else if isCurrent {
                 SpicyActiveLine(lyrics: lyrics, index: index, info: info, fontSize: fontSize)
             } else {
-                SpicyStillLine(line: line, fontSize: fontSize, opacity: isHovered ? 0.7 : (isPast ? 0.28 : 0.4))
+                SpicyStillLine(line: line, fontSize: fontSize, opacity: isHovered ? 0.85 : (isPast ? 0.45 : 0.55))
             }
         }
-        .blur(radius: isCurrent || isHovered ? 0 : min(4.5, 0.8 + Double(distance) * 0.9))
+        .blur(radius: isCurrent || isHovered ? 0 : min(2, 0.3 + Double(distance) * 0.35))
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, fontSize * 0.35)
+        .padding(.vertical, fontSize * 0.15)
+        // Hovering a line lays a light pane under it.
+        .background(RoundedRectangle(cornerRadius: fontSize * 0.35, style: .continuous)
+            .fill(Color.white.opacity(isHovered ? 0.1 : 0)))
+        .padding(.horizontal, -fontSize * 0.35)
         .contentShape(Rectangle())
         // Click a line to jump there.
         .onTapGesture { onSeek(line.time) }
@@ -378,9 +381,10 @@ private struct InterludeDots: View {
                 ForEach(0..<3, id: \.self) { dot in
                     let wave = active ? (sin(t * 3 - Double(dot) * 0.8) + 1) / 2 : 0
                     Circle()
-                        .fill(Color.white.opacity(0.3 + 0.6 * wave))
-                        .frame(width: size * 0.26, height: size * 0.26)
-                        .scaleEffect(0.8 + 0.3 * wave)
+                        .fill(Color.white.opacity(active ? 0.7 + 0.3 * wave : 0.45))
+                        .frame(width: size * 0.42, height: size * 0.42)
+                        .scaleEffect(active ? 0.85 + 0.2 * wave : 0.85)
+                        .shadow(color: .white.opacity(active ? 0.6 * wave : 0), radius: size * 0.25)
                 }
             }
             .frame(height: size)
