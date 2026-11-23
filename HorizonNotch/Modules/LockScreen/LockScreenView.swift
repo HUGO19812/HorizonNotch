@@ -10,8 +10,11 @@ final class LockScreenState: ObservableObject {
     @Published var large = false
     /// Lyrics beside the large cover.
     @Published var lyrics = false
+    /// Lyrics over the lock screen's own picture, with the small player.
+    @Published var miniLyrics = false
 
     func reset() {
+        miniLyrics = false
         let start = AppSettings.shared.lockScreenStart
         large = start != .compact
         lyrics = start == .lyrics
@@ -70,6 +73,16 @@ struct LockScreenView: View {
                             .transition(.opacity)
                     }
                     if let info = nowPlaying.info {
+                        if state.miniLyrics {
+                            // Over the wallpaper, between the widgets and the card.
+                            let top = size.height * 0.285 + 40
+                            let bottom = size.height * 0.705 - 110
+                            LyricsPanel(lyrics: lyrics, info: info, large: true, fontSize: 28) { nowPlaying.seek(to: $0) }
+                                .shadow(color: .black.opacity(0.45), radius: 8, y: 2)
+                                .frame(width: min(640, size.width * 0.5), height: max(160, bottom - top))
+                                .position(x: size.width / 2, y: (top + bottom) / 2)
+                                .transition(.opacity)
+                        }
                         compact(info: info)
                             .position(x: size.width / 2, y: size.height * 0.705)
                     }
@@ -82,6 +95,7 @@ struct LockScreenView: View {
         .animation(spring, value: nowPlaying.info == nil)
         .animation(spring, value: state.large)
         .animation(spring, value: state.lyrics)
+        .animation(spring, value: state.miniLyrics)
         .animation(.easeInOut(duration: 0.4), value: settings.lockScreenBackdrop)
         .task(id: (nowPlaying.info?.artist ?? "") + "|" + (nowPlaying.info?.title ?? "") + "|"
                   + String(nowPlaying.info?.artworkID ?? 0)) {
@@ -94,12 +108,12 @@ struct LockScreenView: View {
 
     /// Small glass card above "Touch ID or Enter Password".
     private func compact(info: NowPlayingInfo) -> some View {
-        LiquidPlayerCard(service: nowPlaying, info: info, lyricsOn: false, overWallpaper: true,
-                         onLyrics: { state.large = true; state.lyrics = true }) {
+        LiquidPlayerCard(service: nowPlaying, info: info, lyricsOn: state.miniLyrics, overWallpaper: true,
+                         onLyrics: { state.miniLyrics.toggle() }) {
             CoverArt(image: nowPlaying.artwork, cornerRadius: 9)
                 .matchedGeometryEffect(id: "cover", in: player)
                 .frame(width: 56, height: 56)
-                .onTapGesture { state.large = true }
+                .onTapGesture { state.miniLyrics = false; state.large = true }
                 .help(L("Groß anzeigen", "Show large"))
         }
         .frame(width: 330)
@@ -111,8 +125,7 @@ struct LockScreenView: View {
     /// With lyrics, cover and card move left and the lyrics appear right.
     private func large(info: NowPlayingInfo, size: CGSize) -> some View {
         let cardY = size.height * 0.705
-        // Below the round widgets of the status row.
-        let top = size.height * 0.285 + max(50, size.height * 0.05) / 2 + 16
+        let top = size.height * 0.285 + 34
         let cover = min(380, cardY - 74 - top - 24)
         // With lyrics, cover + card and the lyrics sit side by side as one
         // centred pair with a small gap.
@@ -256,97 +269,56 @@ private struct LockClock: View {
     }
 }
 
-/// The widgets under the clock, as chosen in Settings → Lock Screen, in
-/// the look of iOS lock screen widgets: round accessory widgets on a soft
-/// translucent disc (weather, battery as a ring, headphones) and the next
-/// appointment as a rectangular one.
+/// The widgets under the clock, as chosen in Settings → Lock Screen:
+/// weather, battery (the iOS 27 battery with the level inside),
+/// headphones and the next appointment, in one row.
 private struct StatusRow: View {
     let screenHeight: CGFloat
     @ObservedObject private var power = PowerSource.shared
     @ObservedObject private var output = AudioOutput.shared
     @ObservedObject private var settings = AppSettings.shared
 
-    private var side: CGFloat { max(50, screenHeight * 0.05) }
+    private var fontSize: CGFloat { max(16, screenHeight * 0.022) }
 
     var body: some View {
-        HStack(spacing: side * 0.28) {
+        HStack(spacing: 22) {
             if settings.lockWidgetWeather, let report = LockScreenSources.weather?.report {
-                circular(progress: nil) {
-                    Image(systemName: WeatherCode.symbol(report.code, isDay: report.isDay))
-                        .font(.system(size: side * 0.3, weight: .semibold))
-                        .symbolRenderingMode(.hierarchical)
-                    Text("\(Int(report.temperature.rounded()))°")
-                        .font(.system(size: side * 0.27, weight: .semibold, design: .rounded))
-                }
+                item(WeatherCode.symbol(report.code, isDay: report.isDay), "\(Int(report.temperature.rounded()))°")
             }
             if settings.lockWidgetBattery, power.state.hasBattery {
-                circular(progress: Double(power.state.percent) / 100,
-                         ringColor: power.state.isCharging ? .green : (power.state.percent <= 20 ? .red : .white)) {
-                    Image(systemName: power.state.isCharging || power.state.isPluggedIn ? "bolt.fill" : "laptopcomputer")
-                        .font(.system(size: side * 0.22, weight: .bold))
-                    Text("\(power.state.percent)")
-                        .font(.system(size: side * 0.27, weight: .semibold, design: .rounded))
+                HStack(spacing: 4) {
+                    PhoneBattery(percent: power.state.percent, showNumber: true,
+                                 fill: power.state.isLowPower ? .yellow
+                                     : (power.state.isPluggedIn ? .green : (power.state.percent <= 20 ? .red : .white)))
+                        .scaleEffect(fontSize / 13, anchor: .center)
+                        .frame(width: 29 * fontSize / 13, height: 13 * fontSize / 13)
+                    if power.state.isCharging || power.state.isPluggedIn {
+                        Image(systemName: "bolt.fill").font(.system(size: fontSize * 0.6, weight: .bold))
+                    }
                 }
             }
             if settings.lockWidgetHeadphones, output.isBluetooth {
-                circular(progress: nil) {
-                    Image(systemName: output.symbol)
-                        .font(.system(size: side * 0.36, weight: .medium))
-                }
+                item(output.symbol, nil)
             }
             if settings.lockWidgetEvent, let event = LockScreenSources.calendar?.nextEvent,
                Calendar.current.isDateInToday(event.startDate) {
-                rectangular(event)
+                item("calendar", event.startDate.formatted(.dateTime.hour().minute().locale(appLocale))
+                     + " " + (event.title ?? ""))
+                    .lineLimit(1)
+                    .frame(maxWidth: 320)
             }
         }
-        .foregroundStyle(.white)
-        .monospacedDigit()
-        .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+        .font(.system(size: fontSize, weight: .semibold))
+        .foregroundStyle(.white.opacity(0.85))
+        .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
         .allowsHitTesting(false)
     }
 
-    /// Accessory disc: content stacked in the middle, an optional ring.
-    private func circular<Content: View>(progress: Double?, ringColor: Color = .white,
-                                         @ViewBuilder content: () -> Content) -> some View {
-        ZStack {
-            Circle().fill(Color.white.opacity(0.16))
-            Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.75)
-            if let progress {
-                Circle()
-                    .inset(by: side * 0.06)
-                    .stroke(Color.white.opacity(0.22), style: StrokeStyle(lineWidth: side * 0.07, lineCap: .round))
-                Circle()
-                    .inset(by: side * 0.06)
-                    .trim(from: 0, to: min(max(progress, 0), 1))
-                    .stroke(ringColor, style: StrokeStyle(lineWidth: side * 0.07, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-            }
-            VStack(spacing: 0) { content() }
+    private func item(_ symbol: String, _ text: String?) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol)
+            if let text { Text(text).monospacedDigit() }
         }
-        .frame(width: side, height: side)
-        .background(Circle().fill(.ultraThinMaterial).opacity(0.35))
-    }
-
-    private func rectangular(_ event: EKEvent) -> some View {
-        HStack(spacing: 8) {
-            Capsule().fill(event.tint).frame(width: 3.5)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(event.title ?? "")
-                    .font(.system(size: side * 0.26, weight: .semibold))
-                    .lineLimit(1)
-                Text(event.startDate.formatted(.dateTime.hour().minute().locale(appLocale)))
-                    .font(.system(size: side * 0.22, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.7))
-            }
-        }
-        .padding(.vertical, side * 0.14)
-        .padding(.leading, side * 0.16)
-        .padding(.trailing, side * 0.26)
-        .frame(height: side)
-        .frame(maxWidth: side * 4.4, alignment: .leading)
-        .fixedSize(horizontal: true, vertical: false)
-        .background(RoundedRectangle(cornerRadius: side * 0.3, style: .continuous).fill(Color.white.opacity(0.16)))
-        .background(RoundedRectangle(cornerRadius: side * 0.3, style: .continuous).fill(.ultraThinMaterial).opacity(0.35))
     }
 }
 
