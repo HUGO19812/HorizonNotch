@@ -162,6 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .pro: card = DeviceCard(name: name, symbol: "airpodspro", connected: true, left: 85, right: 80, caseLevel: 60)
             case .max: card = DeviceCard(name: name, symbol: "airpodsmax", connected: true, single: 72)
             case .speakers: card = DeviceCard(name: name, symbol: "hifispeaker.2.fill", connected: true)
+            case .mouse: card = DeviceCard(name: name, symbol: "magicmouse", connected: true, single: 64)
             }
             self?.devices.show(card)
             // Then disconnect again, so the way back can be seen too.
