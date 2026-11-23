@@ -27,6 +27,9 @@ final class HueBluetoothLight: NSObject, ObservableObject {
     /// The light's colour as last set or read (for the UI).
     @Published private(set) var color: Color = Color(red: 1, green: 0.8, blue: 0.55)
     @Published private(set) var hasState = false
+    /// The light answered the last time the app tried (false when it is out
+    /// of reach or switched off at the wall).
+    @Published private(set) var reachable = false
 
     private static let service = CBUUID(string: "932C32BD-0000-47A2-835A-A8D455B859DD")
     private static let advertised = CBUUID(string: "FE0F")
@@ -44,6 +47,7 @@ final class HueBluetoothLight: NSObject, ObservableObject {
     private var pendingOrder: [CBUUID] = []
     private var disconnectWork: DispatchWorkItem?
     private var searchTimeout: DispatchWorkItem?
+    private var connectTimeout: DispatchWorkItem?
 
     private var savedID: UUID? {
         get { UserDefaults.standard.string(forKey: Self.savedKey).flatMap(UUID.init) }
@@ -91,6 +95,7 @@ final class HueBluetoothLight: NSObject, ObservableObject {
         peripheral = nil
         savedID = nil
         hasState = false
+        reachable = false
         phase = .notPaired
     }
 
@@ -170,6 +175,16 @@ final class HueBluetoothLight: NSObject, ObservableObject {
         phase = .connecting
         peripheral.delegate = self
         central.connect(peripheral)
+        // CoreBluetooth waits forever for a light out of reach.
+        connectTimeout?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.phase == .connecting else { return }
+            central.cancelPeripheralConnection(peripheral)
+            self.phase = .idle
+            self.reachable = false
+        }
+        connectTimeout = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 7, execute: work)
     }
 
     /// Lets go a few seconds after the last command, for the phone's app.
@@ -253,7 +268,9 @@ extension HueBluetoothLight: CBCentralManagerDelegate, CBPeripheralDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        connectTimeout?.cancel()
         phase = .idle
+        reachable = false
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
@@ -274,7 +291,9 @@ extension HueBluetoothLight: CBCentralManagerDelegate, CBPeripheralDelegate {
         for characteristic in service.characteristics ?? [] {
             characteristics[characteristic.uuid] = characteristic
         }
+        connectTimeout?.cancel()
         phase = .ready
+        reachable = true
         // The temperature first: it tells whether the light is in colour mode.
         for id in [Self.powerID, Self.brightnessID, Self.temperatureID, Self.colorID] where pending[id] == nil {
             if let characteristic = characteristics[id] { peripheral.readValue(for: characteristic) }

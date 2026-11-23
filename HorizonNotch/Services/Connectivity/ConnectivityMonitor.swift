@@ -127,15 +127,22 @@ final class ConnectivityMonitor: NSObject, CWEventDelegate {
         }
     }
 
+    /// The Hue light is connected and released by the Light tab for every
+    /// command; that is no news worth a card.
+    private static func isHueLight(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return lower.hasPrefix("hue ") || lower.contains("lightstrip") || name == HueBluetoothLight.shared.name
+    }
+
     @objc private func bluetoothConnected(_ note: IOBluetoothUserNotification, device: IOBluetoothDevice) {
         device.register(forDisconnectNotification: self, selector: #selector(bluetoothDisconnected(_:device:)))
-        guard !isQuiet, let name = device.name, name != output.deviceName else { return }
+        guard !isQuiet, let name = device.name, name != output.deviceName, !Self.isHueLight(name) else { return }
         showCard(symbol: Self.symbol(for: device), name: name, connected: true)
     }
 
     @objc private func bluetoothDisconnected(_ note: IOBluetoothUserNotification, device: IOBluetoothDevice) {
         note.unregister()
-        guard !isQuiet, let name = device.name else { return }
+        guard !isQuiet, let name = device.name, !Self.isHueLight(name) else { return }
         showCard(symbol: Self.symbol(for: device), name: name, connected: false)
     }
 

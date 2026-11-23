@@ -2,9 +2,68 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// The Hue light strip on its own page: a big power button glowing in the
-/// light's colour, a brightness bar, whites and colours to tap, and two
-/// options – follow the cover's colour, switch off while the Mac is locked.
+/// A light mood: a name, a symbol, a white or a colour and a brightness.
+/// "Cover" is special: it follows the playing cover's colour.
+struct LightMood: Codable, Identifiable, Equatable {
+    enum Kind: Codable, Equatable {
+        case white(kelvin: Double)
+        case color(hex: String)
+        case cover
+    }
+
+    var id = UUID()
+    var name: String
+    var symbol: String
+    var kind: Kind
+    /// 0…1.
+    var brightness: Double
+
+    var colors: [Color] {
+        switch kind {
+        case .white(let kelvin):
+            let base = HueBluetoothLight.whiteColor(kelvin: kelvin)
+            return [base.opacity(0.85), base]
+        case .color(let hex):
+            let base = Color(hex: hex) ?? .orange
+            return [base.opacity(0.8), base]
+        case .cover:
+            return [Color(red: 0.85, green: 0.65, blue: 0.55), Color(red: 0.6, green: 0.4, blue: 0.35)]
+        }
+    }
+
+    static let presets: [LightMood] = [
+        LightMood(id: UUID(uuidString: "00000000-0000-0000-0000-00000000A001")!, name: L("Lesen", "Reading"),
+                  symbol: "book.fill", kind: .white(kelvin: 4000), brightness: 0.85),
+        LightMood(id: UUID(uuidString: "00000000-0000-0000-0000-00000000A002")!, name: L("Entspannen", "Relax"),
+                  symbol: "leaf.fill", kind: .color(hex: "#FF6A33"), brightness: 0.45),
+        LightMood(id: UUID(uuidString: "00000000-0000-0000-0000-00000000A003")!, name: "Film",
+                  symbol: "film.fill", kind: .color(hex: "#5A3FE6"), brightness: 0.2),
+        LightMood(id: UUID(uuidString: "00000000-0000-0000-0000-00000000A004")!, name: "Cover",
+                  symbol: "music.note", kind: .cover, brightness: 0.6),
+    ]
+}
+
+/// The user's own moods (Settings → Light), stored as JSON.
+final class LightMoods: ObservableObject {
+    static let shared = LightMoods()
+    private static let key = "lightMoods"
+
+    @Published var custom: [LightMood] {
+        didSet { if let data = try? JSONEncoder().encode(custom) { UserDefaults.standard.set(data, forKey: Self.key) } }
+    }
+
+    var all: [LightMood] { LightMood.presets + custom }
+
+    private init() {
+        custom = UserDefaults.standard.data(forKey: Self.key)
+            .flatMap { try? JSONDecoder().decode([LightMood].self, from: $0) } ?? []
+    }
+}
+
+/// The Hue light strip on its own page, like Control Center: the power
+/// button (grey and dashed while not connected, dark when off, glowing when
+/// on), a tall brightness tile, and the moods in a grid with a free colour
+/// and "New" at the end.
 final class LightModule: NotchModule {
     let id = "light"
     var title: String { L("Licht", "Light") }
@@ -14,16 +73,16 @@ final class LightModule: NotchModule {
     var isActive: Bool { false }
 
     let light = HueBluetoothLight.shared
+    let moods = LightMoods.shared
     private let nowPlaying: NowPlayingService
     private var subscriptions = Set<AnyCancellable>()
     private var observers: [NSObjectProtocol] = []
     /// Switched off because the Mac locked; switched on again on unlock.
     private var offForLock = false
 
-    @AppStorage("lightCoverSync") var coverSync = false {
-        didSet { if coverSync { followCover() } }
-    }
+    @AppStorage("lightCoverSync") var coverSync = false
     @AppStorage("lightOffOnLock") var offOnLock = false
+    @AppStorage("lightMoodID") var activeMoodID = ""
 
     var headerInfo: HeaderInfo? {
         guard light.isPaired, light.hasState else { return nil }
@@ -33,6 +92,7 @@ final class LightModule: NotchModule {
     init(nowPlaying: NowPlayingService) {
         self.nowPlaying = nowPlaying
         light.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &subscriptions)
+        moods.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &subscriptions)
         nowPlaying.$accent.removeDuplicates().dropFirst()
             .sink { [weak self] _ in DispatchQueue.main.async { self?.followCover() } }
             .store(in: &subscriptions)
@@ -44,10 +104,29 @@ final class LightModule: NotchModule {
         light.start()
     }
 
-    /// The cover's colour, when that option is on and the light is on.
-    private func followCover() {
-        guard coverSync, light.isPaired, light.isOn, nowPlaying.artwork != nil else { return }
-        light.setColor(NSColor(nowPlaying.accent), switchOn: false)
+    func apply(_ mood: LightMood) {
+        activeMoodID = mood.id.uuidString
+        coverSync = mood.kind == .cover
+        light.setBrightness(mood.brightness)
+        switch mood.kind {
+        case .white(let kelvin): light.setWhite(kelvin: kelvin)
+        case .color(let hex): if let color = NSColor(hex: hex) { light.setColor(color) }
+        case .cover: followCover(force: true)
+        }
+    }
+
+    /// A colour from the free colour choice.
+    func applyFree(_ color: NSColor) {
+        activeMoodID = "free"
+        coverSync = false
+        light.setColor(color)
+    }
+
+    /// The cover's colour, when that mood is on and the light is on.
+    private func followCover(force: Bool = false) {
+        guard coverSync || force, light.isPaired, light.isOn || force else { return }
+        let color = nowPlaying.artwork != nil ? NSColor(nowPlaying.accent) : NSColor(srgbRed: 1, green: 0.62, blue: 0.3, alpha: 1)
+        light.setColor(color, switchOn: force)
     }
 
     private func locked() {
@@ -64,7 +143,23 @@ final class LightModule: NotchModule {
 
     func compactLeading() -> AnyView { AnyView(EmptyView()) }
     func compactTrailing() -> AnyView { AnyView(EmptyView()) }
-    func expandedView() -> AnyView { AnyView(LightPage(module: self, light: light)) }
+    func expandedView() -> AnyView { AnyView(LightPage(module: self, light: light, moods: moods)) }
+}
+
+extension NSColor {
+    convenience init?(hex: String) {
+        var text = hex.trimmingCharacters(in: .whitespaces)
+        if text.hasPrefix("#") { text.removeFirst() }
+        guard text.count == 6, let value = UInt32(text, radix: 16) else { return nil }
+        self.init(srgbRed: CGFloat(value >> 16 & 0xFF) / 255, green: CGFloat(value >> 8 & 0xFF) / 255,
+                  blue: CGFloat(value & 0xFF) / 255, alpha: 1)
+    }
+
+    var hexString: String {
+        guard let rgb = usingColorSpace(.sRGB) else { return "#FFFFFF" }
+        return String(format: "#%02X%02X%02X", Int(rgb.redComponent * 255), Int(rgb.greenComponent * 255),
+                      Int(rgb.blueComponent * 255))
+    }
 }
 
 // MARK: - Page
@@ -72,196 +167,252 @@ final class LightModule: NotchModule {
 private struct LightPage: View {
     @ObservedObject var module: LightModule
     @ObservedObject var light: HueBluetoothLight
+    @ObservedObject var moods: LightMoods
 
     var body: some View {
         Group {
-            if !light.isPaired || light.phase == .searching && !light.hasState {
+            if !light.isPaired {
                 SetupView(light: light)
             } else {
-                HStack(alignment: .center, spacing: 18) {
+                HStack(spacing: 14) {
                     PowerButton(light: light)
-                        .frame(width: 128)
-                    VStack(alignment: .leading, spacing: 10) {
-                        BrightnessBar(light: light)
-                        Swatches(light: light)
-                        HStack(spacing: 8) {
-                            OptionChip(title: L("Cover-Farbe", "Cover colour"), symbol: "music.note",
-                                       on: module.coverSync) { module.coverSync.toggle() }
-                                .help(L("Der Streifen nimmt die Farbe des laufenden Covers an",
-                                        "The strip takes the colour of the playing cover"))
-                            OptionChip(title: L("Beim Sperren aus", "Off when locked"), symbol: "lock.fill",
-                                       on: module.offOnLock) { module.offOnLock.toggle() }
-                            Spacer(minLength: 0)
-                            Menu {
-                                Button(L("Neu verbinden", "Reconnect")) { light.refresh() }
-                                Button(L("Anderen Streifen suchen", "Find another strip")) { light.search() }
-                                Divider()
-                                Button(L("Vergessen", "Forget"), role: .destructive) { light.forget() }
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundStyle(.white.opacity(0.5))
-                                    .frame(width: 24, height: 22)
-                            }
-                            .menuStyle(.button)
-                            .buttonStyle(.plain)
-                            .fixedSize()
-                        }
-                    }
+                    BrightnessTile(light: light)
+                        .disabled(!connected)
+                        .opacity(connected ? 1 : 0.35)
+                    MoodGrid(module: module, moods: moods)
+                        .disabled(!connected)
+                        .opacity(connected ? 1 : 0.35)
                 }
             }
         }
         .onAppear { light.refresh() }
     }
+
+    private var connected: Bool { light.reachable }
 }
 
-/// Round button, glowing in the light's colour while it is on.
+/// Grey and dashed while not connected, dark when off, glowing when on.
 private struct PowerButton: View {
     @ObservedObject var light: HueBluetoothLight
 
+    private enum State { case disconnected, connecting, off, on }
+
+    private var state: State {
+        if light.phase == .connecting && !light.reachable { return .connecting }
+        if !light.reachable { return .disconnected }
+        return light.isOn ? .on : .off
+    }
+
     var body: some View {
-        VStack(spacing: 7) {
-            Button { light.toggle() } label: {
+        let state = state
+        VStack(spacing: 6) {
+            Button {
+                if state == .disconnected { light.refresh() } else { light.toggle() }
+            } label: {
                 ZStack {
-                    Circle()
-                        .fill(light.isOn ? light.color.opacity(0.9) : Color.white.opacity(0.08))
-                        .shadow(color: light.isOn ? light.color.opacity(0.7) : .clear, radius: 16)
-                    Image(systemName: light.isOn ? "lightbulb.led.wide.fill" : "lightbulb.led.wide")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(light.isOn ? Color.black.opacity(0.75) : .white.opacity(0.7))
-                        .contentTransition(.symbolEffect(.replace))
+                    if state == .on {
+                        Circle().fill(light.color.opacity(0.4)).blur(radius: 14).frame(width: 82, height: 82)
+                    }
+                    Circle().fill(fill(state))
+                    if state == .disconnected || state == .connecting {
+                        Circle().strokeBorder(Color.white.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                    }
+                    if state == .connecting {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: state == .disconnected ? "antenna.radiowaves.left.and.right.slash" : "power")
+                            .font(.system(size: 21, weight: .semibold))
+                            .foregroundStyle(state == .on ? Color.black.opacity(0.72) : .white.opacity(state == .off ? 0.85 : 0.4))
+                            .contentTransition(.symbolEffect(.replace))
+                    }
                 }
-                .frame(width: 62, height: 62)
+                .frame(width: 70, height: 70)
                 .contentShape(Circle())
             }
             .buttonStyle(PressScaleStyle())
-            .animation(.easeInOut(duration: 0.25), value: light.isOn)
-            VStack(spacing: 1) {
-                Text(light.name)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
-                Text(status)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
-            }
+            .help(state == .disconnected ? L("Erneut verbinden", "Connect again") : light.name)
+            Text(label(state))
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.white.opacity(state == .disconnected || state == .connecting ? 0.4 : 0.7))
+                .lineLimit(1)
+        }
+        .frame(width: 92)
+        .animation(.easeInOut(duration: 0.25), value: state)
+    }
+
+    private func fill(_ state: State) -> AnyShapeStyle {
+        switch state {
+        case .on:
+            return AnyShapeStyle(LinearGradient(colors: [light.color, light.color.opacity(0.8)],
+                                                startPoint: .top, endPoint: .bottom))
+        case .off: return AnyShapeStyle(Color.white.opacity(0.14))
+        default: return AnyShapeStyle(Color.white.opacity(0.06))
         }
     }
 
-    private var status: String {
-        switch light.phase {
+    private func label(_ state: State) -> String {
+        switch state {
+        case .on: return L("An", "On")
+        case .off: return L("Aus", "Off")
         case .connecting: return L("Verbinde …", "Connecting …")
-        case .bluetoothOff: return L("Bluetooth ist aus", "Bluetooth is off")
-        case .unauthorized: return L("Kein Bluetooth-Zugriff", "No Bluetooth access")
-        default:
-            guard light.hasState else { return L("Nicht erreichbar", "Out of reach") }
-            return light.isOn ? L("An · \(Int((light.brightness * 100).rounded())) %", "On · \(Int((light.brightness * 100).rounded())) %")
-                              : L("Aus", "Off")
+        case .disconnected:
+            switch light.phase {
+            case .bluetoothOff: return L("Bluetooth aus", "Bluetooth off")
+            case .unauthorized: return L("Kein Zugriff", "No access")
+            default: return L("Nicht verbunden", "Not connected")
+            }
         }
     }
 }
 
-/// Wide bar from dim to bright, filled in the light's colour.
-private struct BrightnessBar: View {
+/// Tall brightness tile like Control Center: drag up and down.
+private struct BrightnessTile: View {
     @ObservedObject var light: HueBluetoothLight
     @State private var dragValue: Double?
     @State private var lastSent = Date.distantPast
 
     var body: some View {
         let value = dragValue ?? (light.isOn ? light.brightness : 0)
-        HStack(spacing: 9) {
-            Image(systemName: "sun.min.fill").font(.system(size: 11)).foregroundStyle(.white.opacity(0.5))
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.12))
-                    Capsule()
-                        .fill(LinearGradient(colors: [light.color.opacity(0.55), light.color],
-                                             startPoint: .leading, endPoint: .trailing))
-                        .frame(width: max(22, proxy.size.width * value))
-                        .opacity(light.isOn || dragValue != nil ? 1 : 0.25)
-                }
-                .contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 0)
-                    .onChanged { drag in
-                        let new = min(max(drag.location.x / proxy.size.width, 0.01), 1)
-                        dragValue = new
-                        // A Bluetooth write each ~80 ms is plenty.
-                        if Date().timeIntervalSince(lastSent) > 0.08 {
-                            lastSent = Date()
-                            light.setBrightness(new)
-                        }
-                    }
-                    .onEnded { _ in
-                        if let value = dragValue { light.setBrightness(value) }
-                        dragValue = nil
-                    })
+        GeometryReader { proxy in
+            ZStack(alignment: .bottom) {
+                Rectangle().fill(Color.white.opacity(0.1))
+                Rectangle().fill(Color.white.opacity(0.9))
+                    .frame(height: proxy.size.height * max(value, 0.001))
+                Image(systemName: value > 0.5 ? "sun.max.fill" : "sun.min.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(value > 0.12 ? Color.black.opacity(0.6) : .white.opacity(0.6))
+                    .padding(.bottom, 10)
             }
-            .frame(height: 22)
-            Image(systemName: "sun.max.fill").font(.system(size: 13)).foregroundStyle(.white.opacity(0.7))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { drag in
+                    let new = min(max(1 - drag.location.y / proxy.size.height, 0.01), 1)
+                    dragValue = new
+                    // A Bluetooth write each ~80 ms is plenty.
+                    if Date().timeIntervalSince(lastSent) > 0.08 {
+                        lastSent = Date()
+                        light.setBrightness(new)
+                    }
+                }
+                .onEnded { _ in
+                    if let value = dragValue { light.setBrightness(value) }
+                    dragValue = nil
+                })
         }
+        .frame(width: 50)
+        .help(L("Helligkeit", "Brightness"))
     }
 }
 
-/// Three whites and six colours, plus the system colour picker.
-private struct Swatches: View {
-    @ObservedObject var light: HueBluetoothLight
-    @State private var custom = Color.purple
+private struct MoodGrid: View {
+    @ObservedObject var module: LightModule
+    @ObservedObject var moods: LightMoods
 
-    private let whites: [Double] = [2200, 3000, 4000, 6500]
-    private let colors: [NSColor] = [
-        NSColor(srgbRed: 1, green: 0.18, blue: 0.15, alpha: 1), NSColor(srgbRed: 1, green: 0.5, blue: 0.1, alpha: 1),
-        NSColor(srgbRed: 1, green: 0.3, blue: 0.6, alpha: 1), NSColor(srgbRed: 0.6, green: 0.3, blue: 1, alpha: 1),
-        NSColor(srgbRed: 0.2, green: 0.45, blue: 1, alpha: 1), NSColor(srgbRed: 0.2, green: 0.85, blue: 0.4, alpha: 1),
-    ]
+    private let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
 
     var body: some View {
-        HStack(spacing: 7) {
-            ForEach(whites, id: \.self) { kelvin in
-                swatch(HueBluetoothLight.whiteColor(kelvin: kelvin)) { light.setWhite(kelvin: kelvin) }
-                    .help("\(Int(kelvin)) K")
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(moods.all) { mood in
+                    tile(mood)
+                }
+                FreeColorTile(active: module.activeMoodID == "free") { module.applyFree($0) }
+                Button {
+                    NotificationCenter.default.post(name: .openSettings, object: SettingsTab.light.rawValue)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus").font(.system(size: 11, weight: .bold))
+                        Text(L("Neu", "New")).font(.system(size: 11, weight: .semibold))
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(.white.opacity(0.6))
+                    .padding(.horizontal, 10)
+                    .frame(height: 50)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.22), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PressScaleStyle())
+                .help(L("Eigene Stimmung in den Einstellungen anlegen", "Create your own mood in Settings"))
             }
-            Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1, height: 16)
-            ForEach(colors.indices, id: \.self) { index in
-                swatch(Color(nsColor: colors[index])) { light.setColor(colors[index]) }
-            }
-            ColorPicker("", selection: $custom, supportsOpacity: false)
-                .labelsHidden()
-                .frame(width: 22, height: 22)
-                .onChange(of: custom) { _, value in light.setColor(NSColor(value)) }
-                .help(L("Eigene Farbe", "Custom colour"))
         }
     }
 
-    private func swatch(_ color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Circle()
-                .fill(color)
-                .frame(width: 22, height: 22)
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
-                .contentShape(Circle())
+    private func tile(_ mood: LightMood) -> some View {
+        let active = module.activeMoodID == mood.id.uuidString
+        let dark = { if case .white = mood.kind { return true }; return false }()
+        return Button { module.apply(mood) } label: {
+            HStack(spacing: 6) {
+                Image(systemName: mood.symbol).font(.system(size: 11, weight: .bold))
+                Text(mood.name)
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(dark ? Color.black.opacity(0.7) : .white)
+            .padding(.horizontal, 10)
+            .frame(height: 50)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(LinearGradient(colors: mood.colors, startPoint: .topLeading, endPoint: .bottomTrailing)))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(active ? Color.white : .clear, lineWidth: 2))
+            .contentShape(Rectangle())
         }
         .buttonStyle(PressScaleStyle())
     }
 }
 
-private struct OptionChip: View {
-    let title: String
-    let symbol: String
-    let on: Bool
-    let action: () -> Void
+/// "Own": opens the system colour panel; every colour picked there goes to
+/// the light.
+private struct FreeColorTile: View {
+    let active: Bool
+    let pick: (NSColor) -> Void
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: symbol).font(.system(size: 9.5, weight: .bold))
-                Text(title).font(.system(size: 10.5, weight: .semibold))
+        Button { ColorPanelBridge.shared.show(pick) } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red], center: .center))
+                    .frame(width: 16, height: 16)
+                Text(L("Eigene", "Own")).font(.system(size: 11, weight: .semibold))
+                Spacer(minLength: 0)
             }
-            .foregroundStyle(on ? Color.black : .white.opacity(0.75))
-            .padding(.horizontal, 9)
-            .frame(height: 22)
-            .background(Capsule().fill(on ? Color.white : Color.white.opacity(0.1)))
-            .contentShape(Capsule())
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .frame(height: 50)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.09)))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(active ? Color.white : .clear, lineWidth: 2))
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressScaleStyle())
+    }
+}
+
+/// Target for NSColorPanel, which reports changes through target/action.
+final class ColorPanelBridge: NSObject {
+    static let shared = ColorPanelBridge()
+    private var handler: ((NSColor) -> Void)?
+    private var lastSent = Date.distantPast
+
+    func show(_ handler: @escaping (NSColor) -> Void) {
+        self.handler = handler
+        let panel = NSColorPanel.shared
+        panel.setTarget(self)
+        panel.setAction(#selector(changed(_:)))
+        panel.isContinuous = true
+        panel.showsAlpha = false
+        panel.level = .statusBar + 1
+        panel.orderFrontRegardless()
+    }
+
+    @objc private func changed(_ panel: NSColorPanel) {
+        // Not every drag step needs a Bluetooth write.
+        guard Date().timeIntervalSince(lastSent) > 0.12 else { return }
+        lastSent = Date()
+        handler?(panel.color)
     }
 }
 
@@ -271,11 +422,14 @@ private struct SetupView: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            Image(systemName: "lightbulb.led.wide")
-                .font(.system(size: 28))
-                .foregroundStyle(.white.opacity(0.55))
-                .frame(width: 70, height: 70)
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.08)))
+            ZStack {
+                Circle().fill(Color.white.opacity(0.06))
+                Circle().strokeBorder(Color.white.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                Image(systemName: "lightbulb.led.wide")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+            .frame(width: 70, height: 70)
             VStack(alignment: .leading, spacing: 6) {
                 Text(L("Hue-Licht per Bluetooth verbinden", "Connect a Hue light over Bluetooth"))
                     .font(.system(size: 14, weight: .semibold))
