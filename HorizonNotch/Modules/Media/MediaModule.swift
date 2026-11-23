@@ -129,7 +129,8 @@ private struct MediaPeekView: View {
 
     var body: some View {
         let info = module.service.info
-        let song = [info?.title ?? "", info?.artist ?? ""].filter { !$0.isEmpty }.joined(separator: " – ")
+        let joined = [info?.title ?? "", info?.artist ?? ""].filter { !$0.isEmpty }.joined(separator: " – ")
+        let song = joined.isEmpty ? (info?.appName ?? "") : joined
         HStack(spacing: 6) {
             Image(systemName: symbol)
                 .font(.system(size: 10, weight: .semibold))

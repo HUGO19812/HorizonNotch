@@ -256,7 +256,7 @@ struct MediaExpandedView: View {
                             ZStack(alignment: .bottomTrailing) {
                                 // A click beside the popup closes it.
                                 Color.clear.contentShape(Rectangle()).onTapGesture(perform: close)
-                                OutputPicker(close: close)
+                                OutputPicker(service: service, close: close)
                                     .padding(.bottom, 34)
                                     .transition(.scale(scale: 0.85, anchor: .bottomTrailing).combined(with: .opacity))
                             }
@@ -420,6 +420,7 @@ private struct CanopyControls: View {
 /// Where the sound goes: the volume on top, below every output device –
 /// a click switches to it. Closes by itself after a few quiet seconds.
 private struct OutputPicker: View {
+    @ObservedObject var service: NowPlayingService
     let close: () -> Void
     @ObservedObject private var output = AudioOutput.shared
 
@@ -427,6 +428,10 @@ private struct OutputPicker: View {
         VStack(spacing: 6) {
             VolumeRow(close: close)
                 .frame(height: 26)
+            if let name = service.playerVolumeName {
+                PlayerVolumeRow(service: service, name: name)
+                    .frame(height: 26)
+            }
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 2) {
                     ForEach(output.devices) { device in
@@ -463,6 +468,56 @@ private struct OutputPicker: View {
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(white: 0.13)))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
         .shadow(color: .black.opacity(0.5), radius: 12, y: 4)
+    }
+}
+
+/// The player's own volume (Spotify / Apple Music) below the system one:
+/// its icon, a bar to drag, the level.
+private struct PlayerVolumeRow: View {
+    @ObservedObject var service: NowPlayingService
+    let name: String
+    @State private var level: Double?
+    @State private var dragging = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: name == "Spotify" ? "dot.radiowaves.right" : "music.note")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+                .frame(width: 26)
+                .help(name)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.18))
+                    Capsule().fill(Color.white.opacity(0.7))
+                        .frame(width: proxy.size.width * (level ?? 0))
+                }
+                .frame(height: dragging ? 10 : 7)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        dragging = true
+                        let value = Double(min(max(gesture.location.x / proxy.size.width, 0), 1))
+                        level = value
+                        service.setPlayerVolume(value)
+                    }
+                    .onEnded { _ in dragging = false })
+                .animation(.easeOut(duration: 0.15), value: dragging)
+            }
+            .frame(height: 20)
+            Text(level.map { "\(Int(($0 * 100).rounded()))" } ?? "–")
+                .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.55))
+                .frame(width: 28, alignment: .trailing)
+            Color.clear.frame(width: 24, height: 24)
+        }
+        .padding(.horizontal, 6)
+        .help(L("Lautstärke nur in \(name)", "Volume of \(name) only"))
+        .task {
+            let read = await Task.detached { service.readPlayerVolume() }.value
+            if !dragging { level = read }
+        }
     }
 }
 

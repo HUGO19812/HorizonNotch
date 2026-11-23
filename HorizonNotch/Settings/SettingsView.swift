@@ -1152,6 +1152,12 @@ private struct MusicSettings: View {
                         Text(L("Fortschrittsring", "Progress ring")).tag(CompactMusicIndicator.ring)
                         Text(L("Pulsierender Punkt", "Breathing dot")).tag(CompactMusicIndicator.dot)
                     }
+                    // Same setting as under Appearance → Colours.
+                    Picker(L("Farbe von Ring, Wellen und Punkt", "Colour of ring, waves and dot"), selection: $settings.visualizerColor) {
+                        Text(L("Farbe des Covers", "Cover colour")).tag(VisualizerColorMode.cover)
+                        Text(L("Akzentfarbe", "Accent colour")).tag(VisualizerColorMode.accent)
+                        Text(L("Weiß", "White")).tag(VisualizerColorMode.white)
+                    }
                 }
             }
             Section {

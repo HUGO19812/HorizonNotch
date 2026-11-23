@@ -106,6 +106,43 @@ final class NowPlayingService: ObservableObject {
         bridge.send("shuffle \(current.isShuffling ? 1 : 3)")
     }
 
+    // MARK: - Player volume
+
+    /// The player's own volume (Spotify and Music only), independent of the
+    /// system volume. Name for the row, nil for other players.
+    var playerVolumeName: String? { scriptablePlayerName.map { $0 == "Music" ? "Apple Music" : $0 } }
+
+    /// 0…1, nil when it can't be read. Blocks briefly (AppleScript).
+    func readPlayerVolume() -> Double? {
+        guard let name = scriptablePlayerName,
+              let text = Self.runScript("tell application \"\(name)\" to get sound volume"),
+              let value = Double(text) else { return nil }
+        return min(max(value / 100, 0), 1)
+    }
+
+    /// Coalesces drags: only the latest value is sent.
+    private var pendingVolume: Double?
+
+    func setPlayerVolume(_ value: Double) {
+        guard let name = scriptablePlayerName else { return }
+        let first = pendingVolume == nil
+        pendingVolume = value
+        guard first else { return }
+        likeQueue.async { [weak self] in
+            var last: Double?
+            while true {
+                var next: Double?
+                DispatchQueue.main.sync {
+                    next = self?.pendingVolume
+                    if next == last { self?.pendingVolume = nil; next = nil }
+                }
+                guard let value = next else { return }
+                last = value
+                Self.runScript("tell application \"\(name)\" to set sound volume to \(Int((value * 100).rounded()))")
+            }
+        }
+    }
+
     /// Takes a position read from the player itself (after a seek).
     private func adoptPosition(_ seconds: Double, title: String) {
         guard var current = info, current.title == title, seconds.isFinite, seconds >= 0 else { return }
@@ -130,7 +167,7 @@ final class NowPlayingService: ObservableObject {
         likeQueue.async { [weak self] in
             let confirmed: Bool?
             if bundle == SpotifyLikes.bundleID {
-                confirmed = SpotifyLikes.toggle()
+                confirmed = SpotifyLikes.toggle(expected: new)
             } else {
                 confirmed = Self.setMusicFavourite(new)
             }

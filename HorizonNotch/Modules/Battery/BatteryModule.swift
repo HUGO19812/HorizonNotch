@@ -201,14 +201,12 @@ private struct ChargingProgress: View {
         }
     }
 
+    /// Always "Full in …": macOS's estimate, else one from the charge rate,
+    /// else a rough one from the level (about 1.3 min per percent).
     private func remaining(_ state: PowerSource.State) -> String {
         if state.percent >= 100 { return L("Voll", "Full") }
-        guard state.isCharging || state.isPluggedIn,
-              let minutes = state.minutesRemaining ?? PowerSource.estimatedMinutesToFull(), minutes > 0 else {
-            // No estimate yet: the level instead of an endless "calculating".
-            return state.isCharging ? L("Lädt · \(state.percent) %", "Charging · \(state.percent) %")
-                                    : L("Angeschlossen · \(state.percent) %", "Plugged in · \(state.percent) %")
-        }
+        let estimate = state.minutesRemaining ?? PowerSource.estimatedMinutesToFull()
+        let minutes = max(1, estimate.flatMap { $0 > 0 ? $0 : nil } ?? Int((Double(100 - state.percent) * 1.3).rounded()))
         let time = minutes >= 60 ? L("\(minutes / 60) Std. \(minutes % 60) Min.", "\(minutes / 60) h \(minutes % 60) min")
                                  : L("\(minutes) Min.", "\(minutes) min")
         return L("Voll in \(time)", "Full in \(time)")
