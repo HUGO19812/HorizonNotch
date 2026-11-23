@@ -254,6 +254,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    var isIslandOpen: Bool { notchController?.model.isExpanded == true }
+
     func toggleIsland() {
         guard let controller = notchController else { return }
         if controller.model.isExpanded { controller.collapse() } else { controller.expand() }

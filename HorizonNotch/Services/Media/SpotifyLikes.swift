@@ -13,17 +13,48 @@ enum SpotifyLikes {
 
     /// nil when the state can't be read (no window, no permission).
     static func isLiked() -> Bool? {
-        guard let button = likeButton() else { return nil }
+        guard let button = findButton() else { return nil }
         return state(of: button)
     }
 
     /// Presses the button; returns the new state when it could be read.
+    /// Without a readable button it falls back to Spotify's own shortcut
+    /// for "Save to Liked Songs" (⌥⇧B) and returns `expected`.
     @discardableResult
-    static func toggle() -> Bool? {
-        guard let button = likeButton() else { return nil }
-        let before = state(of: button)
-        guard AXUIElementPerformAction(button, kAXPressAction as CFString) == .success else { return nil }
-        return !before
+    static func toggle(expected: Bool) -> Bool? {
+        if let button = findButton() {
+            let before = state(of: button)
+            if AXUIElementPerformAction(button, kAXPressAction as CFString) == .success { return !before }
+            NSLog("[HorizonNotch] Spotify like: press failed")
+        }
+        return pressShortcut() ? expected : nil
+    }
+
+    /// Spotify only builds its web content's accessibility tree after it
+    /// was asked to; the first look right after that often finds nothing.
+    private static func findButton() -> AXUIElement? {
+        guard AXIsProcessTrusted() else {
+            NSLog("[HorizonNotch] Spotify like: Accessibility not granted")
+            return nil
+        }
+        for attempt in 0..<3 {
+            if let button = likeButton() { return button }
+            if attempt < 2 { Thread.sleep(forTimeInterval: 0.35) }
+        }
+        NSLog("[HorizonNotch] Spotify like: button not found")
+        return nil
+    }
+
+    private static func pressShortcut() -> Bool {
+        guard AXIsProcessTrusted(),
+              let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first,
+              let down = CGEvent(keyboardEventSource: nil, virtualKey: 11, keyDown: true),
+              let up = CGEvent(keyboardEventSource: nil, virtualKey: 11, keyDown: false) else { return false }
+        down.flags = [.maskAlternate, .maskShift]
+        up.flags = [.maskAlternate, .maskShift]
+        down.postToPid(app.processIdentifier)
+        up.postToPid(app.processIdentifier)
+        return true
     }
 
     // MARK: - Accessibility
@@ -62,7 +93,7 @@ enum SpotifyLikes {
     }
 
     private static func search(_ element: AXUIElement, bar: CGRect, visited: inout Int) -> AXUIElement? {
-        guard visited < 4000 else { return nil }
+        guard visited < 8000 else { return nil }
         visited += 1
         let box = frame(of: element)
         // Skip whole subtrees that lie above the bar.

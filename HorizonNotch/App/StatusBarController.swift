@@ -22,8 +22,10 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         KeepAwake.shared.refresh()
         menu.removeAllItems()
-        menu.addItem(entry(L("Island öffnen", "Open Island"), #selector(toggleIsland), key: ""))
-        let awake = entry(L("Wach bleiben (auch zugeklappt)", "Stay awake (also with lid closed)"), #selector(toggleAwake), key: "")
+        let open = appDelegate?.isIslandOpen == true
+        menu.addItem(entry(open ? L("Island schließen", "Close Island") : L("Island öffnen", "Open Island"),
+                           #selector(toggleIsland), key: ""))
+        let awake = entry(L("Wach bleiben", "Stay awake"), #selector(toggleAwake), key: "")
         awake.state = KeepAwake.shared.isOn ? .on : .off
         menu.addItem(awake)
         menu.addItem(.separator())
@@ -42,7 +44,10 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         return item
     }
 
-    @objc private func toggleIsland() { appDelegate?.toggleIsland() }
+    @objc private func toggleIsland() {
+        // Let the menu close first, or its dismissal counts as a click.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.appDelegate?.toggleIsland() }
+    }
     @objc private func openSettings() { appDelegate?.showSettings() }
     @objc private func openPermissions() { appDelegate?.showSettings(tab: .permissions) }
     @objc private func toggleAwake() { KeepAwake.shared.toggle() }

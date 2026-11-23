@@ -17,6 +17,10 @@ final class NotchWindowController {
     private var monitors: [Any] = []
     private var hoverTimer: DispatchWorkItem?
     private var collapseTimer: DispatchWorkItem?
+    /// Opened from the menu bar: stays open although the pointer is not on
+    /// it, until the pointer has been on it once, a click lands elsewhere or
+    /// the menu closes it again.
+    private var openedByCommand = false
     private var dragPasteboardCount = NSPasteboard(name: .drag).changeCount
     private var dragCarriesFiles = false
     private var swipeAccumulator: CGFloat = 0
@@ -132,11 +136,13 @@ final class NotchWindowController {
         // The wallpaper may have changed (glass island lays it behind itself).
         if let screen { Wallpaper.shared.load(for: screen) }
         cancelTimers()
+        openedByCommand = true
         model.setExpanded(true)
     }
 
     func collapse() {
         cancelTimers()
+        openedByCommand = false
         model.setExpanded(false)
         updateMouseHandling(at: NSEvent.mouseLocation)
     }
@@ -229,6 +235,11 @@ final class NotchWindowController {
         if let up = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp, handler: { [weak self] _ in
             self?.fileDragEnded()
         }) { monitors.append(up) }
+        // A click elsewhere closes an island opened from the menu bar.
+        if let down = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: { [weak self] _ in
+            guard let self, self.openedByCommand, self.model.isExpanded else { return }
+            self.collapse()
+        }) { monitors.append(down) }
         // Locally only plain moves: while the user scrubs a slider the
         // island must stay open even if the pointer leaves it.
         if let local = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved, handler: { [weak self] event in
@@ -261,6 +272,7 @@ final class NotchWindowController {
         if inside {
             collapseTimer?.cancel()
             collapseTimer = nil
+            if model.isExpanded { openedByCommand = false }
             guard !model.isExpanded, hoverTimer == nil else { return }
             model.setHovering(true)
             let page = directPage(at: location)
@@ -277,7 +289,7 @@ final class NotchWindowController {
             hoverTimer?.cancel()
             hoverTimer = nil
             model.setHovering(false)
-            guard model.isExpanded, collapseTimer == nil, !model.showHello, !model.showGreeting else { return }
+            guard model.isExpanded, collapseTimer == nil, !openedByCommand, !model.showHello, !model.showGreeting else { return }
             let work = DispatchWorkItem { [weak self] in
                 self?.collapseTimer = nil
                 self?.model.setExpanded(false)
