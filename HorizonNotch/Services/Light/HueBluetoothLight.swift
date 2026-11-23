@@ -107,6 +107,25 @@ final class HueBluetoothLight: NSObject, ObservableObject {
         connect()
     }
 
+    /// What the light shows now, to put back after an effect.
+    struct Snapshot {
+        let isOn: Bool
+        let brightness: Double
+        let kind: LightMood.Kind?
+    }
+
+    func snapshot() -> Snapshot { Snapshot(isOn: isOn, brightness: brightness, kind: current) }
+
+    func restore(_ snapshot: Snapshot) {
+        switch snapshot.kind {
+        case .white(let kelvin)?: setWhite(kelvin: kelvin)
+        case .color(let hex)?: if let color = NSColor(hex: hex) { setColor(color, switchOn: false) }
+        default: break
+        }
+        setBrightness(snapshot.brightness)
+        if !snapshot.isOn { setOn(false) }
+    }
+
     func setOn(_ on: Bool) {
         isOn = on
         send(Self.powerID, Data([on ? 1 : 0]))
