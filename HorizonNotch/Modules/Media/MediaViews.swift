@@ -386,13 +386,18 @@ private struct CanopyControls: View {
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(service.liked ? Color(red: 0.98, green: 0.33, blue: 0.47) : .white.opacity(0.85))
                     .contentTransition(.symbolEffect(.replace))
+                    // Spotify: no state to show, a beat confirms the press.
+                    .symbolEffect(.bounce, value: service.likePulse)
                     .frame(width: 38, height: 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(PressScaleStyle())
             .opacity(service.canLike ? 1 : 0.3)
             .disabled(!service.canLike)
-            .help(service.canLike ? L("Favorit", "Favourite") : L("Nur mit Spotify oder Apple Music", "Only with Spotify or Apple Music"))
+            .help(!service.canLike ? L("Nur mit Spotify oder Apple Music", "Only with Spotify or Apple Music")
+                  : (service.likeKnown ? L("Favorit", "Favourite")
+                     : L("Zu Lieblingssongs hinzufügen oder entfernen (Spotify zeigt den Stand nicht)",
+                         "Add to or remove from Liked Songs (Spotify doesn't share the state)")))
             Spacer(minLength: 0)
             ControlButton(symbol: "backward.fill", size: 18) { service.send(.previous) }
             Spacer(minLength: 0)

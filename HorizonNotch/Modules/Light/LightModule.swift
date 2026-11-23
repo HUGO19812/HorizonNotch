@@ -43,20 +43,29 @@ struct LightMood: Codable, Identifiable, Equatable {
     ]
 }
 
-/// The user's own moods (Settings → Light), stored as JSON.
+/// The light scenes shown on the tab: the four presets to start with, then
+/// whatever the user saves, edits or deletes in Settings → Light. Stored as
+/// JSON.
 final class LightMoods: ObservableObject {
     static let shared = LightMoods()
-    private static let key = "lightMoods"
+    private static let key = "lightScenes"
 
-    @Published var custom: [LightMood] {
-        didSet { if let data = try? JSONEncoder().encode(custom) { UserDefaults.standard.set(data, forKey: Self.key) } }
+    @Published var items: [LightMood] {
+        didSet { if let data = try? JSONEncoder().encode(items) { UserDefaults.standard.set(data, forKey: Self.key) } }
     }
 
-    var all: [LightMood] { LightMood.presets + custom }
+    var all: [LightMood] { items }
 
     private init() {
-        custom = UserDefaults.standard.data(forKey: Self.key)
-            .flatMap { try? JSONDecoder().decode([LightMood].self, from: $0) } ?? []
+        if let data = UserDefaults.standard.data(forKey: Self.key),
+           let saved = try? JSONDecoder().decode([LightMood].self, from: data) {
+            items = saved
+        } else {
+            // First start, or moods from the version before scenes.
+            let old = UserDefaults.standard.data(forKey: "lightMoods")
+                .flatMap { try? JSONDecoder().decode([LightMood].self, from: $0) } ?? []
+            items = LightMood.presets + old
+        }
     }
 }
 
@@ -348,23 +357,6 @@ private struct MoodGrid: View {
                     tile(mood)
                 }
                 FreeColorTile(active: module.activeMoodID == "free", action: pickColor)
-                Button {
-                    NotificationCenter.default.post(name: .openSettings, object: SettingsTab.light.rawValue)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus").font(.system(size: 11, weight: .bold))
-                        Text(L("Neu", "New")).font(.system(size: 11, weight: .semibold))
-                        Spacer(minLength: 0)
-                    }
-                    .foregroundStyle(.white.opacity(0.6))
-                    .padding(.horizontal, 10)
-                    .frame(height: 50)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.22), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(PressScaleStyle())
-                .help(L("Eigene Stimmung in den Einstellungen anlegen", "Create your own mood in Settings"))
             }
         }
     }

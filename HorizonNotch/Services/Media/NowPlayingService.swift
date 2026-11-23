@@ -14,6 +14,11 @@ final class NowPlayingService: ObservableObject {
     /// AppleScript, Spotify via its own like button (see SpotifyLikes);
     /// other players offer no way to read or set it.
     @Published private(set) var liked = false
+    /// False for Spotify: its liked state can't be read, so the heart shows
+    /// no state there and only confirms the press (see likePulse).
+    @Published private(set) var likeKnown = true
+    /// Counts presses whose result isn't known, for a small animation.
+    @Published private(set) var likePulse = 0
     private var likedTitle = ""
     var canLike: Bool { info?.bundleID == "com.apple.Music" || info?.bundleID == SpotifyLikes.bundleID }
     private let likeQueue = DispatchQueue(label: "horizon.like", qos: .userInitiated)
@@ -162,18 +167,16 @@ final class NowPlayingService: ObservableObject {
 
     func toggleLike() {
         guard canLike, let bundle = info?.bundleID else { return }
+        if bundle == SpotifyLikes.bundleID {
+            likePulse += 1
+            likeQueue.async { SpotifyLikes.toggle() }
+            return
+        }
         let new = !liked
         liked = new
         likeQueue.async { [weak self] in
-            let confirmed: Bool?
-            if bundle == SpotifyLikes.bundleID {
-                confirmed = SpotifyLikes.toggle(expected: new)
-            } else {
-                confirmed = Self.setMusicFavourite(new)
-            }
-            DispatchQueue.main.async {
-                if let confirmed { self?.liked = confirmed } else { self?.liked = !new }
-            }
+            let confirmed = Self.setMusicFavourite(new)
+            DispatchQueue.main.async { self?.liked = confirmed ?? !new }
         }
     }
 
@@ -181,13 +184,18 @@ final class NowPlayingService: ObservableObject {
     private func refreshLiked() {
         guard let info, info.title != likedTitle else { return }
         likedTitle = info.title
-        guard canLike, let bundle = info.bundleID else { liked = false; return }
-        likeQueue.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-            // Spotify updates its bar a moment after the track changes.
-            let result = bundle == SpotifyLikes.bundleID ? SpotifyLikes.isLiked() : Self.musicFavourite()
+        guard canLike, let bundle = info.bundleID else { liked = false; likeKnown = true; return }
+        if bundle == SpotifyLikes.bundleID {
+            liked = false
+            likeKnown = false
+            return
+        }
+        likeQueue.async { [weak self] in
+            let result = Self.musicFavourite()
             DispatchQueue.main.async {
                 guard self?.info?.title == info.title else { return }
                 self?.liked = result ?? false
+                self?.likeKnown = result != nil
             }
         }
     }
