@@ -261,7 +261,9 @@ private struct ExpandedContent: View {
             .padding(.horizontal, 22)
             .padding(.bottom, 14)
             .overlay(alignment: .bottom) {
-                if let transient = coordinator.transientModule {
+                // Volume and brightness don't cover the open island: it
+                // stays as it is while they change.
+                if let transient = coordinator.transientModule, transient.id != "hud" {
                     if transient.id == "devices" {
                         // A connected device covers the whole page as a
                         // card instead of squeezing into the small pill.

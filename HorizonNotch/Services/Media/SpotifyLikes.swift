@@ -63,16 +63,26 @@ enum SpotifyLikes {
     /// button ("Add to playlist") and marks it checked.
     private static let notLikedWords = ["liked songs", "lieblingssongs", "titres likés", "canciones que te gustan",
                                         "brani che ti piacciono", "gelikete nummers"]
-    private static let likedWords = ["playlist", "remove from", "entfernen"]
+    private static let likedWords = ["playlist", "remove", "entfernen"]
 
+    /// Spotify marks the liked heart as checked (aria-checked); that wins.
+    /// Otherwise only the button's own label counts – its tooltip can say
+    /// "Liked Songs" for a liked song too, which read as "not liked".
     private static func state(of button: AXUIElement) -> Bool {
-        if role(of: button) == kAXCheckBoxRole as String,
-           let checked = attribute(button, kAXValueAttribute) as? NSNumber {
-            return checked.boolValue
+        let value = attribute(button, kAXValueAttribute)
+        let label = ((attribute(button, kAXDescriptionAttribute) as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ?? attribute(button, kAXTitleAttribute) as? String ?? "").lowercased()
+        let liked: Bool
+        if let checked = value as? NSNumber {
+            liked = checked.boolValue
+        } else if likedWords.contains(where: label.contains) {
+            liked = true
+        } else {
+            liked = !notLikedWords.contains(where: label.contains)
         }
-        let label = text(of: button)
-        let removes = label.contains("remove") || label.contains("entfernen")
-        return removes || !notLikedWords.contains(where: label.contains)
+        NSLog("[HorizonNotch] Spotify like button: role=%@ label=%@ value=%@ -> %@", role(of: button), label,
+              String(describing: value), liked ? "liked" : "not liked")
+        return liked
     }
 
     private static func likeButton() -> AXUIElement? {
