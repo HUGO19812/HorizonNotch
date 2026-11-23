@@ -41,6 +41,9 @@ struct LockScreenView: View {
     var drawsClock = false
     @ObservedObject private var settings = AppSettings.shared
     @StateObject private var hiRes = HiResArtwork()
+    /// Apple Music's moving cover for the large player; kept across the
+    /// small and large player within one lock.
+    @StateObject private var motion = MotionArtwork()
     @Namespace private var player
 
     private var spring: Animation { .spring(response: 0.5, dampingFraction: 0.86) }
@@ -49,12 +52,14 @@ struct LockScreenView: View {
         GeometryReader { proxy in
             let size = proxy.size
             ZStack {
-                if let info = nowPlaying.info, state.large, state.lyrics, settings.lockScreenSpicyLyrics {
-                    // Lyrics: the Spicy Lyrics look, the clock on top.
-                    SpicyLockScreen(nowPlaying: nowPlaying, lyrics: lyrics, info: info, size: size,
-                                    artwork: settings.lockScreenBackdrop == .tinted ? nil : hiRes.image) {
-                        state.lyrics = false
-                    }
+                if let info = nowPlaying.info, state.large, settings.lockScreenSpicyLyrics {
+                    // Large cover, with or without lyrics: one view, so the
+                    // lyrics slide in instead of the screen being swapped.
+                    SpicyLockScreen(nowPlaying: nowPlaying, lyrics: lyrics, motion: motion, info: info, size: size,
+                                    artwork: settings.lockScreenBackdrop == .tinted ? nil : hiRes.image,
+                                    showLyrics: state.lyrics, namespace: player,
+                                    toggleLyrics: { state.lyrics.toggle() },
+                                    minimize: { state.large = false; state.lyrics = false })
                     .transition(.opacity)
                     LockClock(size: size, tint: settings.lockClockTint && nowPlaying.artwork != nil ? nowPlaying.accent : nil)
                         .transition(.opacity)
@@ -112,6 +117,12 @@ struct LockScreenView: View {
             // hit is the same cover.
             if nowPlaying.info?.artworkID != 0 && nowPlaying.artwork == nil { return }
             await hiRes.load(for: nowPlaying.info, artwork: nowPlaying.artwork)
+        }
+        // The moving cover is looked up once the player is large (then
+        // remembered for the session), not for every song in the background.
+        .task(id: (nowPlaying.info?.artist ?? "") + "|" + (nowPlaying.info?.title ?? "") + (state.large ? "|large" : "")) {
+            guard settings.lockScreenSpicyLyrics, state.large else { return }
+            await motion.load(for: nowPlaying.info)
         }
     }
 
@@ -539,11 +550,17 @@ final class Wallpaper: ObservableObject {
     /// The same picture decoded once, for the refracting glass.
     private(set) var cgImage: CGImage?
     private(set) var screenSize: CGSize = .zero
+    /// The lock screen's picture moves (Sequoia, Aerials, dynamic …): its
+    /// still file shows only one moment of it, so nothing may be bent from
+    /// that still – it would show pieces of another picture.
+    @Published private(set) var isLive = false
     /// The file and its modification date, to notice when it changes.
     private var loadedKey: String?
 
     func load(for screen: NSScreen) {
         screenSize = screen.frame.size
+        let live = Self.lockScreenIsLive
+        if live != isLive { isLive = live }
         // The lock screen's own picture first: macOS keeps it as a file for
         // the login window (also a still of Aerials and dynamic wallpapers,
         // and it can differ from the desktop). Then the desktop picture –
@@ -573,6 +590,18 @@ final class Wallpaper: ObservableObject {
         guard let uid = generatedUID else { return nil }
         let url = URL(fileURLWithPath: "/var/db/Wallpapers/\(uid)/Wallpaper.png")
         return FileManager.default.isReadableFile(atPath: url.path) ? url : nil
+    }
+
+    /// Read from the login window's own record of the lock screen picture:
+    /// only a plain picture ("….image") stands still.
+    private static var lockScreenIsLive: Bool {
+        guard let uid = generatedUID,
+              let data = try? Data(contentsOf: URL(fileURLWithPath: "/var/db/Wallpapers/\(uid)/Metadata.plist")),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let content = plist["Content"] as? [String: Any],
+              let provider = (content["Choices"] as? [[String: Any]])?.first?["Provider"] as? String
+        else { return false }
+        return !provider.hasSuffix(".image")
     }
 
     static let generatedUID: String? = {

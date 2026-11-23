@@ -48,7 +48,7 @@ final class LyricsService: ObservableObject {
             guard let current = times.lastIndex(where: { $0 <= position + 0.05 }) else { return 0 }
             let before = Double(words.prefix(current).reduce(0) { $0 + $1.count + 1 })
             let length = Double(words[current].count)
-            let end = current + 1 < times.count ? times[current + 1] : min(next, times[current] + max(0.3, length * 0.09))
+            let end = current + 1 < times.count ? times[current + 1] : min(next, times[current] + max(0.3, length * pace * 1.1))
             let fraction = end > times[current] ? (position - times[current]) / (end - times[current]) : 1
             return min(total, before + length * min(max(fraction, 0), 1))
         }
@@ -57,23 +57,45 @@ final class LyricsService: ObservableObject {
         return min(total, max(0, progress) * total)
     }
 
-    /// How long the singer takes for a line without word stamps: nearly
-    /// all the time until the next line (singers rarely stop early), but at
-    /// most ~4 characters a second slower than normal speech, so a long
-    /// instrumental gap after it doesn't stretch it.
+    /// How long the singer takes for a line without word stamps: the
+    /// song's own pace (see `pace`) times the line's length, but never past
+    /// the next line – a long instrumental gap after a line doesn't stretch
+    /// it, a quick line doesn't lag.
     private func singingSpan(of index: Int) -> Double {
         let line = lines[index]
         let next = lines.indices.contains(index + 1) ? lines[index + 1].time : line.time + 6
         let gap = max(0.4, next - line.time)
-        let slowest = max(1.6, Double(line.text.count) * 0.24)
-        return min(gap * 0.88, slowest)
+        return min(gap * 0.92, max(0.5, Double(line.text.count) * pace))
+    }
+
+    /// Seconds per character this song is sung at, learned from its own
+    /// timing: where a line runs straight into the next, the time between
+    /// them is about how long it took to sing. Of all lines, the quicker
+    /// third shows that pace; lines before a pause are much slower and
+    /// don't count.
+    private var pace = 0.085
+
+    private static func estimatePace(_ lines: [Line]) -> Double {
+        var ratios: [Double] = []
+        for index in lines.indices.dropLast() {
+            let characters = lines[index].text.count
+            let gap = lines[index + 1].time - lines[index].time
+            guard characters >= 6, gap > 0.3 else { continue }
+            ratios.append(gap / Double(characters))
+        }
+        guard ratios.count >= 4 else { return 0.085 }
+        ratios.sort()
+        let quick = ratios[Int(Double(ratios.count - 1) * 0.3)]
+        return min(max(quick * 0.92, 0.045), 0.16)
     }
 
     enum State: Equatable {
         case idle, loading, unavailable, loaded
     }
 
-    @Published private(set) var lines: [Line] = []
+    @Published private(set) var lines: [Line] = [] {
+        didSet { pace = Self.estimatePace(lines) }
+    }
     @Published private(set) var state: State = .idle
     private var currentKey = ""
     private var cache: [String: [Line]] = [:]

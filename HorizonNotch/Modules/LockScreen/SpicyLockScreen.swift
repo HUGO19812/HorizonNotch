@@ -1,24 +1,34 @@
 import AppKit
 import SwiftUI
 
-/// Cover and lyrics on the lock screen in the look of Spicetify's Spicy
-/// Lyrics, everything below the clock: on the left the cover as a card
-/// (Apple Music's moving cover when the album has one), the progress, title
-/// and artist under it; on the right the lyrics, big and bold – the line
-/// being sung bright, its words filling letter by letter with a soft glow,
-/// the others translucent and softly blurred. Behind it all a slowly moving
-/// wash of the cover's colours that swells with the music.
+/// The large lock screen player in the look of Spicetify's Spicy Lyrics –
+/// one view for the large cover and for cover + lyrics, so switching
+/// between them moves things instead of swapping screens. Everything sits
+/// below the clock, over a slowly moving wash of the cover's colours that
+/// swells with the music.
+///
+/// - Still cover: a card with the player under it – centred without
+///   lyrics, on the left with lyrics.
+/// - Moving cover (Apple Music's motion artwork): the video fills the
+///   screen without lyrics and the left half with lyrics, the player in the
+///   lower left.
+/// The lyrics, on the right, light up word by word; a click on the cover
+/// goes back to the small player.
 struct SpicyLockScreen: View {
     @ObservedObject var nowPlaying: NowPlayingService
     @ObservedObject var lyrics: LyricsService
+    @ObservedObject var motion: MotionArtwork
     let info: NowPlayingInfo
     let size: CGSize
     /// A sharper copy of the cover, if one was found.
     var artwork: NSImage?
-    /// Back to the large cover without lyrics.
-    let onClose: () -> Void
+    let showLyrics: Bool
+    /// Shared with the small player, so the cover flies between them.
+    let namespace: Namespace.ID
+    let toggleLyrics: () -> Void
+    /// Back to the small player.
+    let minimize: () -> Void
 
-    @StateObject private var motion = MotionArtwork()
     @State private var motionReady = false
     @State private var palette: [Color] = []
     @State private var controlsVisible = true
@@ -28,37 +38,107 @@ struct SpicyLockScreen: View {
     /// pointer is looked at a few times a second instead.
     private let mouseTick = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
 
+    private enum Mode { case card, cardLyrics, motion, motionLyrics }
+
     /// Everything starts below the clock; behind the clock is only the
-    /// background.
+    /// background (or the moving cover, darkened there).
     private var top: CGFloat { size.height * 0.27 }
     private var lineSize: CGFloat { max(28, size.height * 0.045) }
-    private var coverSide: CGFloat { min(size.height * 0.44, size.width * 0.27) }
-    private var lyricsLeft: CGFloat { size.width * 0.5 }
-    private var lyricsWidth: CGFloat { size.width - lyricsLeft - size.width * 0.04 }
     private var image: NSImage? { artwork ?? nowPlaying.artwork }
+    private var moving: Bool { motion.url != nil && motionReady }
+    private var mode: Mode {
+        switch (moving, showLyrics) {
+        case (false, false): return .card
+        case (false, true): return .cardLyrics
+        case (true, false): return .motion
+        case (true, true): return .motionLyrics
+        }
+    }
+    /// Room the player takes under a card.
+    private let playerHeight: CGFloat = 150
+
+    /// Where the cover sits and how large it is.
+    private var coverRect: CGRect {
+        switch mode {
+        case .card:
+            // Centred, ending above the password field.
+            let side = min(size.height * 0.355, size.width * 0.3)
+            let blockTop = top + max(0, (size.height * 0.8 - top - side - playerHeight) / 2)
+            return CGRect(x: size.width / 2 - side / 2, y: blockTop, width: side, height: side)
+        case .cardLyrics:
+            let side = min(size.height * 0.42, size.width * 0.27)
+            let blockTop = top + max(0, (size.height * 0.96 - top - side - playerHeight) / 2)
+            return CGRect(x: size.width * 0.25 - side / 2, y: blockTop, width: side, height: side)
+        case .motion:
+            return CGRect(origin: .zero, size: size)
+        case .motionLyrics:
+            return CGRect(x: 0, y: 0, width: size.width * 0.53, height: size.height)
+        }
+    }
+
+    /// The player: under the card, or in the lower left over a moving cover.
+    private var playerRect: CGRect {
+        switch mode {
+        case .card, .cardLyrics:
+            let cover = coverRect
+            let width = max(cover.width, 320)
+            return CGRect(x: cover.midX - width / 2, y: cover.maxY + 20, width: width, height: playerHeight - 20)
+        case .motion, .motionLyrics:
+            let width = min(size.width * 0.3, 420)
+            return CGRect(x: size.width * 0.035, y: size.height - 40 - 130, width: width, height: 130)
+        }
+    }
+
+    private var lyricsRect: CGRect {
+        let left = size.width * (mode == .motionLyrics ? 0.55 : 0.5)
+        let y = top - size.height * 0.01
+        // Ends above the password field's height, so nothing runs under it.
+        let bottom = size.height * 0.82
+        return CGRect(x: left, y: y, width: size.width * 0.96 - left, height: bottom - y)
+    }
 
     var body: some View {
         let current = nowPlaying.info ?? info
+        let player = playerRect
+        let words = lyricsRect
         ZStack(alignment: .topLeading) {
-            ReactiveBackdrop(palette: palette, playing: current.isPlaying, size: size)
-            SpicyLyrics(lyrics: lyrics, info: current, fontSize: lineSize) { nowPlaying.seek(to: $0) }
-                .frame(width: lyricsWidth, height: size.height - top + size.height * 0.02)
-                .position(x: lyricsLeft + lyricsWidth / 2, y: (top - size.height * 0.02 + size.height) / 2)
-            leftColumn(current)
-                .frame(width: coverSide + 40)
-                .position(x: size.width * 0.25, y: top + (size.height - top) * 0.47)
+            ReactiveBackdrop(palette: palette, playing: current.isPlaying, paused: mode == .motion, size: size)
+            cover(coverRect)
+            // Over a moving cover: darker at the top for the clock and at the
+            // bottom for the player.
+            LinearGradient(colors: [.black.opacity(0.5), .clear], startPoint: .top, endPoint: .bottom)
+                .frame(width: size.width, height: size.height * 0.38)
+                .opacity(moving ? 1 : 0)
+                .allowsHitTesting(false)
+            LinearGradient(colors: [.clear, .black.opacity(0.62)], startPoint: .top, endPoint: .bottom)
+                .frame(width: size.width, height: size.height * 0.45)
+                .offset(y: size.height * 0.55)
+                .opacity(moving ? 1 : 0)
+                .allowsHitTesting(false)
+            if showLyrics {
+                SpicyLyrics(lyrics: lyrics, info: current, fontSize: lineSize) { nowPlaying.seek(to: $0) }
+                    .frame(width: words.width, height: words.height)
+                    .position(x: words.midX, y: words.midY)
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: 48)),
+                                            removal: .opacity.combined(with: .offset(x: 24))))
+            }
+            LockPlayerBlock(nowPlaying: nowPlaying, info: current, centered: !moving, lyricsOn: showLyrics,
+                            controlsVisible: controlsVisible, toggleLyrics: toggleLyrics)
+                .frame(width: player.width, height: player.height, alignment: moving ? .bottomLeading : .top)
+                .position(x: player.midX, y: player.midY)
         }
         .frame(width: size.width, height: size.height)
         .onAppear {
-            lyrics.load(for: info)
+            // Lyrics are fetched only when they are shown.
+            if showLyrics { lyrics.load(for: current) }
             updatePalette()
             scheduleHide()
         }
-        .onChange(of: info.title + info.artist) { _, _ in lyrics.load(for: info) }
+        .onChange(of: showLyrics) { _, on in if on { lyrics.load(for: nowPlaying.info ?? info) } }
+        .onChange(of: info.title + info.artist) { _, _ in if showLyrics { lyrics.load(for: info) } }
         .onChange(of: image) { _, _ in updatePalette() }
-        .task(id: current.artist + "|" + current.title) {
-            motionReady = false
-            await motion.load(for: current)
+        .onChange(of: motion.url) { _, _ in
+            withAnimation(.spring(response: 0.8, dampingFraction: 0.9)) { motionReady = false }
         }
         .onReceive(mouseTick) { _ in
             let mouse = NSEvent.mouseLocation
@@ -67,6 +147,28 @@ struct SpicyLockScreen: View {
             if !controlsVisible { withAnimation(.easeOut(duration: 0.25)) { controlsVisible = true } }
             scheduleHide()
         }
+    }
+
+    /// The cover – a card, or the moving cover large – one view throughout,
+    /// so it glides between the layouts and the video never restarts.
+    private func cover(_ rect: CGRect) -> some View {
+        let shape = RoundedRectangle(cornerRadius: moving ? 0 : 16, style: .continuous)
+        return ZStack {
+            CoverArt(image: image, cornerRadius: 0)
+            if let url = motion.url {
+                LoopingVideo(url: url, ready: $motionReady.animation(.spring(response: 0.9, dampingFraction: 0.9)))
+                    .opacity(motionReady ? 1 : 0)
+            }
+        }
+        .matchedGeometryEffect(id: "cover", in: namespace)
+        .frame(width: rect.width, height: rect.height)
+        .clipShape(shape)
+        .mask(SideFade(fade: mode == .motionLyrics ? 1 : 0))
+        .shadow(color: .black.opacity(moving ? 0 : 0.4), radius: 30, y: 14)
+        .contentShape(shape)
+        .onTapGesture(perform: minimize)
+        .help(L("Zurück zum kleinen Player", "Back to the small player"))
+        .position(x: rect.midX, y: rect.midY)
     }
 
     private func updatePalette() {
@@ -81,54 +183,82 @@ struct SpicyLockScreen: View {
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
     }
+}
 
-    // MARK: - Cover, progress, title (left)
+/// Lets the moving cover run out to the right into the lyrics' background;
+/// animatable, so it fades in and out with the layout.
+private struct SideFade: View, Animatable {
+    var fade: Double
+    var animatableData: Double {
+        get { fade }
+        set { fade = newValue }
+    }
 
-    private func leftColumn(_ current: NowPlayingInfo) -> some View {
-        VStack(spacing: 0) {
-            ZStack {
-                CoverArt(image: image, cornerRadius: 14)
-                if let url = motion.url {
-                    LoopingVideo(url: url, ready: $motionReady)
-                        .opacity(motionReady ? 1 : 0)
-                        .animation(.easeInOut(duration: 0.8), value: motionReady)
-                }
+    var body: some View {
+        LinearGradient(stops: [.init(color: .black, location: 0),
+                               .init(color: .black, location: 1 - 0.45 * fade),
+                               .init(color: .black.opacity(1 - fade), location: 1)],
+                       startPoint: .leading, endPoint: .trailing)
+    }
+}
+
+/// The same player in every layout: progress, title and artist (centred
+/// under a card; title first in the lower left over a moving cover), and
+/// the buttons, which fade out while the pointer rests.
+private struct LockPlayerBlock: View {
+    @ObservedObject var nowPlaying: NowPlayingService
+    let info: NowPlayingInfo
+    let centered: Bool
+    let lyricsOn: Bool
+    let controlsVisible: Bool
+    let toggleLyrics: () -> Void
+
+    var body: some View {
+        VStack(alignment: centered ? .center : .leading, spacing: 0) {
+            if centered {
+                LockProgress(service: nowPlaying, info: info)
+                titles.padding(.top, 14)
+            } else {
+                titles
+                LockProgress(service: nowPlaying, info: info).padding(.top, 12)
             }
-            .frame(width: coverSide, height: coverSide)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .shadow(color: .black.opacity(0.35), radius: 30, y: 14)
-            LockProgress(service: nowPlaying, info: current)
-                .frame(width: coverSide)
-                .padding(.top, 22)
-            Text(current.title)
-                .font(.system(size: 26, weight: .heavy))
-                .lineLimit(1)
-                .padding(.top, 14)
-            Text(current.artist.isEmpty ? (current.appName ?? "") : current.artist)
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.white.opacity(0.85))
-                .lineLimit(1)
-                .padding(.top, 2)
-            HStack(spacing: 4) {
-                if nowPlaying.canLike {
-                    LockButton(symbol: nowPlaying.liked ? "heart.fill" : "heart", size: 15) { nowPlaying.toggleLike() }
-                        .foregroundStyle(nowPlaying.liked ? Color(red: 0.98, green: 0.33, blue: 0.47) : .white)
-                        .symbolEffect(.bounce, value: nowPlaying.likePulse)
-                }
-                LockButton(symbol: "backward.fill", size: 17) { nowPlaying.send(.previous) }
-                LockButton(symbol: current.isPlaying ? "pause.fill" : "play.fill", size: 24) {
-                    nowPlaying.send(.togglePlayPause)
-                }
-                LockButton(symbol: "forward.fill", size: 17) { nowPlaying.send(.next) }
-                LockButton(symbol: "quote.bubble.fill", size: 14, action: onClose)
-                    .help(L("Songtext ausblenden", "Hide lyrics"))
-            }
-            .padding(.top, 10)
-            .opacity(controlsVisible ? 1 : 0)
-            .allowsHitTesting(controlsVisible)
+            controls.padding(.top, 8)
         }
         .foregroundStyle(.white)
-        .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
+        .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
+    }
+
+    private var titles: some View {
+        VStack(alignment: centered ? .center : .leading, spacing: 2) {
+            Text(info.title)
+                .font(.system(size: centered ? 26 : 22, weight: .heavy))
+                .lineLimit(1)
+            Text(info.artist.isEmpty ? (info.appName ?? "") : info.artist)
+                .font(.system(size: centered ? 17 : 15, weight: .medium))
+                .foregroundStyle(.white.opacity(0.85))
+                .lineLimit(1)
+        }
+        .multilineTextAlignment(centered ? .center : .leading)
+    }
+
+    private var controls: some View {
+        HStack(spacing: 2) {
+            if nowPlaying.canLike {
+                LockButton(symbol: nowPlaying.liked ? "heart.fill" : "heart", size: 15) { nowPlaying.toggleLike() }
+                    .foregroundStyle(nowPlaying.liked ? Color(red: 0.98, green: 0.33, blue: 0.47) : .white)
+                    .symbolEffect(.bounce, value: nowPlaying.likePulse)
+            }
+            LockButton(symbol: "backward.fill", size: 17) { nowPlaying.send(.previous) }
+            LockButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 24) {
+                nowPlaying.send(.togglePlayPause)
+            }
+            LockButton(symbol: "forward.fill", size: 17) { nowPlaying.send(.next) }
+            LockButton(symbol: lyricsOn ? "quote.bubble.fill" : "quote.bubble", size: 15, action: toggleLyrics)
+                .opacity(lyricsOn ? 1 : 0.75)
+                .help(lyricsOn ? L("Songtext ausblenden", "Hide lyrics") : L("Songtext", "Lyrics"))
+        }
+        .opacity(controlsVisible ? 1 : 0)
+        .allowsHitTesting(controlsVisible)
     }
 }
 
@@ -140,11 +270,13 @@ struct SpicyLockScreen: View {
 private struct ReactiveBackdrop: View {
     let palette: [Color]
     let playing: Bool
+    /// Hidden behind a full-screen moving cover: no need to animate.
+    var paused = false
     let size: CGSize
 
     var body: some View {
         let colors = palette.isEmpty ? [Color(white: 0.25), Color(white: 0.15)] : palette
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: paused)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             let levels = AudioLevelMeter.shared.levels
             let beat = playing && levels.hasSignal ? Double(levels.beat) : 0

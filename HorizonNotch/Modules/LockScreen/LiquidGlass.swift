@@ -26,8 +26,16 @@ struct LiquidGlassView: View {
     @State private var rendered: (key: String, image: CGImage)?
 
     var body: some View {
+        if wallpaper.isLive {
+            LightOnlyGlass(cornerRadius: cornerRadius)
+        } else {
+            refracted
+        }
+    }
+
+    private var refracted: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        GeometryReader { proxy in
+        return GeometryReader { proxy in
             let frame = proxy.frame(in: .global)
             let key = Self.key(frame: frame, radius: cornerRadius, wallpaper: wallpaper.image)
             ZStack {
@@ -65,6 +73,50 @@ struct LiquidGlassView: View {
     private static func key(frame: CGRect, radius: CGFloat, wallpaper: NSImage?) -> String {
         let id = wallpaper.map { ObjectIdentifier($0).hashValue } ?? 0
         return "\(Int(frame.minX)),\(Int(frame.minY)),\(Int(frame.width)),\(Int(frame.height)),\(radius),\(id)"
+    }
+}
+
+/// Clear glass over a moving lock screen: only light, no bent picture (the
+/// still file would show another moment of the wallpaper and give the trick
+/// away). A whisper of white body, a soft bright band inside the rim – the
+/// slab's thickness catching the light top left, fainter bottom right – a
+/// thin shade along the bottom edge, and the polished 1 pt edge.
+private struct LightOnlyGlass: View {
+    let cornerRadius: CGFloat
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        ZStack {
+            shape.fill(Color.white.opacity(0.035))
+            // Thickness: light gathering inside the rim.
+            shape.strokeBorder(LinearGradient(stops: [.init(color: .white.opacity(0.42), location: 0),
+                                                      .init(color: .white.opacity(0.08), location: 0.45),
+                                                      .init(color: .white.opacity(0.06), location: 0.6),
+                                                      .init(color: .white.opacity(0.26), location: 1)],
+                                              startPoint: .topLeading, endPoint: .bottomTrailing),
+                               lineWidth: 9)
+                .blur(radius: 7)
+                .blendMode(.plusLighter)
+            // A little depth along the lower edge.
+            shape.strokeBorder(Color.black.opacity(0.14), lineWidth: 5)
+                .blur(radius: 5)
+                .mask(LinearGradient(colors: [.clear, .black], startPoint: .center, endPoint: .bottom))
+            // A faint sheen over the upper part.
+            LinearGradient(colors: [.white.opacity(0.07), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.45))
+                .blendMode(.plusLighter)
+        }
+        .clipShape(shape)
+        .overlay {
+            shape.strokeBorder(
+                LinearGradient(stops: [.init(color: .white.opacity(0.85), location: 0),
+                                       .init(color: .white.opacity(0.2), location: 0.35),
+                                       .init(color: .white.opacity(0.1), location: 0.5),
+                                       .init(color: .white.opacity(0.2), location: 0.65),
+                                       .init(color: .white.opacity(0.65), location: 1)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing),
+                lineWidth: 1)
+        }
+        .allowsHitTesting(false)
     }
 }
 
