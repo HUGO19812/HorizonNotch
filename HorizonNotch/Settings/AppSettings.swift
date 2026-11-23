@@ -175,8 +175,6 @@ final class AppSettings: ObservableObject {
     @Published var notifyCopies: Bool { didSet { defaults.set(notifyCopies, forKey: "notifyCopies") } }
     /// Short notice when rain starts soon where you are.
     @Published var weatherRainAlert: Bool { didSet { defaults.set(weatherRainAlert, forKey: "weatherRainAlert") } }
-    /// Reminders (to-dos) on the calendar page.
-    @Published var calendarShowReminders: Bool { didSet { defaults.set(calendarShowReminders, forKey: "calendarShowReminders") } }
     @Published var displayMode: DisplayMode { didSet { defaults.set(displayMode.rawValue, forKey: "displayMode") } }
     @Published var islandDesign: IslandDesign { didSet { defaults.set(islandDesign.rawValue, forKey: "islandDesign") } }
     @Published var accessoryStyle: AccessoryStyle { didSet { defaults.set(accessoryStyle.rawValue, forKey: "accessoryStyle") } }
@@ -301,7 +299,6 @@ final class AppSettings: ObservableObject {
         }
         notifyCopies = defaults.object(forKey: "notifyCopies") as? Bool ?? true
         weatherRainAlert = defaults.object(forKey: "weatherRainAlert") as? Bool ?? true
-        calendarShowReminders = defaults.object(forKey: "calendarShowReminders") as? Bool ?? true
         displayMode = DisplayMode(rawValue: defaults.string(forKey: "displayMode") ?? "") ?? .chosen
         islandDesign = IslandDesign(rawValue: defaults.string(forKey: "islandDesign") ?? "") ?? .notch
         // The drawn 3D model was not liked: the glyph is the default now.

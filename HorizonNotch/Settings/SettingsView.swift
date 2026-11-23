@@ -1246,7 +1246,6 @@ private struct CalendarSettings: View {
                            "Days ahead in the date strip: \(settings.calendarDaysAhead)"))
                 }
                 Toggle(L("Ganztägige Termine anzeigen", "Show all-day events"), isOn: $settings.calendarShowAllDay)
-                Toggle(L("To-dos aus Erinnerungen daneben", "To-dos from Reminders beside them"), isOn: $settings.calendarShowReminders)
             }
             HapticSection()
             Section(L("Meeting-Countdown", "Meeting countdown")) {

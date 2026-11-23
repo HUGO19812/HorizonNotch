@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var rainSubscription: AnyCancellable?
     private var lastRainNotice: Date?
     let calendar = CalendarModule()
+    let reminders = RemindersModule()
     let weather = WeatherModule()
     let calculator = CalculatorModule()
     let claude = ClaudeCodeModule()
@@ -61,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.register(shelf)
         coordinator.register(clipboard)
         coordinator.register(calendar)
+        coordinator.register(reminders)
         coordinator.register(weather)
         coordinator.register(calculator)
         coordinator.register(claude)
