@@ -426,12 +426,17 @@ private struct OutputPicker: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            VolumeRow(close: close)
-                .frame(height: 26)
-            if let name = service.playerVolumeName {
-                PlayerVolumeRow(service: service, name: name)
-                    .frame(height: 26)
+            // System and player volume share one row, so the devices keep
+            // their room.
+            HStack(spacing: 4) {
+                if let name = service.playerVolumeName {
+                    PlayerVolumeRow(service: service, name: name)
+                        .frame(width: 128)
+                    Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1, height: 16)
+                }
+                VolumeRow(close: close)
             }
+            .frame(height: 26)
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 2) {
                     ForEach(output.devices) { device in
@@ -464,7 +469,7 @@ private struct OutputPicker: View {
             .frame(maxHeight: CGFloat(min(output.devices.count, 3)) * 28)
         }
         .padding(8)
-        .frame(width: 236)
+        .frame(width: service.playerVolumeName == nil ? 236 : 372)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(white: 0.13)))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
         .shadow(color: .black.opacity(0.5), radius: 12, y: 4)
@@ -480,11 +485,11 @@ private struct PlayerVolumeRow: View {
     @State private var dragging = false
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Image(systemName: name == "Spotify" ? "dot.radiowaves.right" : "music.note")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.7))
-                .frame(width: 26)
+                .frame(width: 20)
                 .help(name)
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
@@ -506,13 +511,8 @@ private struct PlayerVolumeRow: View {
                 .animation(.easeOut(duration: 0.15), value: dragging)
             }
             .frame(height: 20)
-            Text(level.map { "\(Int(($0 * 100).rounded()))" } ?? "–")
-                .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.55))
-                .frame(width: 28, alignment: .trailing)
-            Color.clear.frame(width: 24, height: 24)
         }
-        .padding(.horizontal, 6)
+        .padding(.leading, 2)
         .help(L("Lautstärke nur in \(name)", "Volume of \(name) only"))
         .task {
             let read = await Task.detached { service.readPlayerVolume() }.value

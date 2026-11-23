@@ -87,6 +87,16 @@ final class TimerModule: NotchModule {
             : String(format: "%d:%02d", total / 60, total % 60)
     }
 
+    /// Ticks exactly on the second boundaries of the countdown (or the
+    /// stopwatch), so the digits change when the time does – a free-running
+    /// one-second tick showed them up to a second late.
+    var tickSchedule: PeriodicTimelineSchedule {
+        let anchor = endDate ?? stopwatchStart ?? Date()
+        let running = endDate != nil || stopwatchStart != nil
+        // A hair after each boundary, so the rounding lands on the new second.
+        return .periodic(from: anchor.addingTimeInterval(-ceil(anchor.timeIntervalSinceNow + 1) + 0.02), by: running ? 1 : 3600)
+    }
+
     var timerRunning: Bool { endDate != nil }
     var stopwatchRunning: Bool { stopwatchStart != nil }
 
@@ -227,7 +237,7 @@ private struct TimerBubble: View {
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(theme.tint(.orange))
             if !module.finished {
-                TimelineView(.animation(minimumInterval: 1, paused: !running)) { context in
+                TimelineView(module.tickSchedule) { context in
                     Text(timerDigits(module, at: context.date))
                         .font(.system(size: 12, weight: .bold).monospacedDigit())
                         .foregroundStyle(.white)
@@ -290,7 +300,7 @@ private struct CompactTiles: View {
 
     var body: some View {
         let running = module.timerRunning || module.stopwatchRunning
-        TimelineView(.animation(minimumInterval: 1, paused: !running)) { context in
+        TimelineView(module.tickSchedule) { context in
             let pieces = timerDigits(module, at: context.date).split(separator: ":").map(String.init)
             let text = part == .leading ? pieces.dropLast().joined(separator: ":") : (pieces.last ?? "")
             HStack(spacing: 2) {
@@ -322,7 +332,7 @@ private struct TimerExpandedView: View {
     var body: some View {
         HStack(alignment: .center, spacing: 20) {
             VStack(spacing: 10) {
-                TimelineView(.animation(minimumInterval: 1, paused: !isRunning)) { context in
+                TimelineView(module.tickSchedule) { context in
                     let digits = timerDigits(module, at: context.date)
                     let characters = Array(digits)
                     HStack(spacing: 6) {
