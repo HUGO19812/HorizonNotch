@@ -200,7 +200,7 @@ final class NotchWindowController {
         return rect
     }
 
-    /// The Claude bubble right of the closed island (music + Claude).
+    /// The bubble right of the closed island (music + another module).
     private var bubbleRect: CGRect? {
         guard model.state == .compact, coordinator.bubbleModule != nil, let screen else { return nil }
         let island = islandRect(for: .compact)
@@ -210,11 +210,12 @@ final class NotchWindowController {
                       height: screen.frame.maxY + 1 - (top - height))
     }
 
-    /// Hovering Claude (the bubble, or the island while Claude owns it)
-    /// opens straight onto the Claude tab, without the hover delay.
-    private func pointsAtClaude(_ location: CGPoint) -> Bool {
-        if bubbleRect?.contains(location) == true { return true }
-        return model.state == .compact && coordinator.compactModule?.id == "claude"
+    /// Hovering the bubble beside the music (or the island while Claude
+    /// owns it) opens straight onto that module's tab, without the hover
+    /// delay. Returns the page to show.
+    private func directPage(at location: CGPoint) -> String? {
+        if bubbleRect?.contains(location) == true { return coordinator.bubbleModule?.id }
+        return model.state == .compact && coordinator.compactModule?.id == "claude" ? "claude" : nil
     }
 
     // MARK: - Pointer
@@ -262,16 +263,16 @@ final class NotchWindowController {
             collapseTimer = nil
             guard !model.isExpanded, hoverTimer == nil else { return }
             model.setHovering(true)
-            let claude = pointsAtClaude(location)
+            let page = directPage(at: location)
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.hoverTimer = nil
                 self.model.setExpanded(true)
-                if claude { self.coordinator.showPage(id: "claude") }
+                if let page { self.coordinator.showPage(id: page) }
                 self.updateMouseHandling(at: NSEvent.mouseLocation)
             }
             hoverTimer = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + (claude ? 0.05 : settings.hoverDelay), execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + (page != nil ? 0.05 : settings.hoverDelay), execute: work)
         } else {
             hoverTimer?.cancel()
             hoverTimer = nil
@@ -353,9 +354,9 @@ final class NotchWindowController {
     private func handleClick() {
         let location = NSEvent.mouseLocation
         guard !model.isExpanded, updateMouseHandling(at: location) else { return }
-        let claude = pointsAtClaude(location)
+        let page = directPage(at: location)
         expand()
-        if claude { coordinator.showPage(id: "claude") }
+        if let page { coordinator.showPage(id: page) }
     }
 
     /// Marks scroll events the day strips re-sent with vertical turned

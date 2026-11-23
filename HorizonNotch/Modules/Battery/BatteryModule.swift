@@ -28,7 +28,7 @@ final class BatteryModule: NotchModule {
     /// When the charger is connected, a bar with the level and the time
     /// until full hangs below the wings.
     var isPeeking: Bool { event == .pluggedIn }
-    var peekHeight: CGFloat { 30 }
+    var peekHeight: CGFloat { 52 }
     func peekView() -> AnyView { AnyView(ChargingProgress(module: self)) }
 
     init() {
@@ -42,7 +42,7 @@ final class BatteryModule: NotchModule {
         guard new.hasBattery else { return }
         if new.isPluggedIn && !old.isPluggedIn {
             warned.removeAll()
-            present(.pluggedIn, for: 5)
+            present(.pluggedIn, for: 5.5)
         } else if !new.isPluggedIn && old.isPluggedIn {
             present(.unplugged, for: 2.6)
         } else if !new.isPluggedIn,
@@ -79,10 +79,9 @@ private struct BatteryLeading: View {
             case .pluggedIn:
                 Image(systemName: "bolt.fill")
                     .foregroundStyle(theme.tint(.green))
-                    .scaleEffect(glow ? 1.15 : 0.85)
-                    .shadow(color: theme.tint(.green).opacity(glow ? 0.9 : 0.2), radius: glow ? 6 : 1)
+                    .symbolEffect(.bounce, value: glow)
                 Text(L("Lädt", "Charging"))
-                    .foregroundStyle(theme.tint(.green))
+                    .foregroundStyle(.white.opacity(0.9))
             case .unplugged:
                 Image(systemName: "powerplug.portrait")
                     .foregroundStyle(.white.opacity(0.75))
@@ -109,36 +108,97 @@ private struct BatteryLeading: View {
     }
 }
 
-/// Level bar filling up in green, and "full in 1 h 20 min" beside it.
+/// The charging card below the wings, clean like iOS: a large battery
+/// outline that fills up from empty to the level with a green gradient
+/// (yellow when low or in Low Power Mode), a sheen gliding across the fill,
+/// the bolt on top, and beside it the percentage and the time until full.
 private struct ChargingProgress: View {
     @ObservedObject var module: BatteryModule
     @Environment(\.islandTheme) private var theme
+    @State private var shown = 0.0
+    @State private var sheen = false
+    @State private var boltIn = false
 
     var body: some View {
         let state = module.state
-        HStack(spacing: 10) {
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.15))
-                    Capsule()
-                        .fill(LinearGradient(colors: [theme.tint(.green).opacity(0.7), theme.tint(.green)],
-                                             startPoint: .leading, endPoint: .trailing))
-                        .frame(width: proxy.size.width * CGFloat(state.percent) / 100)
-                        .shadow(color: theme.tint(.green).opacity(0.6), radius: 4)
+        HStack(spacing: 14) {
+            battery(state)
+                .frame(width: 66, height: 30)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(state.percent) %")
+                    .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText(value: Double(state.percent)))
+                // Re-read every few seconds: the estimate arrives a little later.
+                TimelineView(.periodic(from: .now, by: 3)) { _ in
+                    Text(remaining(state))
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.6))
+                        .lineLimit(1)
+                        .fixedSize()
                 }
             }
-            .frame(height: 6)
-            // Re-read every few seconds: the estimate arrives a little later.
-            TimelineView(.periodic(from: .now, by: 3)) { _ in
-                Text(remaining(state))
-                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.7))
-                    .contentTransition(.numericText())
-                    .fixedSize()
-            }
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
         .frame(maxHeight: .infinity)
+        .onAppear {
+            withAnimation(.spring(response: 1.1, dampingFraction: 0.9).delay(0.15)) {
+                shown = min(max(Double(module.state.percent) / 100, 0), 1)
+            }
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.55).delay(0.35)) { boltIn = true }
+            withAnimation(.easeInOut(duration: 1.6).delay(0.9).repeatForever(autoreverses: false)) { sheen = true }
+        }
+        .onChange(of: state.percent) { _, value in
+            withAnimation(.easeInOut(duration: 0.5)) { shown = min(max(Double(value) / 100, 0), 1) }
+        }
+    }
+
+    private func fillColors(_ state: PowerSource.State) -> [Color] {
+        if state.isLowPower || state.percent <= 20 {
+            return [theme.tint(.yellow).opacity(0.75), theme.tint(.yellow)]
+        }
+        return [Color(red: 0.2, green: 0.78, blue: 0.35), Color(red: 0.4, green: 0.93, blue: 0.45)]
+    }
+
+    private func battery(_ state: PowerSource.State) -> some View {
+        let body = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        return HStack(spacing: 2.5) {
+            ZStack(alignment: .leading) {
+                body.fill(Color.white.opacity(0.1))
+                GeometryReader { proxy in
+                    let inner = proxy.size.width - 6
+                    let width = max(6, inner * shown)
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(LinearGradient(colors: fillColors(state), startPoint: .leading, endPoint: .trailing))
+                        // A soft band of light gliding across the fill.
+                        LinearGradient(stops: [.init(color: .clear, location: 0),
+                                               .init(color: .white.opacity(0.45), location: 0.5),
+                                               .init(color: .clear, location: 1)],
+                                       startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 26)
+                            .offset(x: sheen ? width + 4 : -30)
+                            .blendMode(.plusLighter)
+                    }
+                    .frame(width: width)
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .shadow(color: fillColors(state)[1].opacity(0.55), radius: 5)
+                    .padding(3)
+                }
+                body.strokeBorder(Color.white.opacity(0.4), lineWidth: 1.5)
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 15, weight: .black))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.35), radius: 2)
+                    .scaleEffect(boltIn ? 1 : 0.2)
+                    .opacity(boltIn ? 1 : 0)
+                    .frame(maxWidth: .infinity)
+            }
+            Capsule()
+                .fill(Color.white.opacity(0.4))
+                .frame(width: 3, height: 10)
+        }
     }
 
     private func remaining(_ state: PowerSource.State) -> String {

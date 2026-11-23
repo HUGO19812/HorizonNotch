@@ -142,6 +142,7 @@ final class TimerModule: NotchModule {
 
     func compactLeading() -> AnyView { AnyView(TimerCompactLeading(module: self)) }
     func compactTrailing() -> AnyView { AnyView(TimerCompactTrailing(module: self)) }
+    func bubbleView() -> AnyView { AnyView(TimerBubble(module: self)) }
     func expandedView() -> AnyView { AnyView(TimerExpandedView(module: self)) }
 }
 
@@ -164,6 +165,31 @@ private func timerDigits(_ module: TimerModule, at date: Date) -> String {
     if let end = module.endDate { return formatClock(max(0, end.timeIntervalSince(date))) }
     if let paused = module.pausedRemaining { return formatClock(paused) }
     return formatClock(module.duration)
+}
+
+/// Beside the music: the time left (a bell when done).
+private struct TimerBubble: View {
+    @ObservedObject var module: TimerModule
+    @Environment(\.islandTheme) private var theme
+
+    var body: some View {
+        let running = module.timerRunning || module.stopwatchRunning
+        HStack(spacing: 5) {
+            Image(systemName: module.finished ? "bell.fill" : "timer")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(theme.tint(.orange))
+            if !module.finished {
+                TimelineView(.animation(minimumInterval: 1, paused: !running)) { context in
+                    Text(timerDigits(module, at: context.date))
+                        .font(.system(size: 12, weight: .bold).monospacedDigit())
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+    }
 }
 
 /// Left of the notch: the minutes as two small flip tiles (a bell when done).

@@ -2,7 +2,8 @@ import Combine
 import SwiftUI
 
 /// Decides what the island shows: which module owns the compact live
-/// activity (highest priority wins: HUD > notification > timer > media) and
+/// activity (highest priority wins: HUD > notification > timer > media,
+/// except that playing music keeps it and the rest becomes a bubble) and
 /// which pages the expanded island offers.
 final class NotchCoordinator: ObservableObject {
     private(set) var modules: [any NotchModule] = []
@@ -75,9 +76,15 @@ final class NotchCoordinator: ObservableObject {
         let active = enabled.filter(\.isActive).sorted { $0.priority > $1.priority }
         var newCompact = active.first
         var newBubble: (any NotchModule)?
-        // While music plays, Claude Code moves into a bubble beside it.
-        if newCompact?.id == "claude", let media = active.first(where: { $0.id == "media" }) {
-            newBubble = newCompact
+        // While music plays it stays the closed island's main content:
+        // everything else (Claude Code, timer, meeting countdown, downloads,
+        // …) moves into a bubble beside it. Only HUD and short notifications
+        // (and the song's own peek) take the island over for a moment.
+        // Claude also yields to paused music, as before.
+        if let winner = newCompact, winner.id != "media", winner.priority < ModulePriority.notification - 1,
+           let media = active.first(where: { $0.id == "media" }) as? MediaModule,
+           media.isPlaying || winner.id == "claude" {
+            newBubble = winner
             newCompact = media
         }
         if newBubble?.id != bubbleModule?.id { bubbleModule = newBubble }
