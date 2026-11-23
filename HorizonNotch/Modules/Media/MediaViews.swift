@@ -392,7 +392,7 @@ private struct CanopyControls: View {
             .buttonStyle(PressScaleStyle())
             .opacity(service.canLike ? 1 : 0.3)
             .disabled(!service.canLike)
-            .help(service.canLike ? L("Favorit", "Favourite") : L("Nur mit Apple Music", "Only with Apple Music"))
+            .help(service.canLike ? L("Favorit", "Favourite") : L("Nur mit Spotify oder Apple Music", "Only with Spotify or Apple Music"))
             Spacer(minLength: 0)
             ControlButton(symbol: "backward.fill", size: 18) { service.send(.previous) }
             Spacer(minLength: 0)

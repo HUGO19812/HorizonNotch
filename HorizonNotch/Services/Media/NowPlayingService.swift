@@ -10,11 +10,13 @@ final class NowPlayingService: ObservableObject {
     /// Vivid colour taken from the cover, used for the visualizer.
     @Published private(set) var accent: Color = .white
     @Published private(set) var usingFallback = false
-    /// The heart: whether the current song is a favourite (Music only –
-    /// other players offer no way to read or set it).
+    /// The heart: whether the current song is a favourite. Music answers via
+    /// AppleScript, Spotify via its own like button (see SpotifyLikes);
+    /// other players offer no way to read or set it.
     @Published private(set) var liked = false
     private var likedTitle = ""
-    var canLike: Bool { info?.bundleID == "com.apple.Music" }
+    var canLike: Bool { info?.bundleID == "com.apple.Music" || info?.bundleID == SpotifyLikes.bundleID }
+    private let likeQueue = DispatchQueue(label: "horizon.like", qos: .userInitiated)
 
     /// A seek from the island the player has not confirmed yet. Right after
     /// seeking, players still report the old position once or twice; those
@@ -70,7 +72,16 @@ final class NowPlayingService: ObservableObject {
             info = current
             pendingSeek = (seconds, current.timestamp, current.title)
         }
-        if usingFallback { fallback.seek(to: seconds) } else { bridge.send("seek \(seconds)") }
+        if usingFallback {
+            fallback.seek(to: seconds)
+        } else if let name = scriptablePlayerName {
+            // Music and Spotify follow their own AppleScript seek reliably,
+            // also while the screen is locked and for Spotify Connect.
+            let position = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), seconds)
+            likeQueue.async { Self.runScript("tell application \"\(name)\" to set player position to \(position)") }
+        } else {
+            bridge.send("seek \(seconds)")
+        }
     }
 
     /// Off → all → one → off, like Music.
@@ -85,28 +96,69 @@ final class NowPlayingService: ObservableObject {
         bridge.send("shuffle \(current.isShuffling ? 1 : 3)")
     }
 
+    private var scriptablePlayerName: String? {
+        switch info?.bundleID {
+        case "com.apple.Music": return "Music"
+        case SpotifyLikes.bundleID: return "Spotify"
+        default: return nil
+        }
+    }
+
     func toggleLike() {
-        guard canLike else { return }
+        guard canLike, let bundle = info?.bundleID else { return }
         let new = !liked
         liked = new
-        Self.runScript("tell application \"Music\" to set favorited of current track to \(new)")
+        likeQueue.async { [weak self] in
+            let confirmed: Bool?
+            if bundle == SpotifyLikes.bundleID {
+                confirmed = SpotifyLikes.toggle()
+            } else {
+                confirmed = Self.setMusicFavourite(new)
+            }
+            DispatchQueue.main.async {
+                if let confirmed { self?.liked = confirmed } else { self?.liked = !new }
+            }
+        }
     }
 
     /// Reads the heart for a new song in the background.
     private func refreshLiked() {
         guard let info, info.title != likedTitle else { return }
         likedTitle = info.title
-        guard canLike else { liked = false; return }
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let result = Self.runScript("tell application \"Music\" to get favorited of current track")
-            DispatchQueue.main.async { self?.liked = result == "true" }
+        guard canLike, let bundle = info.bundleID else { liked = false; return }
+        likeQueue.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            // Spotify updates its bar a moment after the track changes.
+            let result = bundle == SpotifyLikes.bundleID ? SpotifyLikes.isLiked() : Self.musicFavourite()
+            DispatchQueue.main.async {
+                guard self?.info?.title == info.title else { return }
+                self?.liked = result ?? false
+            }
         }
+    }
+
+    /// Music calls it "favorited" since macOS 14.4, "loved" before.
+    private static func musicFavourite() -> Bool? {
+        for property in ["favorited", "loved"] {
+            if let result = runScript("tell application \"Music\" to get \(property) of current track") {
+                return result == "true"
+            }
+        }
+        return nil
+    }
+
+    private static func setMusicFavourite(_ value: Bool) -> Bool? {
+        for property in ["favorited", "loved"]
+        where runScript("tell application \"Music\" to set \(property) of current track to \(value)\nreturn \"ok\"") != nil {
+            return value
+        }
+        return nil
     }
 
     @discardableResult
     private static func runScript(_ source: String) -> String? {
         var error: NSDictionary?
-        return NSAppleScript(source: source)?.executeAndReturnError(&error).stringValue
+        let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
+        return error == nil ? result?.stringValue : nil
     }
 
     func openPlayerApp() {

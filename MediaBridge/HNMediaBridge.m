@@ -28,6 +28,7 @@ static MRSendCommandFn sendCommand;
 static MRSetElapsedFn setElapsed;
 static MRSetModeFn setShuffle;
 static MRSetModeFn setRepeat;
+static NSString *const *positionKey;
 
 static NSUInteger lastArtworkHash = 0;
 static BOOL refreshScheduled = NO;
@@ -108,7 +109,8 @@ static void handleCommand(NSString *line) {
     if ([verb isEqualToString:@"cmd"]) {
         sendCommand((int)arg, nil);
     } else if ([verb isEqualToString:@"seek"]) {
-        setElapsed(arg);
+        // The seek command reaches more players than MRMediaRemoteSetElapsedTime.
+        if (!positionKey || !sendCommand(24, @{*positionKey: @(arg)})) setElapsed(arg);
     } else if ([verb isEqualToString:@"shuffle"]) {
         setShuffle((int)arg);
     } else if ([verb isEqualToString:@"repeat"]) {
@@ -144,6 +146,7 @@ void hn_run(void) {
     setElapsed = (MRSetElapsedFn)dlsym(mr, "MRMediaRemoteSetElapsedTime");
     setShuffle = (MRSetModeFn)dlsym(mr, "MRMediaRemoteSetShuffleMode");
     setRepeat = (MRSetModeFn)dlsym(mr, "MRMediaRemoteSetRepeatMode");
+    positionKey = (NSString *const *)dlsym(mr, "kMRMediaRemoteOptionPlaybackPosition");
     if (!registerFn || !getInfo || !getPlaying || !getPID || !sendCommand || !setElapsed || !setShuffle || !setRepeat) {
         emit(@{@"type": @"error", @"message": @"MediaRemote symbols missing"});
         exit(3);
