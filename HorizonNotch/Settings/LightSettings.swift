@@ -41,22 +41,42 @@ struct LightSettings: View {
             }
 
             Section {
-                ForEach($moods.custom) { $mood in
-                    MoodEditor(mood: $mood, symbols: Self.symbols) {
-                        moods.custom.removeAll { $0.id == mood.id }
+                ForEach($moods.items) { $mood in
+                    SceneRow(mood: $mood, symbols: Self.symbols) {
+                        moods.items.removeAll { $0.id == mood.id }
                     }
                 }
-                Button {
-                    moods.custom.append(LightMood(name: L("Neue Stimmung", "New mood"), symbol: "sparkles",
-                                                  kind: .color(hex: "#3A7BFF"), brightness: 0.6))
-                } label: {
-                    Label(L("Stimmung hinzufügen", "Add mood"), systemImage: "plus")
+                .onMove { moods.items.move(fromOffsets: $0, toOffset: $1) }
+                HStack(spacing: 14) {
+                    Button {
+                        guard let kind = light.current else { return }
+                        moods.items.append(LightMood(name: L("Szene \(moods.items.count + 1)", "Scene \(moods.items.count + 1)"),
+                                                     symbol: "sparkles", kind: kind,
+                                                     brightness: max(0.05, light.brightness)))
+                    } label: {
+                        Label(L("Aktuelles Licht als Szene speichern", "Save current light as scene"),
+                              systemImage: "square.and.arrow.down")
+                    }
+                    .disabled(light.current == nil)
+                    Button {
+                        moods.items.append(LightMood(name: L("Neue Szene", "New scene"), symbol: "sparkles",
+                                                     kind: .color(hex: "#3A7BFF"), brightness: 0.6))
+                    } label: {
+                        Label(L("Leere Szene", "Empty scene"), systemImage: "plus")
+                    }
+                    Spacer()
+                    if !moods.items.contains(where: { LightMood.presets.map(\.id).contains($0.id) }) {
+                        Button(L("Standard-Szenen zurück", "Restore defaults")) {
+                            moods.items.insert(contentsOf: LightMood.presets, at: 0)
+                        }
+                    }
                 }
+                .buttonStyle(.borderless)
             } header: {
-                Text(L("Eigene Stimmungen", "Your moods"))
+                Text(L("Lichtszenen", "Light scenes"))
             } footer: {
-                Text(L("Sie erscheinen im Licht-Tab nach Lesen, Entspannen, Film und Cover.",
-                       "They appear on the Light tab after Reading, Relax, Film and Cover."))
+                Text(L("Sie erscheinen in dieser Reihenfolge im Licht-Tab. „Aktuelles Licht speichern“ übernimmt Farbe oder Weißton und Helligkeit, wie der Streifen gerade leuchtet.",
+                       "They appear on the Light tab in this order. “Save current light” takes the colour or white and the brightness the strip shows right now."))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -68,6 +88,39 @@ struct LightSettings: View {
         case .unauthorized: return L("Bluetooth nicht erlaubt", "Bluetooth not allowed")
         case .searching: return L("Sucht nach einem Hue-Licht …", "Looking for a Hue light …")
         default: return light.reachable ? L("Erreichbar", "Reachable") : (light.isPaired ? L("Gekoppelt", "Paired") : "")
+        }
+    }
+}
+
+/// One scene: swatch, symbol and name; opens to edit, with delete.
+private struct SceneRow: View {
+    @Binding var mood: LightMood
+    let symbols: [String]
+    let delete: () -> Void
+    @State private var open = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $open) {
+            MoodEditor(mood: $mood, symbols: symbols, delete: delete)
+        } label: {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(LinearGradient(colors: mood.colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 26, height: 18)
+                Image(systemName: mood.symbol).frame(width: 18)
+                Text(mood.name)
+                Spacer()
+                Text(summary).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var summary: String {
+        let level = "\(Int((mood.brightness * 100).rounded())) %"
+        switch mood.kind {
+        case .white(let kelvin): return "\(Int(kelvin)) K · \(level)"
+        case .color: return L("Farbe", "Colour") + " · " + level
+        case .cover: return L("Cover-Farbe", "Cover colour") + " · " + level
         }
     }
 }
@@ -91,16 +144,18 @@ private struct MoodEditor: View {
                 }
                 .fixedSize()
                 TextField(L("Name", "Name"), text: $mood.name)
-                Picker("", selection: Binding(get: { isWhite }, set: { white in
-                    mood.kind = white ? .white(kelvin: 3000) : .color(hex: "#3A7BFF")
-                })) {
-                    Text(L("Weiß", "White")).tag(true)
-                    Text(L("Farbe", "Colour")).tag(false)
+                if mood.kind != .cover {
+                    Picker("", selection: Binding(get: { isWhite }, set: { white in
+                        mood.kind = white ? .white(kelvin: 3000) : .color(hex: "#3A7BFF")
+                    })) {
+                        Text(L("Weiß", "White")).tag(true)
+                        Text(L("Farbe", "Colour")).tag(false)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .fixedSize()
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .fixedSize()
-                Button(role: .destructive, action: delete) { Image(systemName: "trash") }
+                Button(role: .destructive, action: delete) { Label(L("Löschen", "Delete"), systemImage: "trash") }
                     .buttonStyle(.borderless)
             }
             HStack(spacing: 12) {

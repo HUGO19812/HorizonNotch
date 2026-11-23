@@ -27,6 +27,8 @@ final class HueBluetoothLight: NSObject, ObservableObject {
     /// The light's colour as last set or read (for the UI).
     @Published private(set) var color: Color = Color(red: 1, green: 0.8, blue: 0.55)
     @Published private(set) var hasState = false
+    /// What the light shows now, for saving it as a scene.
+    @Published private(set) var current: LightMood.Kind?
     /// The light answered the last time the app tried (false when it is out
     /// of reach or switched off at the wall).
     @Published private(set) var reachable = false
@@ -122,6 +124,7 @@ final class HueBluetoothLight: NSObject, ObservableObject {
     func setColor(_ nsColor: NSColor, switchOn: Bool = true) {
         guard let rgb = nsColor.usingColorSpace(.sRGB) else { return }
         color = Color(nsColor: rgb)
+        current = .color(hex: rgb.hexString)
         let (x, y) = Self.xy(r: rgb.redComponent, g: rgb.greenComponent, b: rgb.blueComponent)
         let data = Data(le16(UInt16(min(max(x, 0), 1) * 65535)) + le16(UInt16(min(max(y, 0), 1) * 65535)))
         if switchOn, !isOn { isOn = true; queue(Self.powerID, Data([1])) }
@@ -132,6 +135,7 @@ final class HueBluetoothLight: NSObject, ObservableObject {
     func setWhite(kelvin: Double) {
         let mired = UInt16(min(max(1_000_000 / kelvin, 153), 500))
         color = Self.whiteColor(kelvin: kelvin)
+        current = .white(kelvin: kelvin)
         if !isOn { isOn = true; queue(Self.powerID, Data([1])) }
         send(Self.temperatureID, Data(le16(mired)))
     }
@@ -310,7 +314,11 @@ extension HueBluetoothLight: CBCentralManagerDelegate, CBPeripheralDelegate {
         case Self.brightnessID: brightness = Double(max(1, Int(bytes[0])) - 1) / 253
         case Self.temperatureID where bytes.count >= 2:
             let mired = Int(bytes[0]) | Int(bytes[1]) << 8
-            if mired != 0xFFFF, mired > 0 { color = Self.whiteColor(kelvin: 1_000_000 / Double(mired)) }
+            if mired != 0xFFFF, mired > 0 {
+                let kelvin = (1_000_000 / Double(mired) / 50).rounded() * 50
+                color = Self.whiteColor(kelvin: kelvin)
+                current = .white(kelvin: kelvin)
+            }
         case Self.colorID where bytes.count >= 4:
             // Only when the light is in colour mode (its temperature reads FFFF).
             guard let temperature = characteristics[Self.temperatureID]?.value,
@@ -318,6 +326,7 @@ extension HueBluetoothLight: CBCentralManagerDelegate, CBPeripheralDelegate {
             let x = Double(Int(bytes[0]) | Int(bytes[1]) << 8) / 65535
             let y = Double(Int(bytes[2]) | Int(bytes[3]) << 8) / 65535
             color = Self.color(x: x, y: y)
+            current = .color(hex: NSColor(color).hexString)
         default: break
         }
     }
