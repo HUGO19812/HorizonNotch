@@ -14,9 +14,8 @@ final class LyricsService: ObservableObject {
     }
 
     /// How many words of `lines[index]` have been sung at `position`.
-    /// Uses word stamps when present; otherwise spreads the line over its
-    /// time by character count, assuming the singer finishes a little
-    /// before the next line.
+    /// Uses word stamps when present; otherwise the whole line counts as
+    /// sung from its start (see `sungCharacters`).
     func sungWords(in index: Int, at position: Double) -> Int {
         guard lines.indices.contains(index) else { return 0 }
         let line = lines[index]
@@ -25,20 +24,15 @@ final class LyricsService: ObservableObject {
         if let times = line.wordTimes, times.count == words.count {
             return max(1, times.filter { $0 <= position + 0.05 }.count)
         }
-        let span = singingSpan(of: index)
-        let progress = span > 0 ? (position - line.time) / span : 1
-        let total = Double(words.reduce(0) { $0 + $1.count + 1 })
-        var before = 0.0
-        var sung = 0
-        for word in words {
-            if before / total <= progress { sung += 1 } else { break }
-            before += Double(word.count + 1)
-        }
-        return max(1, sung)
+        return words.count
     }
 
     /// How much of `lines[index]` has been sung at `position`, in characters
     /// (fractional, so a word can light up letter by letter). Spaces count.
+    /// With word stamps each word fills in its own time. Most lyrics only
+    /// time the line: guessing each word's moment from it put some words
+    /// early and others late, so such a line lights up as a whole, in a
+    /// short soft sweep at its start (as Spicetify does for them).
     func sungCharacters(in index: Int, at position: Double) -> Double {
         guard lines.indices.contains(index) else { return 0 }
         let line = lines[index]
@@ -54,22 +48,12 @@ final class LyricsService: ObservableObject {
             let fraction = end > times[current] ? (position - times[current]) / (end - times[current]) : 1
             return min(total, before + length * min(max(fraction, 0), 1))
         }
-        let span = singingSpan(of: index)
-        let progress = span > 0 ? (position - line.time) / span : 1
+        let progress = (position - line.time) / Self.lineSweep
         return min(total, max(0, progress) * total)
     }
 
-    /// How long the singer takes for a line without word stamps: the
-    /// song's own pace (see `pace`) times the line's length, but never past
-    /// the next line – a long instrumental gap after a line doesn't stretch
-    /// it, a quick line doesn't lag.
-    private func singingSpan(of index: Int) -> Double {
-        guard lines.indices.contains(index) else { return 0 }
-        let line = lines[index]
-        let next = lines.indices.contains(index + 1) ? lines[index + 1].time : line.time + 6
-        let gap = max(0.4, next - line.time)
-        return min(gap * 0.92, max(0.5, Double(line.text.count) * pace))
-    }
+    /// How long a line without word stamps takes to light up.
+    private static let lineSweep = 0.45
 
     /// Seconds per character this song is sung at, learned from its own
     /// timing: where a line runs straight into the next, the time between
@@ -100,21 +84,6 @@ final class LyricsService: ObservableObject {
         didSet { pace = Self.estimatePace(lines) }
     }
     @Published private(set) var state: State = .idle
-    /// This song's own correction in seconds (+ = lyrics earlier), on top
-    /// of the general offset in Settings: lyrics files are timed
-    /// differently from song to song. Remembered per song.
-    @Published private(set) var trackOffset: Double = 0
-    private static let offsetsKey = "lyricsTrackOffsets"
-
-    /// Moves this song's lyrics by `delta` seconds.
-    func nudge(by delta: Double) {
-        guard !currentKey.isEmpty else { return }
-        let value = ((trackOffset + delta) * 100).rounded() / 100
-        trackOffset = abs(value) < 0.001 ? 0 : value
-        var offsets = UserDefaults.standard.dictionary(forKey: Self.offsetsKey) as? [String: Double] ?? [:]
-        offsets[currentKey] = trackOffset == 0 ? nil : trackOffset
-        UserDefaults.standard.set(offsets, forKey: Self.offsetsKey)
-    }
     private var currentKey = ""
     private var cache: [String: [Line]] = [:]
     private var task: URLSessionDataTask?
@@ -123,7 +92,6 @@ final class LyricsService: ObservableObject {
         let key = "\(info.artist)|\(info.title)"
         guard key != currentKey else { return }
         currentKey = key
-        trackOffset = (UserDefaults.standard.dictionary(forKey: Self.offsetsKey) as? [String: Double])?[key] ?? 0
         task?.cancel()
         if let cached = cache[key] {
             lines = cached
