@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import SwiftUI
 
 /// The large lock screen player in the look of Spicetify's Spicy Lyrics –
@@ -18,6 +19,7 @@ struct SpicyLockScreen: View {
     @ObservedObject var nowPlaying: NowPlayingService
     @ObservedObject var lyrics: LyricsService
     @ObservedObject var motion: MotionArtwork
+    @ObservedObject private var settings = AppSettings.shared
     let info: NowPlayingInfo
     let size: CGSize
     /// A sharper copy of the cover, if one was found.
@@ -113,7 +115,14 @@ struct SpicyLockScreen: View {
         let player = playerRect
         let words = lyricsRect
         ZStack(alignment: .topLeading) {
-            ReactiveBackdrop(palette: palette, playing: current.isPlaying, paused: mode == .motion, size: size)
+            Group {
+                if settings.lockScreenBackground == .cover {
+                    CoverBackdrop(image: image, playing: current.isPlaying, paused: mode == .motion, size: size)
+                } else {
+                    ReactiveBackdrop(palette: palette, playing: current.isPlaying, paused: mode == .motion, size: size)
+                }
+            }
+            .animation(.easeInOut(duration: 0.6), value: settings.lockScreenBackground)
             cover(coverRect)
             // Over a moving cover: darker at the top for the clock and at the
             // bottom for the player.
@@ -439,6 +448,106 @@ private struct ReactiveBackdrop: View {
             let c = NSColor(colors[i % colors.count]).usingColorSpace(.sRGB) ?? .gray
             return SIMD3(Double(c.redComponent), Double(c.greenComponent), Double(c.blueComponent))
         }
+    }
+}
+
+/// Like Spicetify's: the cover itself, hugely blurred and darkened, in
+/// three copies turning slowly in different directions, so its colours
+/// drift across the screen. The blur is done once per cover on a small
+/// copy (cheap); per frame only three textures turn. A new cover fades in
+/// over the old one.
+private struct CoverBackdrop: View {
+    let image: NSImage?
+    let playing: Bool
+    var paused = false
+    let size: CGSize
+
+    @State private var soft: CGImage?
+    @State private var softID = 0
+
+    var body: some View {
+        ZStack {
+            Color.black
+            if let soft {
+                CoverLayers(image: soft, playing: playing, paused: paused, size: size)
+                    .id(softID)
+                    .transition(.opacity)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .clipped()
+        .onAppear {
+            AudioLevelMeter.shared.acquire()
+            soft = image.flatMap(Self.blurred)
+        }
+        .onDisappear { AudioLevelMeter.shared.release() }
+        .onChange(of: image) { _, new in
+            let next = new.flatMap(Self.blurred)
+            withAnimation(.easeInOut(duration: 2.5)) {
+                soft = next
+                softID += 1
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// The cover at 160 px with a wide Gaussian blur: stretched over the
+    /// screen it stays smooth.
+    static func blurred(_ image: NSImage) -> CGImage? {
+        let side = 160
+        guard let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let context = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        context.interpolationQuality = .medium
+        context.draw(source, in: CGRect(x: 0, y: 0, width: side, height: side))
+        guard let small = context.makeImage() else { return nil }
+        let input = CIImage(cgImage: small)
+        guard let filter = CIFilter(name: "CIGaussianBlur") else { return small }
+        filter.setValue(input.clampedToExtent(), forKey: kCIInputImageKey)
+        filter.setValue(14, forKey: kCIInputRadiusKey)
+        guard let output = filter.outputImage?.cropped(to: input.extent) else { return small }
+        return CIContext(options: [.useSoftwareRenderer: false]).createCGImage(output, from: input.extent) ?? small
+    }
+}
+
+private struct CoverLayers: View {
+    let image: CGImage
+    let playing: Bool
+    let paused: Bool
+    let size: CGSize
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: paused)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let levels = AudioLevelMeter.shared.levels
+            let beat = playing && levels.hasSignal ? Double(levels.beat) : 0
+            let side = max(size.width, size.height)
+            // Slower while paused.
+            let speed = playing ? 1.0 : 0.4
+            ZStack {
+                layer(side * 1.9, angle: t * 3.2 * speed, x: 0.5, y: 0.5, opacity: 1)
+                layer(side * 1.15, angle: -t * 4.6 * speed + 70, x: 0.2, y: 0.85, opacity: 0.8)
+                layer(side * 1.0, angle: t * 5.4 * speed + 200, x: 0.85, y: 0.15, opacity: 0.7)
+                // Dark enough for white text, a touch lighter on the beat.
+                Color.black.opacity(0.32 - 0.05 * beat)
+            }
+            .saturation(1.25)
+            .scaleEffect(1 + 0.015 * beat)
+        }
+    }
+
+    private func layer(_ side: CGFloat, angle: Double, x: CGFloat, y: CGFloat, opacity: Double) -> some View {
+        Image(decorative: image, scale: 1)
+            .resizable()
+            .interpolation(.high)
+            .frame(width: side, height: side)
+            // A soft round edge, so no corner of the turning copy shows.
+            .mask(RadialGradient(colors: [.black, .black, .clear], center: .center,
+                                 startRadius: 0, endRadius: side * 0.5))
+            .rotationEffect(.degrees(angle))
+            .position(x: size.width * x, y: size.height * y)
+            .opacity(opacity)
     }
 }
 

@@ -47,7 +47,7 @@ final class LockScreenController {
             .removeDuplicates { $0.artist == $1.artist && $0.title == $1.title }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] info in
-                guard let self, self.settings.lockScreenWidgets, self.settings.lockScreenSpicyLyrics,
+                guard let self, self.settings.lockScreenWidgets,
                       self.settings.lockScreenStart == .lyrics else { return }
                 self.lyrics.load(for: info)
             }

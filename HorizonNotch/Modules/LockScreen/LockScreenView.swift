@@ -29,9 +29,8 @@ enum LockScreenSources {
 
 /// The lock screen, in the style of Canopy: a small clear Liquid Glass
 /// player above the password field and, under the clock, a row with the
-/// weather, battery and headphones. Clicking the cover lets the artwork
-/// fill the screen with a large cover under a glass clock tinted in its
-/// colours; the lyrics button adds the synced lyrics, word by word.
+/// weather, battery and headphones. Clicking the cover opens the large
+/// player (SpicyLockScreen); its lyrics button adds the synced lyrics.
 struct LockScreenView: View {
     @ObservedObject var nowPlaying: NowPlayingService
     @ObservedObject var lyrics: LyricsService
@@ -57,11 +56,11 @@ struct LockScreenView: View {
         GeometryReader { proxy in
             let size = proxy.size
             ZStack {
-                if let info = nowPlaying.info, state.large, settings.lockScreenSpicyLyrics {
+                if let info = nowPlaying.info, state.large {
                     // Large cover, with or without lyrics: one view, so the
                     // lyrics slide in instead of the screen being swapped.
                     SpicyLockScreen(nowPlaying: nowPlaying, lyrics: lyrics, motion: motion, info: info, size: size,
-                                    artwork: settings.lockScreenBackdrop == .tinted ? nil : hiRes.image,
+                                    artwork: hiRes.image,
                                     showLyrics: state.lyrics && lyricsAvailable, lyricsAvailable: lyricsAvailable,
                                     namespace: player,
                                     toggleLyrics: { state.lyrics = !(state.lyrics && lyricsAvailable) },
@@ -70,22 +69,6 @@ struct LockScreenView: View {
                     .transition(.opacity)
                     LockClock(size: size, tint: settings.lockClockTint && nowPlaying.artwork != nil ? nowPlaying.accent : nil)
                         .transition(.opacity)
-                } else if let info = nowPlaying.info, state.large {
-                    Backdrop(image: settings.lockScreenBackdrop == .tinted ? nowPlaying.artwork
-                                : (hiRes.image ?? nowPlaying.artwork),
-                             tint: nowPlaying.accent, size: size,
-                             style: settings.lockScreenBackdrop)
-                        .transition(.opacity)
-                    // The backdrop covers the system clock: the same clock,
-                    // with the status row, exactly where the system's is.
-                    LockClock(size: size, tint: settings.lockClockTint && nowPlaying.artwork != nil ? nowPlaying.accent : nil)
-                        .transition(.opacity)
-                    if settings.lockScreenStatusRow {
-                        StatusRow(screenHeight: size.height)
-                            .position(x: size.width / 2, y: size.height * 0.285)
-                            .transition(.opacity)
-                    }
-                    large(info: info, size: size)
                 } else {
                     if settings.lockScreenStatusRow {
                         // Just below the system clock.
@@ -118,7 +101,6 @@ struct LockScreenView: View {
         .animation(spring, value: state.lyrics)
         .animation(Date().timeIntervalSince(shownAt) < 2 ? nil : spring, value: lyricsAvailable)
         .animation(spring, value: state.miniLyrics)
-        .animation(.easeInOut(duration: 0.4), value: settings.lockScreenBackdrop)
         .task(id: (nowPlaying.info?.artist ?? "") + "|" + (nowPlaying.info?.title ?? "") + "|"
                   + String(nowPlaying.info?.artworkID ?? 0)) {
             // Wait for the player's own artwork: it decides whether a hi-res
@@ -130,14 +112,13 @@ struct LockScreenView: View {
         // knows whether there are any – without them it shows only the
         // cover, even when "cover and lyrics" is the start view.
         .task(id: (nowPlaying.info?.artist ?? "") + "|" + (nowPlaying.info?.title ?? "")) {
-            guard settings.lockScreenSpicyLyrics, let info = nowPlaying.info else { return }
+            guard let info = nowPlaying.info else { return }
             lyrics.load(for: info)
         }
         // The moving cover is looked up as soon as the lock screen shows
         // (then remembered for the session) and buffered once the player is
         // large, so it is ready when it is needed.
         .task(id: (nowPlaying.info?.artist ?? "") + "|" + (nowPlaying.info?.title ?? "") + (state.large ? "|large" : "")) {
-            guard settings.lockScreenSpicyLyrics else { return }
             await motion.load(for: nowPlaying.info)
             if state.large { motion.prepare() }
         }
@@ -158,87 +139,6 @@ struct LockScreenView: View {
         }
         .frame(width: 330)
         .transition(.opacity)
-    }
-
-    /// Large cover between the status row and the player; the player is
-    /// the very same card at the very same place as without the cover.
-    /// With lyrics, cover and card move left and the lyrics appear right.
-    private func large(info: NowPlayingInfo, size: CGSize) -> some View {
-        let cardY = size.height * 0.705
-        let top = size.height * 0.285 + 34
-        let cover = min(380, cardY - 74 - top - 24)
-        // With lyrics, cover + card and the lyrics sit side by side as one
-        // centred pair with a small gap.
-        let column = max(cover, 330)
-        let lyricsWidth = min(540, size.width * 0.36)
-        let gap: CGFloat = 56
-        let pairLeft = (size.width - column - gap - lyricsWidth) / 2
-        let columnX = state.lyrics ? pairLeft + column / 2 : size.width / 2
-        return ZStack {
-            CoverArt(image: nowPlaying.artwork, cornerRadius: 10)
-                .matchedGeometryEffect(id: "cover", in: player)
-                .frame(width: cover, height: cover)
-                .shadow(color: .black.opacity(0.45), radius: 30, y: 14)
-                .onTapGesture { state.large = false; state.lyrics = false }
-                .help(L("Klein anzeigen", "Show small"))
-                .position(x: columnX, y: top + (cardY - 74 - top) / 2)
-            // The large cover is right above: no small one in the card.
-            LiquidPlayerCard(service: nowPlaying, info: info, lyricsOn: state.lyrics,
-                             onLyrics: { state.lyrics.toggle() }) { EmptyView() }
-                .frame(width: 330)
-                .position(x: columnX, y: cardY)
-                .transition(.opacity)
-            if state.lyrics {
-                LyricsPanel(lyrics: lyrics, info: info, large: true, fontSize: 30) { nowPlaying.seek(to: $0) }
-                    .frame(width: lyricsWidth, height: cardY + 60 - top)
-                    .position(x: pairLeft + column + gap + lyricsWidth / 2, y: top + (cardY + 60 - top) / 2)
-                    .transition(.opacity.combined(with: .offset(x: 40)))
-            }
-        }
-        .frame(width: size.width, height: size.height)
-    }
-}
-
-/// Covers the wallpaper once the cover is large: either a dark background
-/// tinted by the cover (the artwork hugely blurred, a glow of its colour
-/// from the lower right) or the cover itself filling the screen.
-private struct Backdrop: View {
-    let image: NSImage?
-    let tint: Color
-    let size: CGSize
-    let style: LockScreenBackdrop
-
-    var body: some View {
-        ZStack {
-            Color(red: 0.05, green: 0.05, blue: 0.07)
-            if style != .tinted, let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: size.width, height: size.height)
-                    .blur(radius: style == .coverBlurred ? 40 : 0, opaque: true)
-                    .clipped()
-                // Keep clock, titles and lyrics readable on bright covers.
-                LinearGradient(colors: [.black.opacity(0.5), .black.opacity(0.25), .black.opacity(0.55)],
-                               startPoint: .top, endPoint: .bottom)
-            } else {
-                if let image {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: size.width, height: size.height)
-                        .blur(radius: 110)
-                        .opacity(0.4)
-                }
-                RadialGradient(colors: [tint.opacity(0.28), .clear], center: .bottomTrailing,
-                               startRadius: 0, endRadius: max(size.width, size.height) * 0.75)
-                LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .center)
-            }
-        }
-        .frame(width: size.width, height: size.height)
-        .clipped()
-        .allowsHitTesting(false)
     }
 }
 

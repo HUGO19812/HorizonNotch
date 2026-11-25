@@ -102,12 +102,11 @@ enum LockGlassStyle: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-enum LockScreenBackdrop: String, CaseIterable, Identifiable {
-    /// Dark, tinted by the cover colour.
-    case tinted
-    /// The cover itself fills the screen, blurred.
-    case coverBlurred
-    /// The cover itself fills the screen, sharp.
+/// Behind the large lock screen player.
+enum LockScreenBackground: String, CaseIterable, Identifiable {
+    /// Soft clouds in the cover's colours, drifting and swelling with the beat.
+    case colors
+    /// The cover itself, hugely blurred and slowly turning (like Spicetify).
     case cover
     var id: String { rawValue }
 }
@@ -169,7 +168,6 @@ final class AppSettings: ObservableObject {
     @Published var lockClockTint: Bool { didSet { defaults.set(lockClockTint, forKey: "lockClockTint") } }
     /// Cover and lyrics on the lock screen in the Spicy Lyrics look (off =
     /// the cover with the card and the lyrics beside it).
-    @Published var lockScreenSpicyLyrics: Bool { didSet { defaults.set(lockScreenSpicyLyrics, forKey: "lockScreenSpicyLyrics") } }
     @Published var lockScreenStart: LockScreenStart { didSet { defaults.set(lockScreenStart.rawValue, forKey: "lockScreenStart") } }
     /// How see-through the lock screen player card is (0 = solid glass, 1 = almost invisible).
     @Published var lockScreenTransparency: Double { didSet { defaults.set(lockScreenTransparency, forKey: "lockScreenTransparency") } }
@@ -184,7 +182,7 @@ final class AppSettings: ObservableObject {
     @Published var lockGlassStyle: LockGlassStyle { didSet { defaults.set(lockGlassStyle.rawValue, forKey: "lockGlassStyle") } }
     /// Test mode: the lock screen's live wallpaper inside our window and the
     /// system's own Liquid Glass on the card (macOS 26).
-    @Published var lockScreenBackdrop: LockScreenBackdrop { didSet { defaults.set(lockScreenBackdrop.rawValue, forKey: "lockScreenBackdrop") } }
+    @Published var lockScreenBackground: LockScreenBackground { didSet { defaults.set(lockScreenBackground.rawValue, forKey: "lockScreenBackground") } }
     /// Hide the island while another app or a video fills the screen.
     @Published var hideInFullscreen: Bool { didSet { defaults.set(hideInFullscreen, forKey: "hideInFullscreen") } }
     /// The large lock screen player as a screen saver while music plays.
@@ -291,7 +289,6 @@ final class AppSettings: ObservableObject {
         lockWidgetHeadphones = defaults.object(forKey: "lockWidgetHeadphones") as? Bool ?? true
         lockWidgetEvent = defaults.object(forKey: "lockWidgetEvent") as? Bool ?? false
         lockClockTint = defaults.bool(forKey: "lockClockTint")
-        lockScreenSpicyLyrics = defaults.object(forKey: "lockScreenSpicyLyrics") as? Bool ?? true
         lockScreenStart = LockScreenStart(rawValue: defaults.string(forKey: "lockScreenStart") ?? "") ?? .compact
         // Clearer glass by default; the old default 0.6 moves up once.
         let storedTransparency = defaults.object(forKey: "lockScreenTransparency") as? Double
@@ -314,7 +311,7 @@ final class AppSettings: ObservableObject {
             accessoryStyle = .glyph
         }
         lockGlassStyle = LockGlassStyle(rawValue: defaults.string(forKey: "lockGlassStyle") ?? "") ?? .clear
-        lockScreenBackdrop = LockScreenBackdrop(rawValue: defaults.string(forKey: "lockScreenBackdrop") ?? "") ?? .cover
+        lockScreenBackground = LockScreenBackground(rawValue: defaults.string(forKey: "lockScreenBackground") ?? "") ?? .colors
         hideInFullscreen = defaults.object(forKey: "hideInFullscreen") as? Bool ?? true
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true
         screenSaverEnabled = defaults.bool(forKey: "screenSaverEnabled")

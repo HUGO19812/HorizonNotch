@@ -1680,10 +1680,6 @@ private struct LockScreenSettings: View {
                 Toggle(L("Uhr nimmt beim großen Cover dessen Farbe an", "Clock takes the cover's colour with the large cover"),
                        isOn: $settings.lockClockTint)
                     .disabled(!settings.lockScreenWidgets)
-                Toggle(L("Großes Cover und Songtext im neuen Stil (wie Spicy Lyrics, mit bewegten Covern)",
-                         "Large cover and lyrics in the new look (like Spicy Lyrics, with moving covers)"),
-                       isOn: $settings.lockScreenSpicyLyrics)
-                    .disabled(!settings.lockScreenWidgets)
                 TilePicker(title: L("Beim Sperren zeigen", "When locking, show"), selection: $settings.lockScreenStart, options: [
                     TileOption(value: LockScreenStart.compact, title: L("Kleiner Player", "Small player"), symbol: "play.rectangle"),
                     TileOption(value: LockScreenStart.cover, title: L("Großes Cover", "Large cover"), symbol: "photo"),
@@ -1695,10 +1691,10 @@ private struct LockScreenSettings: View {
                                            set: { settings.lockScreenTransparency = $0 / 100 }),
                             range: 0...100, step: 5, format: "%.0f %%")
                     .disabled(!settings.lockScreenWidgets)
-                Picker(L("Hintergrund beim großen Cover", "Background with large cover"), selection: $settings.lockScreenBackdrop) {
-                    Text(L("Dunkel, vom Cover getönt", "Dark, tinted by the cover")).tag(LockScreenBackdrop.tinted)
-                    Text(L("Cover, unscharf", "Cover, blurred")).tag(LockScreenBackdrop.coverBlurred)
-                    Text(L("Cover, scharf", "Cover, sharp")).tag(LockScreenBackdrop.cover)
+                Picker(L("Hintergrund beim großen Cover", "Background with large cover"), selection: $settings.lockScreenBackground) {
+                    Text(L("Farbwolken, die zur Musik atmen", "Colour clouds moving with the music")).tag(LockScreenBackground.colors)
+                    Text(L("Verschwommenes Cover, langsam drehend (wie Spicetify)", "Blurred cover, slowly turning (like Spicetify)"))
+                        .tag(LockScreenBackground.cover)
                 }
                 .disabled(!settings.lockScreenWidgets)
             } footer: {
