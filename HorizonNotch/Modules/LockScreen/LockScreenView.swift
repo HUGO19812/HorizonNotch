@@ -45,6 +45,9 @@ struct LockScreenView: View {
     /// small and large player within one lock.
     @StateObject private var motion = MotionArtwork()
     @Namespace private var player
+    /// When the lock screen appeared: right after it, a song turning out to
+    /// have no lyrics switches to the cover without a visible move.
+    @State private var shownAt = Date()
 
     private var spring: Animation { .spring(response: 0.5, dampingFraction: 0.86) }
 
@@ -110,7 +113,7 @@ struct LockScreenView: View {
         .animation(spring, value: nowPlaying.info == nil)
         .animation(spring, value: state.large)
         .animation(spring, value: state.lyrics)
-        .animation(spring, value: lyricsAvailable)
+        .animation(Date().timeIntervalSince(shownAt) < 2 ? nil : spring, value: lyricsAvailable)
         .animation(spring, value: state.miniLyrics)
         .animation(.easeInOut(duration: 0.4), value: settings.lockScreenBackdrop)
         .task(id: (nowPlaying.info?.artist ?? "") + "|" + (nowPlaying.info?.title ?? "") + "|"

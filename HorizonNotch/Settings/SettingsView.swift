@@ -46,7 +46,7 @@ private let settingsGroups: [SettingsGroup] = [
     ]),
     SettingsGroup(de: "Medien", en: "Media", entries: [
         SettingsEntry(tab: .music, de: "Musik", en: "Music", symbol: "play.fill",
-                      keywords: "Player Spotify Wischen swipe Geste gesture Quelle source Cover Albumfarbe album Visualizer Sneak Peek Titelwechsel Spulen seek Songtext lyrics Text Schrift Farbe gesungen sung"),
+                      keywords: "Player Spotify Konto account Login Anmelden Lieblingssongs liked Herz heart Wischen swipe Geste gesture Quelle source Cover Albumfarbe album Visualizer Sneak Peek Titelwechsel Spulen seek Songtext lyrics Text Schrift Farbe gesungen sung"),
         SettingsEntry(tab: .lockScreen, de: "Sperrbildschirm", en: "Lock Screen", symbol: "lock.fill",
                       keywords: "gesperrt locked Player Musik Cover Lyrics Songtext Uhr clock Wetter Akku Kopfhörer Bildschirmschoner screen saver screensaver Durchsichtigkeit transparency"),
     ]),
@@ -1163,6 +1163,7 @@ private struct MusicSettings: View {
                     }
                 }
             }
+            SpotifyAccountSection()
             Section {
                 Toggle(L("Bei Start und Titelwechsel", "On play and track change"), isOn: $settings.sneakPeek)
                 Toggle(L("Beim Vor- und Zurückspulen", "When seeking"), isOn: $settings.sneakPeekOnSeek)
@@ -1180,6 +1181,46 @@ private struct MusicSettings: View {
             } footer: {
                 note("Zeigt kurz den Titel, ohne die Island zu öffnen.", "Briefly shows the song without opening the island.")
             }
+        }
+    }
+}
+
+/// Optional Spotify login for the heart (see SpotifyAccount).
+private struct SpotifyAccountSection: View {
+    @ObservedObject private var account = SpotifyAccount.shared
+
+    var body: some View {
+        Section {
+            if account.isLoggedIn {
+                HStack {
+                    Label(L("Angemeldet", "Signed in"), systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Spacer()
+                    Button(L("Abmelden", "Sign out")) { account.logout() }
+                }
+            } else {
+                TextField("Client ID", text: $account.clientID)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                HStack {
+                    Button(account.isLoggingIn ? L("Warte auf Browser …", "Waiting for browser …")
+                           : L("Bei Spotify anmelden", "Sign in to Spotify")) { account.login() }
+                        .disabled(account.clientID.trimmingCharacters(in: .whitespaces).isEmpty || account.isLoggingIn)
+                    Spacer()
+                    Button(L("Redirect-URI kopieren", "Copy redirect URI")) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(SpotifyAccount.redirectURI, forType: .string)
+                    }
+                }
+            }
+            if let problem = account.problem {
+                Text(problem).foregroundStyle(.orange)
+            }
+        } header: {
+            Text(L("Spotify-Konto (optional)", "Spotify account (optional)"))
+        } footer: {
+            note("Damit speichert das Herz Songs direkt in „Lieblingssongs“ – auch im Sperrbildschirm – und zeigt, ob ein Song schon gespeichert ist. Ohne Anmeldung nutzt es Spotifys Tastenkürzel. Einrichten: auf developer.spotify.com eine App anlegen (Web API, Redirect-URI http://127.0.0.1/callback), Client ID hier einfügen. Spotify verlangt dafür Premium.",
+                 "Lets the heart save songs straight to “Liked Songs” – also on the lock screen – and show whether a song is saved. Without a login it uses Spotify's shortcut. Setup: create an app on developer.spotify.com (Web API, redirect URI http://127.0.0.1/callback), paste its Client ID here. Spotify requires Premium for this.")
         }
     }
 }
