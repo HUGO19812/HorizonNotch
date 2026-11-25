@@ -169,6 +169,23 @@ final class NowPlayingService: ObservableObject {
     }
 
     /// Takes a position read from the player itself (after a seek).
+    /// While lyrics are shown: asks Music or Spotify for its exact position
+    /// and corrects ours when it has drifted (the reported one can lag,
+    /// which puts the lyrics out of step).
+    func syncPosition() {
+        guard let name = scriptablePlayerName, let current = info, current.isPlaying else { return }
+        let title = current.title
+        likeQueue.async { [weak self] in
+            let read = Self.runScript("tell application \"\(name)\" to get player position")
+            guard let read, let value = Double(read.replacingOccurrences(of: ",", with: ".")) else { return }
+            DispatchQueue.main.async {
+                guard let self, let now = self.info, now.title == title,
+                      abs(now.elapsed(at: Date()) - value) > 0.2 else { return }
+                self.adoptPosition(value, title: title)
+            }
+        }
+    }
+
     private func adoptPosition(_ seconds: Double, title: String) {
         guard var current = info, current.title == title, seconds.isFinite, seconds >= 0 else { return }
         current.elapsed = current.duration > 0 ? min(seconds, current.duration) : seconds
