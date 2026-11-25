@@ -283,8 +283,15 @@ struct MediaExpandedView: View {
             .matchedGeometryEffect(id: "cover", in: player)
             .frame(width: size, height: size)
             .background { if settings.albumTint { AlbumGlow(image: service.artwork, cornerRadius: radius) } }
-            .onTapGesture { service.openPlayerApp() }
-            .help(info.appName ?? "")
+            // The large player from the lock screen, full screen.
+            .onTapGesture {
+                if let controller = LockScreenController.current {
+                    controller.showPlayer()
+                } else {
+                    service.openPlayerApp()
+                }
+            }
+            .help(L("Großer Player", "Large player"))
     }
 }
 
