@@ -69,10 +69,8 @@ final class LightMoods: ObservableObject {
     }
 }
 
-/// The Hue light strip on its own page, like Control Center: the power
-/// button (grey and dashed while not connected, dark when off, glowing when
-/// on), a tall brightness tile, and the moods in a grid with a free colour
-/// and "New" at the end.
+/// The Hue light strip on its own page, like a light in Apple's Home app
+/// (see LightPage).
 final class LightModule: NotchModule {
     let id = "light"
     var title: String { L("Licht", "Light") }
@@ -240,6 +238,9 @@ extension NSColor {
 
 // MARK: - Page
 
+/// Like a light in Apple's Home app: the light with its state and a switch
+/// on top, a wide brightness slider, and the scenes as tiles in one row –
+/// the active one white – with "Colour" at the end.
 private struct LightPage: View {
     @ObservedObject var module: LightModule
     @ObservedObject var light: HueBluetoothLight
@@ -251,128 +252,104 @@ private struct LightPage: View {
             if !light.isPaired {
                 SetupView(light: light)
             } else {
-                HStack(spacing: 14) {
-                    PowerButton(light: light)
-                    BrightnessTile(light: light)
-                        .disabled(!connected)
-                        .opacity(connected ? 1 : 0.35)
+                VStack(spacing: 10) {
+                    LightHeader(module: module, light: light, moods: moods)
                     Group {
                         if pickingColor {
                             ColorPane(module: module, light: light) {
                                 withAnimation(.easeInOut(duration: 0.2)) { pickingColor = false }
                             }
                         } else {
-                            MoodGrid(module: module, moods: moods) {
+                            BrightnessSlider(light: light)
+                            SceneRow(module: module, moods: moods) {
                                 withAnimation(.easeInOut(duration: 0.2)) { pickingColor = true }
                             }
                         }
                     }
-                    .disabled(!connected)
-                    .opacity(connected ? 1 : 0.35)
+                    .disabled(!light.reachable)
+                    .opacity(light.reachable ? 1 : 0.35)
                 }
             }
         }
         .onAppear { light.refresh() }
     }
-
-    private var connected: Bool { light.reachable }
 }
 
-/// Grey and dashed while not connected, dark when off, glowing when on.
-private struct PowerButton: View {
+/// The light's icon (glowing in its colour while on), name, what it shows
+/// and a switch – or "Connect" while it can't be reached.
+private struct LightHeader: View {
+    @ObservedObject var module: LightModule
     @ObservedObject var light: HueBluetoothLight
+    @ObservedObject var moods: LightMoods
 
-    private enum State { case disconnected, connecting, off, on }
-
-    private var state: State {
-        if light.phase == .connecting && !light.reachable { return .connecting }
-        if !light.reachable { return .disconnected }
-        return light.isOn ? .on : .off
-    }
+    private var connecting: Bool { light.phase == .connecting && !light.reachable }
+    private var on: Bool { light.reachable && light.isOn }
 
     var body: some View {
-        let state = state
-        VStack(spacing: 6) {
-            Button {
-                if state == .disconnected { light.refresh() } else { light.toggle() }
-            } label: {
-                ZStack {
-                    if state == .connecting {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: symbol(state))
-                            .font(.system(size: 24, weight: .medium))
-                            .foregroundStyle(state == .on ? Color.white : .white.opacity(state == .off ? 0.85 : 0.4))
-                            .shadow(color: state == .on ? .black.opacity(0.25) : .clear, radius: 2, y: 1)
-                            .contentTransition(.symbolEffect(.replace))
-                    }
+        HStack(spacing: 10) {
+            ZStack {
+                Circle().fill(on ? AnyShapeStyle(light.color) : AnyShapeStyle(Color.white.opacity(0.12)))
+                if connecting {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: light.reachable ? "lightbulb.led.wide.fill" : "antenna.radiowaves.left.and.right.slash")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(on ? Color.white : .white.opacity(0.6))
+                        .shadow(color: .black.opacity(on ? 0.25 : 0), radius: 1.5, y: 0.5)
                 }
-                .frame(width: 66, height: 66)
-                .modifier(GlassDisc(tint: state == .on ? light.color : nil, dimmed: state == .disconnected || state == .connecting))
-                .contentShape(Circle())
             }
-            .buttonStyle(PressScaleStyle())
-            .help(state == .disconnected ? L("Erneut verbinden", "Connect again") : light.name)
-            Text(label(state))
-                .font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(.white.opacity(state == .disconnected || state == .connecting ? 0.4 : 0.7))
-                .lineLimit(1)
+            .frame(width: 30, height: 30)
+            .shadow(color: on ? light.color.opacity(0.7) : .clear, radius: 9)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(light.name)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+                Text(status)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if light.reachable {
+                Toggle("", isOn: Binding(get: { light.isOn }, set: { light.setOn($0) }))
+                    .toggleStyle(.switch)
+                    .tint(.green)
+                    .labelsHidden()
+            } else if !connecting {
+                Button { light.refresh() } label: {
+                    Text(L("Verbinden", "Connect"))
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 12)
+                        .frame(height: 24)
+                        .background(Capsule().fill(Color.white))
+                }
+                .buttonStyle(PressScaleStyle())
+            }
         }
-        .frame(width: 92)
-        .animation(.easeInOut(duration: 0.25), value: state)
+        .animation(.easeInOut(duration: 0.25), value: on)
     }
 
-    private func symbol(_ state: State) -> String {
-        switch state {
-        case .on: return "lightbulb.led.wide.fill"
-        case .off: return "lightbulb.led.wide"
-        default: return "antenna.radiowaves.left.and.right.slash"
-        }
-    }
-
-    private func label(_ state: State) -> String {
-        switch state {
-        case .on: return L("An", "On")
-        case .off: return L("Aus", "Off")
-        case .connecting: return L("Verbinde …", "Connecting …")
-        case .disconnected:
+    private var status: String {
+        if connecting { return L("Verbinde …", "Connecting …") }
+        guard light.reachable else {
             switch light.phase {
             case .bluetoothOff: return L("Bluetooth aus", "Bluetooth off")
-            case .unauthorized: return L("Kein Zugriff", "No access")
+            case .unauthorized: return L("Kein Zugriff auf Bluetooth", "No Bluetooth access")
             default: return L("Nicht verbunden", "Not connected")
             }
         }
+        guard light.isOn else { return L("Aus", "Off") }
+        let percent = "\(Int((light.brightness * 100).rounded())) %"
+        let scene = module.activeMoodID == "free" ? L("Eigene Farbe", "Own colour")
+            : moods.all.first { $0.id.uuidString == module.activeMoodID }?.name
+        return scene.map { "\($0) · \(percent)" } ?? percent
     }
 }
 
-/// The button's disc: Liquid Glass on macOS 26 and later, tinted with the
-/// light's colour while it's on; a soft material circle before that.
-private struct GlassDisc: ViewModifier {
-    let tint: Color?
-    let dimmed: Bool
-
-    func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content
-                .background {
-                    // The light's colour glowing under the glass.
-                    if let tint { Circle().fill(tint.opacity(0.55)).blur(radius: 12).scaleEffect(1.15) }
-                }
-                .glassEffect(tint.map { Glass.regular.tint($0.opacity(0.75)).interactive() } ?? Glass.regular.interactive(),
-                             in: Circle())
-                .opacity(dimmed ? 0.55 : 1)
-        } else {
-            content
-                .background(Circle().fill(tint.map { AnyShapeStyle($0.opacity(0.85)) } ?? AnyShapeStyle(.ultraThinMaterial)))
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
-                .opacity(dimmed ? 0.55 : 1)
-        }
-    }
-}
-
-/// Tall brightness tile like Control Center: drag up and down; all the way
-/// down switches the light off.
-private struct BrightnessTile: View {
+/// Wide brightness slider: drag left and right; all the way left switches
+/// the light off.
+private struct BrightnessSlider: View {
     @ObservedObject var light: HueBluetoothLight
     @State private var dragValue: Double?
     @State private var lastSent = Date.distantPast
@@ -388,20 +365,27 @@ private struct BrightnessTile: View {
     var body: some View {
         let value = dragValue ?? (light.isOn ? light.brightness : 0)
         GeometryReader { proxy in
-            ZStack(alignment: .bottom) {
-                Rectangle().fill(Color.white.opacity(0.1))
-                Rectangle().fill(Color.white.opacity(0.9))
-                    .frame(height: proxy.size.height * max(value, 0.001))
-                Image(systemName: value > 0.5 ? "sun.max.fill" : "sun.min.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(value > 0.12 ? Color.black.opacity(0.6) : .white.opacity(0.6))
-                    .padding(.bottom, 10)
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.1))
+                Capsule()
+                    .fill(LinearGradient(colors: [light.color.opacity(0.85), Color.white.opacity(0.92)],
+                                         startPoint: .leading, endPoint: .trailing))
+                    .frame(width: max(proxy.size.height, proxy.size.width * value))
+                    .opacity(value > 0.001 ? 1 : 0)
+                HStack {
+                    Image(systemName: "sun.min.fill")
+                        .foregroundStyle(value > 0.06 ? Color.black.opacity(0.5) : .white.opacity(0.5))
+                    Spacer()
+                    Image(systemName: "sun.max.fill")
+                        .foregroundStyle(value > 0.94 ? Color.black.opacity(0.5) : .white.opacity(0.5))
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .padding(.horizontal, 11)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .contentShape(Rectangle())
+            .contentShape(Capsule())
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { drag in
-                    let new = min(max(1 - drag.location.y / proxy.size.height, 0), 1)
+                    let new = min(max(drag.location.x / proxy.size.width, 0), 1)
                     dragValue = new
                     // A Bluetooth write each ~80 ms is plenty.
                     if Date().timeIntervalSince(lastSent) > 0.08 {
@@ -414,121 +398,91 @@ private struct BrightnessTile: View {
                     dragValue = nil
                 })
         }
-        .frame(width: 50)
+        .frame(height: 28)
         .help(L("Helligkeit", "Brightness"))
     }
 }
 
-/// The scenes as panels. Up to 5 sit in one row of big panels (with names
-/// up to 3), 6–8 in two rows where each row fills the width on its own, so
-/// there's never a gap; more go on further pages (dots top right). The
-/// active scene's name stands above. "Own" is the last panel.
-private struct MoodGrid: View {
+/// The scenes as tiles like Home's: a round icon in the scene's colours
+/// above its name, the active one white. Up to six fit; more scroll
+/// sideways. "Colour" (the free colour) is the last tile.
+private struct SceneRow: View {
     @ObservedObject var module: LightModule
     @ObservedObject var moods: LightMoods
     let pickColor: () -> Void
-    @State private var page = 0
 
     private enum Entry: Identifiable {
         case mood(LightMood), free
         var id: String { if case .mood(let mood) = self { return mood.id.uuidString }; return "free" }
     }
 
-    private static let perPage = 8
-
     var body: some View {
         let entries = moods.all.map(Entry.mood) + [.free]
-        let pages = max(1, (entries.count + Self.perPage - 1) / Self.perPage)
-        let current = min(page, pages - 1)
-        let shown = Array(entries.dropFirst(current * Self.perPage).prefix(Self.perPage))
-        let rows = shown.count <= 5 ? 1 : 2
-        let perRow = (shown.count + rows - 1) / rows
-        let withNames = shown.count <= 3
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(activeName)
-                    .font(.system(size: 14, weight: .bold))
-                    .lineLimit(1)
-                Spacer()
-                if pages > 1 {
-                    HStack(spacing: 5) {
-                        ForEach(0..<pages, id: \.self) { index in
-                            Circle()
-                                .fill(Color.white.opacity(index == current ? 0.85 : 0.25))
-                                .frame(width: 6, height: 6)
-                                .contentShape(Rectangle().inset(by: -4))
-                                .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { page = index } }
-                        }
+        GeometryReader { proxy in
+            // Six fit side by side; with more, a part of the seventh peeks
+            // out so it's clear the row scrolls.
+            let visible = entries.count <= 6 ? CGFloat(entries.count) : 5.5
+            let width = (proxy.size.width - 8 * (ceil(visible) - 1)) / visible
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(entries) { entry in
+                        tile(entry).frame(width: width, height: proxy.size.height)
                     }
                 }
             }
-            VStack(spacing: 8) {
-                ForEach(0..<rows, id: \.self) { row in
-                    HStack(spacing: 8) {
-                        ForEach(Array(shown.dropFirst(row * perRow).prefix(perRow))) { entry in
-                            tile(entry, withName: withNames)
-                        }
-                    }
-                }
-            }
-            .frame(maxHeight: .infinity)
-            .id(current)
-            .transition(.opacity)
+            .scrollDisabled(entries.count <= 6)
         }
-        .contentShape(Rectangle())
-        .gesture(DragGesture(minimumDistance: 20).onEnded { drag in
-            guard pages > 1, abs(drag.translation.width) > abs(drag.translation.height) else { return }
-            withAnimation(.easeInOut(duration: 0.2)) {
-                page = drag.translation.width < 0 ? min(current + 1, pages - 1) : max(current - 1, 0)
-            }
-        })
-    }
-
-    private var activeName: String {
-        if module.activeMoodID == "free" { return L("Eigene Farbe", "Own colour") }
-        return moods.all.first { $0.id.uuidString == module.activeMoodID }?.name ?? L("Szenen", "Scenes")
+        .frame(maxHeight: .infinity)
     }
 
     @ViewBuilder
-    private func tile(_ entry: Entry, withName: Bool) -> some View {
+    private func tile(_ entry: Entry) -> some View {
         switch entry {
         case .mood(let mood):
-            let active = module.activeMoodID == mood.id.uuidString
-            let dark = { if case .white = mood.kind { return true }; return false }()
             Button { module.apply(mood) } label: {
-                panel(fill: AnyShapeStyle(LinearGradient(colors: mood.colors, startPoint: .topLeading, endPoint: .bottomTrailing)),
-                      active: active) {
-                    Image(systemName: mood.symbol).font(.system(size: withName ? 12 : 13, weight: .bold))
-                    if withName {
-                        Text(mood.name).font(.system(size: 11.5, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.75)
-                    }
+                content(active: module.activeMoodID == mood.id.uuidString, name: mood.name) {
+                    Circle()
+                        .fill(LinearGradient(colors: mood.colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .overlay(Image(systemName: mood.symbol)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Self.isLight(mood) ? Color.black.opacity(0.6) : .white))
                 }
-                .foregroundStyle(dark ? Color.black.opacity(0.7) : .white)
             }
             .buttonStyle(PressScaleStyle())
             .help(mood.name)
         case .free:
             Button(action: pickColor) {
-                panel(fill: AnyShapeStyle(Color.white.opacity(0.09)), active: module.activeMoodID == "free") {
-                    Circle()
-                        .fill(AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red], center: .center))
-                        .frame(width: 16, height: 16)
-                    if withName { Text(L("Eigene", "Own")).font(.system(size: 11.5, weight: .semibold)) }
+                content(active: module.activeMoodID == "free", name: L("Farbe", "Colour")) {
+                    Circle().fill(AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
+                                                  center: .center))
                 }
-                .foregroundStyle(.white)
             }
             .buttonStyle(PressScaleStyle())
             .help(L("Eigene Farbe", "Own colour"))
         }
     }
 
-    private func panel<Content: View>(fill: AnyShapeStyle, active: Bool, @ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 6) { content() }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(fill))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(active ? Color.white : .clear, lineWidth: 2))
-            .contentShape(Rectangle())
+    private func content<Icon: View>(active: Bool, name: String, @ViewBuilder icon: () -> Icon) -> some View {
+        VStack(spacing: 6) {
+            icon().frame(width: 36, height: 36)
+            Text(name)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(active ? Color.black : .white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(active ? Color.white : Color.white.opacity(0.1)))
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .animation(.easeInOut(duration: 0.2), value: active)
+    }
+
+    /// Bright scenes (whites) get a dark symbol.
+    private static func isLight(_ mood: LightMood) -> Bool {
+        if case .white = mood.kind { return true }
+        return false
     }
 }
 

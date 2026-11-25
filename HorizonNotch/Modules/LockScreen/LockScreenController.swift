@@ -19,11 +19,21 @@ final class LockScreenController {
     private var lyricsPrefetch: AnyCancellable?
     private(set) var isShowing = false
     var onLockChange: ((Bool) -> Void)?
+    /// For the notch: a click on its cover opens the large player.
+    static weak var current: LockScreenController?
+
+    /// The same large player as on the lock screen, but as an ordinary
+    /// full-screen window while the Mac is in use (see `showPlayer`).
+    private let previewState = LockScreenState()
+    private var previewWindow: NSPanel?
+    private var previewSubscription: AnyCancellable?
+    private var keyMonitor: Any?
 
     init(nowPlaying: NowPlayingService, lyrics: LyricsService) {
         self.nowPlaying = nowPlaying
         self.lyrics = lyrics
         let center = DistributedNotificationCenter.default()
+        Self.current = self
         observers.append(center.addObserver(forName: Notification.Name("com.apple.screenIsLocked"), object: nil,
                                             queue: .main) { [weak self] _ in self?.locked() })
         observers.append(center.addObserver(forName: Notification.Name("com.apple.screenIsUnlocked"), object: nil,
@@ -44,6 +54,7 @@ final class LockScreenController {
     }
 
     private func locked() {
+        hidePlayer(animated: false)
         onLockChange?(true)
         guard settings.lockScreenWidgets else { return }
         show()
@@ -78,6 +89,61 @@ final class LockScreenController {
         isShowing = true
     }
 
+    /// Opens the large player full screen over everything (Esc or a click
+    /// on the cover closes it): the lock screen's view, not on the lock
+    /// screen. Starts large even when the lock screen starts small.
+    func showPlayer() {
+        guard !isShowing, previewWindow == nil, nowPlaying.info != nil,
+              let screen = NSScreen.islandScreen(preferred: settings.displayID) else { return }
+        previewState.reset()
+        if !previewState.large { previewState.large = true }
+        Wallpaper.shared.load(for: screen)
+        let panel = KeyPanel(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.level = .screenSaver
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        panel.isReleasedWhenClosed = false
+        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics, state: previewState))
+        host.sizingOptions = []
+        panel.contentView = host
+        panel.setFrame(screen.frame, display: true)
+        panel.alphaValue = 0
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.35
+            panel.animator().alphaValue = 1
+        }
+        previewWindow = panel
+        // Back to the small player there = close.
+        previewSubscription = previewState.$large.dropFirst().filter { !$0 }
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.hidePlayer() } }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53 else { return event }
+            self?.hidePlayer()
+            return nil
+        }
+    }
+
+    func hidePlayer(animated: Bool = true) {
+        guard let panel = previewWindow else { return }
+        previewWindow = nil
+        previewSubscription = nil
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
+        let close = {
+            panel.orderOut(nil)
+            panel.contentView = nil
+        }
+        guard animated else { close(); return }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.25
+            panel.animator().alphaValue = 0
+        }, completionHandler: close)
+    }
+
     func hide() {
         guard isShowing, let panel = window else { return }
         isShowing = false
@@ -104,4 +170,9 @@ final class LockScreenController {
         window = panel
         return panel
     }
+}
+
+/// A borderless panel that can take the keyboard (for Esc).
+private final class KeyPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
 }

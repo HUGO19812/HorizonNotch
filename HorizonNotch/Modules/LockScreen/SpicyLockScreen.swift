@@ -356,10 +356,17 @@ private struct ReactiveBackdrop: View {
     var paused = false
     let size: CGSize
 
+    /// A new song's colours blend in from the old ones over a few seconds
+    /// instead of switching at once (also when a sharper cover follows).
+    @State private var from: [SIMD3<Double>] = []
+    @State private var to: [SIMD3<Double>] = []
+    @State private var changedAt = Date.distantPast
+    private static let blend = 2.8
+
     var body: some View {
-        let colors = palette.isEmpty ? [Color(white: 0.25), Color(white: 0.15)] : palette
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: paused)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
+            let colors = mixed(at: context.date).map { Color(red: $0.x, green: $0.y, blue: $0.z) }
             let levels = AudioLevelMeter.shared.levels
             let live = playing && levels.hasSignal
             let beat = live ? Double(levels.beat) : 0
@@ -383,9 +390,38 @@ private struct ReactiveBackdrop: View {
             }
         }
         .frame(width: size.width, height: size.height)
-        .onAppear { AudioLevelMeter.shared.acquire() }
+        .onAppear {
+            AudioLevelMeter.shared.acquire()
+            to = Self.rgb(palette)
+            from = to
+        }
         .onDisappear { AudioLevelMeter.shared.release() }
+        .onChange(of: palette) { _, new in
+            let now = Date()
+            from = mixed(at: now)
+            to = Self.rgb(new)
+            changedAt = now
+        }
         .allowsHitTesting(false)
+    }
+
+    /// The five blob colours at this moment of the blend.
+    private func mixed(at date: Date) -> [SIMD3<Double>] {
+        guard !to.isEmpty else { return Self.rgb([]) }
+        let linear = min(max(date.timeIntervalSince(changedAt) / Self.blend, 0), 1)
+        let f = linear * linear * (3 - 2 * linear)
+        guard f < 1, from.count == to.count else { return to }
+        return zip(from, to).map { $0 + ($1 - $0) * f }
+    }
+
+    /// Always five colours (the palette repeated), so blob i blends into
+    /// blob i.
+    private static func rgb(_ palette: [Color]) -> [SIMD3<Double>] {
+        let colors = palette.isEmpty ? [Color(white: 0.25), Color(white: 0.15)] : palette
+        return (0..<5).map { i in
+            let c = NSColor(colors[i % colors.count]).usingColorSpace(.sRGB) ?? .gray
+            return SIMD3(Double(c.redComponent), Double(c.greenComponent), Double(c.blueComponent))
+        }
     }
 }
 
