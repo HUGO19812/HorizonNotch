@@ -30,6 +30,9 @@ struct SpicyLockScreen: View {
     let toggleLyrics: () -> Void
     /// Back to the small player.
     let minimize: () -> Void
+    /// Shown as an ordinary window (opened from the notch): a faint close
+    /// button in the corner, only while the pointer moves.
+    var close: (() -> Void)?
 
     /// The layout for a moving cover; follows `motion.ready`, animated.
     @State private var moving = false
@@ -135,6 +138,20 @@ struct SpicyLockScreen: View {
                             toggleLyrics: toggleLyrics)
                 .frame(width: player.width, height: player.height, alignment: moving ? .bottomLeading : .top)
                 .position(x: player.midX, y: player.midY)
+            if let close {
+                Button(action: close) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 26, height: 26)
+                        .background(Circle().fill(Color.white.opacity(0.1)))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(PressScaleStyle())
+                .opacity(controlsVisible ? 0.55 : 0)
+                .allowsHitTesting(controlsVisible)
+                .position(x: 30, y: 30)
+            }
         }
         .frame(width: size.width, height: size.height)
         .onAppear {

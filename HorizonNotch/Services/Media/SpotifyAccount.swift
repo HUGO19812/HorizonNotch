@@ -1,7 +1,6 @@
 import AppKit
 import CryptoKit
 import Network
-import Security
 
 /// Optional Spotify login (Settings → Music) for the heart: with it, a song
 /// is saved to "Liked Songs" through the Web API – right away, also on the
@@ -13,7 +12,7 @@ import Security
 /// enters its Client ID here. Login uses PKCE (no secret) with a
 /// short-lived listener on that local port (Spotify's dashboard only takes
 /// a loopback URI with a fixed port).
-/// The refresh token stays in the keychain.
+/// The refresh token stays in a file only the user can read.
 @MainActor
 final class SpotifyAccount: ObservableObject {
     static let shared = SpotifyAccount()
@@ -21,7 +20,6 @@ final class SpotifyAccount: ObservableObject {
     private static let port: UInt16 = 43827
     static let redirectURI = "http://127.0.0.1:\(port)/callback"
     private static let scopes = "user-library-modify user-library-read"
-    private static let keychainService = "HorizonNotch.Spotify"
 
     @Published var clientID: String {
         didSet { UserDefaults.standard.set(clientID, forKey: "spotifyClientID") }
@@ -223,30 +221,38 @@ final class SpotifyAccount: ObservableObject {
         return data
     }
 
-    // MARK: Keychain
+    // MARK: Token file
+
+    /// The refresh token lives in a file only the user can read
+    /// (~/Library/Application Support/HorizonNotch/spotify-token, 0600).
+    /// Not the keychain: every update of the self-signed app counts as a
+    /// new app there, so macOS asked for the password on each launch.
+    private static var tokenURL: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("HorizonNotch/spotify-token")
+    }
 
     private static func readRefreshToken() -> String? {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                    kSecAttrService as String: keychainService,
-                                    kSecReturnData as String: true]
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        guard let url = tokenURL, let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let token = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
     }
 
     private static func saveRefreshToken(_ token: String) {
-        deleteRefreshToken()
-        let item: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                   kSecAttrService as String: keychainService,
-                                   kSecAttrAccount as String: "refresh",
-                                   kSecValueData as String: Data(token.utf8)]
-        SecItemAdd(item as CFDictionary, nil)
+        guard let url = tokenURL else { return }
+        let manager = FileManager.default
+        try? manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // Created with owner-only rights before the token is written.
+        if !manager.fileExists(atPath: url.path) {
+            manager.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600])
+        }
+        try? manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        try? Data(token.utf8).write(to: url)
     }
 
     private static func deleteRefreshToken() {
-        SecItemDelete([kSecClass as String: kSecClassGenericPassword,
-                       kSecAttrService as String: keychainService] as CFDictionary)
+        guard let url = tokenURL else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     private static func randomString(_ length: Int) -> String {

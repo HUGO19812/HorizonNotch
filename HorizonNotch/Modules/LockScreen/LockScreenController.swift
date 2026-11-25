@@ -89,11 +89,18 @@ final class LockScreenController {
         isShowing = true
     }
 
-    /// Opens the large player full screen over everything (Esc or a click
-    /// on the cover closes it): the lock screen's view, not on the lock
-    /// screen. Starts large even when the lock screen starts small.
+    /// Opens the large player full screen over everything (Esc, the faint
+    /// close button or a click on the cover closes it): the lock screen's
+    /// view, not on the lock screen. Starts large even when the lock screen
+    /// starts small.
     func showPlayer() {
-        guard !isShowing, previewWindow == nil, nowPlaying.info != nil,
+        // Already open (perhaps behind another app's window): to the front.
+        if let open = previewWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            open.makeKeyAndOrderFront(nil)
+            return
+        }
+        guard !isShowing, nowPlaying.info != nil,
               let screen = NSScreen.islandScreen(preferred: settings.displayID) else { return }
         previewState.reset()
         if !previewState.large { previewState.large = true }
@@ -105,7 +112,11 @@ final class LockScreenController {
         panel.level = .screenSaver
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.isReleasedWhenClosed = false
-        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics, state: previewState))
+        // Panels hide when the app loses focus (a click on the Dock, another
+        // app); this one stays until it is closed.
+        panel.hidesOnDeactivate = false
+        let host = NSHostingView(rootView: LockScreenView(nowPlaying: nowPlaying, lyrics: lyrics, state: previewState,
+                                                          onClose: { [weak self] in self?.hidePlayer() }))
         host.sizingOptions = []
         panel.contentView = host
         panel.setFrame(screen.frame, display: true)
