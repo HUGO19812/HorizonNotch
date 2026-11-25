@@ -14,8 +14,9 @@ final class NowPlayingService: ObservableObject {
     /// AppleScript, Spotify via its own like button (see SpotifyLikes);
     /// other players offer no way to read or set it.
     @Published private(set) var liked = false
-    /// False for Spotify: its liked state can't be read, so the heart shows
-    /// no state there and only confirms the press (see likePulse).
+    /// False for Spotify without a login (see SpotifyAccount): its liked
+    /// state can't be read, so the heart shows no state there and only
+    /// confirms the press (see likePulse).
     @Published private(set) var likeKnown = true
     /// Counts presses whose result isn't known, for a small animation.
     @Published private(set) var likePulse = 0
@@ -26,9 +27,14 @@ final class NowPlayingService: ObservableObject {
     /// The heart was pressed for this song while locked.
     var likePending: Bool { pendingLikeTitle != nil && pendingLikeTitle == info?.title }
     /// Presses can't reach the player right now; they wait for the unlock.
-    var likeDeferred: Bool { info?.bundleID == SpotifyLikes.bundleID && SpotifyLikes.screenIsLocked }
+    var likeDeferred: Bool {
+        info?.bundleID == SpotifyLikes.bundleID && !likeKnown && SpotifyLikes.screenIsLocked
+    }
     private var likedTitle = ""
+    /// The Spotify track the heart was read for ("spotify:track:…").
+    private var likedURI: String?
     var canLike: Bool { info?.bundleID == "com.apple.Music" || info?.bundleID == SpotifyLikes.bundleID }
+    private var loginObserver: NSObjectProtocol?
     private let likeQueue = DispatchQueue(label: "horizon.like", qos: .userInitiated)
 
     /// A seek from the island the player has not confirmed yet. Right after
@@ -40,6 +46,12 @@ final class NowPlayingService: ObservableObject {
     private let fallback = AppleScriptMediaSource()
 
     func start() {
+        // After a Spotify login or logout: read the heart again.
+        loginObserver = NotificationCenter.default.addObserver(forName: SpotifyAccount.changed, object: nil,
+                                                               queue: .main) { [weak self] _ in
+            self?.likedTitle = ""
+            self?.refreshLiked()
+        }
         bridge.onState = { [weak self] state in
             self?.apply(info: state.info, artwork: state.artwork)
         }
@@ -175,6 +187,16 @@ final class NowPlayingService: ObservableObject {
 
     func toggleLike() {
         guard canLike, let bundle = info?.bundleID else { return }
+        if bundle == SpotifyLikes.bundleID, likeKnown, let uri = likedURI {
+            // Logged in: straight through the Web API, also while locked.
+            let new = !liked
+            liked = new
+            Task { @MainActor [weak self] in
+                let ok = await SpotifyAccount.shared.setSaved(uri, new)
+                if !ok, self?.likedURI == uri { self?.liked = !new }
+            }
+            return
+        }
         if bundle == SpotifyLikes.bundleID {
             likePulse += 1
             if SpotifyLikes.screenIsLocked {
@@ -211,6 +233,8 @@ final class NowPlayingService: ObservableObject {
         if bundle == SpotifyLikes.bundleID {
             liked = false
             likeKnown = false
+            likedURI = nil
+            refreshSpotifyLiked(title: info.title)
             return
         }
         likeQueue.async { [weak self] in
@@ -219,6 +243,23 @@ final class NowPlayingService: ObservableObject {
                 guard self?.info?.title == info.title else { return }
                 self?.liked = result ?? false
                 self?.likeKnown = result != nil
+            }
+        }
+    }
+
+    /// With a Spotify login: which track plays (Spotify's AppleScript) and
+    /// whether it is in Liked Songs (Web API). Stays unknown otherwise.
+    private func refreshSpotifyLiked(title: String) {
+        likeQueue.async { [weak self] in
+            guard let uri = Self.runScript("tell application \"Spotify\" to get id of current track"),
+                  uri.hasPrefix("spotify:track:") else { return }
+            Task { @MainActor [weak self] in
+                guard SpotifyAccount.shared.isLoggedIn,
+                      let saved = await SpotifyAccount.shared.isSaved(uri),
+                      let self, self.info?.title == title else { return }
+                self.likedURI = uri
+                self.liked = saved
+                self.likeKnown = true
             }
         }
     }

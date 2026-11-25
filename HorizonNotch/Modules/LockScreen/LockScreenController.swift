@@ -16,6 +16,7 @@ final class LockScreenController {
     private let settings = AppSettings.shared
     private var window: NSPanel?
     private var observers: [NSObjectProtocol] = []
+    private var lyricsPrefetch: AnyCancellable?
     private(set) var isShowing = false
     var onLockChange: ((Bool) -> Void)?
 
@@ -27,6 +28,19 @@ final class LockScreenController {
                                             queue: .main) { [weak self] _ in self?.locked() })
         observers.append(center.addObserver(forName: Notification.Name("com.apple.screenIsUnlocked"), object: nil,
                                             queue: .main) { [weak self] _ in self?.unlocked() })
+        // With "cover and lyrics" as the start view, each song's lyrics are
+        // fetched as it starts (one request, cached): on lock it is then
+        // already known whether there are any, so the large player opens in
+        // the right layout instead of moving there.
+        lyricsPrefetch = nowPlaying.$info
+            .compactMap { $0 }
+            .removeDuplicates { $0.artist == $1.artist && $0.title == $1.title }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] info in
+                guard let self, self.settings.lockScreenWidgets, self.settings.lockScreenSpicyLyrics,
+                      self.settings.lockScreenStart == .lyrics else { return }
+                self.lyrics.load(for: info)
+            }
     }
 
     private func locked() {

@@ -249,7 +249,7 @@ private struct LockPlayerBlock: View {
     }
 
     private var titles: some View {
-        VStack(alignment: centered ? .center : .leading, spacing: 2) {
+        VStack(alignment: .center, spacing: 2) {
             Text(info.title)
                 .font(.system(size: centered ? 26 : 22, weight: .heavy))
                 .lineLimit(1)
@@ -258,7 +258,7 @@ private struct LockPlayerBlock: View {
                 .foregroundStyle(.white.opacity(0.85))
                 .lineLimit(1)
         }
-        .multilineTextAlignment(centered ? .center : .leading)
+        .multilineTextAlignment(.center)
     }
 
     private var controls: some View {
@@ -301,7 +301,7 @@ private struct LockPlayerBlock: View {
 }
 
 /// Progress, titles and buttons, top to bottom – or titles before progress
-/// (over a moving cover). One layout for both orders, so switching moves
+/// (over a moving cover); titles and buttons centred on the bar. One layout for both orders, so switching moves
 /// the views instead of replacing them.
 private struct PlayerStack: Layout {
     var progressFirst: Bool
@@ -325,7 +325,8 @@ private struct PlayerStack: Layout {
         let progress = subviews[0].sizeThatFits(ProposedViewSize(width: width, height: nil))
         let titles = subviews[1].sizeThatFits(ProposedViewSize(width: width, height: nil))
         let buttons = subviews[2].sizeThatFits(.unspecified)
-        func x(_ w: CGFloat) -> CGFloat { progressFirst ? (width - w) / 2 : 0 }
+        // Centred on the progress bar in both orders.
+        func x(_ w: CGFloat) -> CGFloat { (width - w) / 2 }
         let first = progressFirst ? progress : titles
         let second = progressFirst ? titles : progress
         let secondY = first.height + (progressFirst ? 14 : 12)
@@ -357,20 +358,32 @@ private struct ReactiveBackdrop: View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: paused)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             let levels = AudioLevelMeter.shared.levels
-            let beat = playing && levels.hasSignal ? Double(levels.beat) : 0
+            let live = playing && levels.hasSignal
+            let beat = live ? Double(levels.beat) : 0
+            let loud = live ? Double(levels.level) : 0
+            // Without the audio level (no permission yet) it breathes slowly
+            // while playing instead of standing still.
+            let breath = playing && !levels.hasSignal ? 0.5 + 0.5 * sin(t * 1.6) : 0
             ZStack {
                 colors[0].brightness(-0.25)
                 ForEach(0..<5, id: \.self) { i in
                     let color = colors[i % colors.count]
-                    let speed = playing ? 1.0 : 0.35
-                    let x = 0.5 + 0.42 * sin(t * 0.045 * speed * Double(i + 1) + Double(i) * 1.9)
-                    let y = 0.5 + 0.42 * cos(t * 0.037 * speed * Double(i + 2) + Double(i) * 2.7)
-                    let radius = max(size.width, size.height) * (0.42 + 0.06 * sin(t * 0.09 + Double(i))) * (1 + 0.1 * beat)
-                    RadialGradient(colors: [color.opacity(0.9), color.opacity(0)],
+                    // Each blob listens to its own band: bass, mids, highs.
+                    let band = live && levels.bands.count == 4 ? Double(levels.bands[i % 4]) : 0
+                    let speed = playing ? 1.0 + 0.6 * loud : 0.35
+                    let kick = 0.05 * beat
+                    let x = 0.5 + 0.42 * sin(t * 0.045 * speed * Double(i + 1) + Double(i) * 1.9) + kick * sin(Double(i) * 2.3)
+                    let y = 0.5 + 0.42 * cos(t * 0.037 * speed * Double(i + 2) + Double(i) * 2.7) + kick * cos(Double(i) * 1.7)
+                    let swell = 1 + 0.32 * beat + 0.2 * band + 0.08 * breath
+                    let radius = max(size.width, size.height) * (0.42 + 0.06 * sin(t * 0.09 + Double(i))) * swell
+                    RadialGradient(colors: [color.opacity(min(1, 0.85 + 0.15 * band)), color.opacity(0)],
                                    center: UnitPoint(x: x, y: y), startRadius: 0, endRadius: radius)
                 }
-                Color.black.opacity(0.12)
+                // A flash of light on each beat; less shade when it is loud.
+                Color.white.opacity(0.09 * beat).blendMode(.plusLighter)
+                Color.black.opacity(max(0.02, 0.14 - 0.1 * loud))
             }
+            .scaleEffect(1 + 0.04 * beat + 0.012 * breath)
         }
         .frame(width: size.width, height: size.height)
         .onAppear { AudioLevelMeter.shared.acquire() }
