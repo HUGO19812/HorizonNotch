@@ -138,7 +138,7 @@ struct SpicyLockScreen: View {
             // A video already buffered (back from the small player): large
             // straight away.
             moving = motion.ready
-            videoVisible = motion.ready
+            videoVisible = false
             updatePalette()
             scheduleHide()
         }
@@ -169,10 +169,16 @@ struct SpicyLockScreen: View {
         let shape = RoundedRectangle(cornerRadius: moving ? 0 : 16, style: .continuous)
         return ZStack {
             CoverArt(image: image, cornerRadius: 0)
-            // Only in the large layouts: never inside the card.
-            if moving, let video = motion.player {
-                LoopingVideo(player: video)
-                    .opacity(videoVisible ? 1 : 0)
+            // Buffering under the still cover, invisible until the cover has
+            // grown to the large layout: never seen inside the card.
+            if let video = motion.player {
+                LoopingVideo(player: video) {
+                    motion.markReady(video)
+                    // Back from the small player: the layout is already
+                    // large, the video only needs to come in.
+                    if moving, !videoVisible { withAnimation(.easeInOut(duration: 0.5)) { videoVisible = true } }
+                }
+                .opacity(videoVisible ? 1 : 0)
             }
         }
         .matchedGeometryEffect(id: "cover", in: namespace)
