@@ -39,6 +39,8 @@ struct LockScreenView: View {
     /// Kept for the screen saver; the clock over the large cover is now
     /// drawn on the lock screen too.
     var drawsClock = false
+    /// Set when shown as an ordinary window (from the notch): closes it.
+    var onClose: (() -> Void)?
     @ObservedObject private var settings = AppSettings.shared
     @StateObject private var hiRes = HiResArtwork()
     /// Apple Music's moving cover for the large player; kept across the
@@ -63,7 +65,8 @@ struct LockScreenView: View {
                                     showLyrics: state.lyrics && lyricsAvailable, lyricsAvailable: lyricsAvailable,
                                     namespace: player,
                                     toggleLyrics: { state.lyrics = !(state.lyrics && lyricsAvailable) },
-                                    minimize: { state.large = false; state.lyrics = false })
+                                    minimize: { state.large = false; state.lyrics = false },
+                                    close: onClose)
                     .transition(.opacity)
                     LockClock(size: size, tint: settings.lockClockTint && nowPlaying.artwork != nil ? nowPlaying.accent : nil)
                         .transition(.opacity)
