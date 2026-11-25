@@ -977,9 +977,13 @@ private struct ControlButton: View {
 
 struct PressScaleStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
+        // Only the press scale gets the quick spring: an animation over the
+        // whole label would also take over any move the click starts (the
+        // clicked button would jump ahead of the others).
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.86 : 1)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6)) {
+                $0.scaleEffect(configuration.isPressed ? 0.86 : 1)
+            }
     }
 }
 
