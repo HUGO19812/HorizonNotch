@@ -90,7 +90,10 @@ struct SpicyLockScreen: View {
             return CGRect(x: cover.midX - width / 2, y: cover.maxY + 20, width: width, height: playerHeight - 20)
         case .motion, .motionLyrics:
             let width = min(size.width * 0.3, 420)
-            return CGRect(x: size.width * 0.035, y: size.height - 40 - 130, width: width, height: 130)
+            // Centred under a full-screen moving cover; in the lower left
+            // beside the lyrics.
+            let x = mode == .motion ? (size.width - width) / 2 : size.width * 0.035
+            return CGRect(x: x, y: size.height - 40 - 130, width: width, height: 130)
         }
     }
 
@@ -278,9 +281,9 @@ private struct LockPlayerBlock: View {
                 nowPlaying.send(.togglePlayPause)
             }
             LockButton(symbol: "forward.fill", size: 17) { nowPlaying.send(.next) }
-            // Both symbols are always there and only fade: swapping the
-            // symbol would drop the new one at the end of a move at once.
-            Button(action: toggleLyrics) {
+            // Both symbols are always there and only fade.
+            // Later, like LockButton: so this button moves with the others.
+            Button(action: { DispatchQueue.main.async(execute: toggleLyrics) }) {
                 ZStack {
                     Image(systemName: "quote.bubble").opacity(lyricsOn ? 0 : 1)
                     Image(systemName: "quote.bubble.fill").opacity(lyricsOn ? 1 : 0)
@@ -360,30 +363,24 @@ private struct ReactiveBackdrop: View {
             let levels = AudioLevelMeter.shared.levels
             let live = playing && levels.hasSignal
             let beat = live ? Double(levels.beat) : 0
-            let loud = live ? Double(levels.level) : 0
-            // Without the audio level (no permission yet) it breathes slowly
-            // while playing instead of standing still.
-            let breath = playing && !levels.hasSignal ? 0.5 + 0.5 * sin(t * 1.6) : 0
             ZStack {
                 colors[0].brightness(-0.25)
                 ForEach(0..<5, id: \.self) { i in
                     let color = colors[i % colors.count]
-                    // Each blob listens to its own band: bass, mids, highs.
+                    // Each blob listens a little to its own band too.
                     let band = live && levels.bands.count == 4 ? Double(levels.bands[i % 4]) : 0
-                    let speed = playing ? 1.0 + 0.6 * loud : 0.35
-                    let kick = 0.05 * beat
-                    let x = 0.5 + 0.42 * sin(t * 0.045 * speed * Double(i + 1) + Double(i) * 1.9) + kick * sin(Double(i) * 2.3)
-                    let y = 0.5 + 0.42 * cos(t * 0.037 * speed * Double(i + 2) + Double(i) * 2.7) + kick * cos(Double(i) * 1.7)
-                    let swell = 1 + 0.32 * beat + 0.2 * band + 0.08 * breath
-                    let radius = max(size.width, size.height) * (0.42 + 0.06 * sin(t * 0.09 + Double(i))) * swell
-                    RadialGradient(colors: [color.opacity(min(1, 0.85 + 0.15 * band)), color.opacity(0)],
+                    let speed = playing ? 1.0 : 0.35
+                    let x = 0.5 + 0.42 * sin(t * 0.045 * speed * Double(i + 1) + Double(i) * 1.9)
+                    let y = 0.5 + 0.42 * cos(t * 0.037 * speed * Double(i + 2) + Double(i) * 2.7)
+                    let radius = max(size.width, size.height) * (0.42 + 0.06 * sin(t * 0.09 + Double(i)))
+                        * (1 + 0.16 * beat + 0.05 * band)
+                    RadialGradient(colors: [color.opacity(0.9), color.opacity(0)],
                                    center: UnitPoint(x: x, y: y), startRadius: 0, endRadius: radius)
                 }
-                // A flash of light on each beat; less shade when it is loud.
-                Color.white.opacity(0.09 * beat).blendMode(.plusLighter)
-                Color.black.opacity(max(0.02, 0.14 - 0.1 * loud))
+                // A faint brightening on each beat.
+                Color.white.opacity(0.035 * beat).blendMode(.plusLighter)
+                Color.black.opacity(0.12)
             }
-            .scaleEffect(1 + 0.04 * beat + 0.012 * breath)
         }
         .frame(width: size.width, height: size.height)
         .onAppear { AudioLevelMeter.shared.acquire() }
