@@ -192,7 +192,6 @@ struct MediaExpandedView: View {
     @Namespace private var player
     /// The output picker lies over the player.
     @State private var showOutputs = false
-    @State private var hoveringLyrics = false
     private let positionTick = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -254,12 +253,6 @@ struct MediaExpandedView: View {
                 .frame(width: lyricsOn ? 240 : nil)
                 if lyricsOn {
                     LyricsPanel(lyrics: lyrics, info: info, large: settings.lyricsLarge) { service.seek(to: $0) }
-                        .overlay(alignment: .bottomTrailing) {
-                            if hoveringLyrics && lyrics.state == .loaded {
-                                LyricsOffsetPill(lyrics: lyrics).transition(.opacity)
-                            }
-                        }
-                        .onHover { inside in withAnimation(.easeOut(duration: 0.2)) { hoveringLyrics = inside } }
                         .transition(.lyricsReveal)
                 }
             }
@@ -604,44 +597,6 @@ private struct TitleBlock: View {
 }
 /// Lyrics like Apple Music: every line in bold, the sung one bright and
 /// sharp, the others dimmed and slightly blurred, gliding upwards.
-/// Moves this song's lyrics later (+) or earlier (−) in quarter seconds;
-/// remembered for the song (see LyricsService.trackOffset).
-struct LyricsOffsetPill: View {
-    @ObservedObject var lyrics: LyricsService
-
-    var body: some View {
-        // Shown as a delay: + = the lyrics come later.
-        let delay = -lyrics.trackOffset
-        HStack(spacing: 0) {
-            step("minus", by: 0.25, help: L("Songtext früher", "Lyrics earlier"))
-            Text(abs(delay) < 0.001 ? "0 s" : String(format: "%+.2f s", delay))
-                .monospacedDigit()
-                .frame(minWidth: 50)
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) { lyrics.nudge(by: -lyrics.trackOffset) }
-                .help(L("Zeit dieses Songtexts – Doppelklick setzt zurück", "This song's lyrics timing – double-click resets"))
-            step("plus", by: -0.25, help: L("Songtext später", "Lyrics later"))
-        }
-        .font(.system(size: 11, weight: .semibold))
-        .foregroundStyle(.white.opacity(0.85))
-        .padding(.horizontal, 2)
-        .frame(height: 24)
-        .background(Capsule().fill(Color.black.opacity(0.35)))
-        .background(Capsule().fill(.ultraThinMaterial))
-    }
-
-    private func step(_ symbol: String, by delta: Double, help: String) -> some View {
-        Button { lyrics.nudge(by: delta) } label: {
-            Image(systemName: symbol)
-                .font(.system(size: 10, weight: .bold))
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(PressScaleStyle())
-        .help(help)
-    }
-}
-
 struct LyricsPanel: View {
     @ObservedObject var lyrics: LyricsService
     let info: NowPlayingInfo
@@ -659,7 +614,7 @@ struct LyricsPanel: View {
                 TimelineView(.periodic(from: .now, by: info.isPlaying ? 0.1 : 3600)) { context in
                     // The adjustable offset makes up for lyrics files that
                     // run early or late against this recording.
-                    let position = info.elapsed(at: context.date) + settings.lyricsOffset + lyrics.trackOffset
+                    let position = info.elapsed(at: context.date) + settings.lyricsOffset
                     let current = lyrics.index(at: position)
                     LyricsScroller(lines: lyrics.lines, current: current,
                                    sung: current.map { lyrics.sungWords(in: $0, at: position) } ?? 0,

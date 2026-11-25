@@ -140,14 +140,6 @@ struct SpicyLockScreen: View {
             if showLyrics {
                 SpicyLyrics(lyrics: lyrics, info: current, fontSize: lineSize) { nowPlaying.seek(to: $0) }
                     .frame(width: words.width, height: words.height)
-                    .overlay(alignment: .bottomTrailing) {
-                        // This song's timing, with the other buttons.
-                        if lyrics.state == .loaded {
-                            LyricsOffsetPill(lyrics: lyrics)
-                                .opacity(controlsVisible ? 0.8 : 0)
-                                .allowsHitTesting(controlsVisible)
-                        }
-                    }
                     .position(x: words.midX, y: words.midY)
                     .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: 48)),
                                             removal: .opacity.combined(with: .offset(x: 24))))
@@ -481,49 +473,61 @@ private struct ReactiveBackdrop: View {
     }
 }
 
-/// Like Spicetify's: the cover itself, hugely blurred and darkened, in
-/// three copies turning slowly in different directions, so its colours
-/// drift across the screen. The blur is done once per cover on a small
-/// copy (cheap); per frame only three textures turn. A new cover fades in
-/// over the old one.
+/// Like Spicetify's: the cover itself, hugely blurred, as soft bubbles
+/// that slowly drift and turn over a large turning copy – calm, not to the
+/// beat. The blur is done once per cover on a small copy (cheap). A new
+/// cover fades in over the old one, which stays fully visible underneath,
+/// so nothing turns dark in between.
 private struct CoverBackdrop: View {
     let image: NSImage?
     let playing: Bool
     var paused = false
     let size: CGSize
 
-    @State private var soft: CGImage?
-    @State private var softID = 0
+    /// Shown fully underneath.
+    @State private var base: CGImage?
+    /// Fading in over `base` after a song change.
+    @State private var top: CGImage?
+    @State private var topShown = false
+    @State private var change = 0
 
     var body: some View {
         ZStack {
             Color.black
-            if let soft {
-                CoverLayers(image: soft, playing: playing, paused: paused, size: size)
-                    .id(softID)
-                    // The new cover grows in from a little larger while
-                    // the old one fades: it develops rather than switches.
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 1.12)),
-                                            removal: .opacity))
+            if let base {
+                CoverLayers(image: base, playing: playing, paused: paused, size: size)
+            }
+            if let top {
+                CoverLayers(image: top, playing: playing, paused: paused, size: size)
+                    .opacity(topShown ? 1 : 0)
+                    .scaleEffect(topShown ? 1 : 1.1)
             }
         }
         .frame(width: size.width, height: size.height)
         .clipped()
-        .onAppear {
-            AudioLevelMeter.shared.acquire()
-            soft = image.flatMap(Self.blurred)
-        }
-        .onDisappear { AudioLevelMeter.shared.release() }
+        .onAppear { base = image.flatMap(Self.blurred) }
         .onChange(of: image) { old, new in
             let next = new.flatMap(Self.blurred)
-            // The same cover in a sharper copy: no second blend.
+            // The same cover in a sharper copy: no new blend.
             if let old, let new, HiResArtwork.looksAlike(old, new) {
-                soft = next
+                if top != nil { top = next } else { base = next }
                 return
             }
-            withAnimation(.easeInOut(duration: 3.5)) {
-                soft = next
-                softID += 1
+            // What shows now becomes the base, the new cover grows in.
+            if let top, topShown { base = top }
+            top = next
+            topShown = false
+            change += 1
+            let mine = change
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 3.5)) { topShown = true }
+            }
+            // Once it is fully in, it becomes the base.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.7) {
+                guard mine == change else { return }
+                base = top
+                top = nil
+                topShown = false
             }
         }
         .allowsHitTesting(false)
@@ -549,43 +553,49 @@ private struct CoverBackdrop: View {
     }
 }
 
+/// One large turning copy fills the screen; on it four bubbles of the
+/// cover drift on slow loops, each turning its own way.
 private struct CoverLayers: View {
     let image: CGImage
     let playing: Bool
     let paused: Bool
     let size: CGSize
 
+    /// Size (× the screen's longer side), loop speed, turn speed, phase.
+    private static let bubbles: [(size: Double, speed: Double, turn: Double, phase: Double)] = [
+        (0.95, 0.031, 3.5, 0.0), (0.8, 0.024, -4.2, 2.1), (0.7, 0.037, 5.0, 4.0), (0.6, 0.028, -3.0, 5.3),
+    ]
+
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: paused)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            let levels = AudioLevelMeter.shared.levels
-            let beat = playing && levels.hasSignal ? Double(levels.beat) : 0
+            let t = context.date.timeIntervalSinceReferenceDate * (playing ? 1 : 0.4)
             let side = max(size.width, size.height)
-            // Slower while paused.
-            let speed = playing ? 1.0 : 0.4
             ZStack {
-                layer(side * 1.9, angle: t * 3.2 * speed, x: 0.5, y: 0.5, opacity: 1)
-                layer(side * 1.15, angle: -t * 4.6 * speed + 70, x: 0.2, y: 0.85, opacity: 0.8)
-                layer(side * 1.0, angle: t * 5.4 * speed + 200, x: 0.85, y: 0.15, opacity: 0.7)
-                // Dark enough for white text, a touch lighter on the beat.
-                Color.black.opacity(0.32 - 0.05 * beat)
+                layer(side * 1.9, angle: t * 2.4, x: 0.5, y: 0.5)
+                ForEach(0..<Self.bubbles.count, id: \.self) { i in
+                    let bubble = Self.bubbles[i]
+                    let x = 0.5 + 0.38 * sin(t * bubble.speed + bubble.phase)
+                    let y = 0.5 + 0.36 * cos(t * bubble.speed * 1.3 + bubble.phase * 1.7)
+                    layer(side * bubble.size, angle: t * bubble.turn + bubble.phase * 60, x: x, y: y)
+                        .opacity(0.85)
+                }
+                // Dark enough for white text.
+                Color.black.opacity(0.3)
             }
             .saturation(1.25)
-            .scaleEffect(1 + 0.015 * beat)
         }
     }
 
-    private func layer(_ side: CGFloat, angle: Double, x: CGFloat, y: CGFloat, opacity: Double) -> some View {
+    private func layer(_ side: CGFloat, angle: Double, x: Double, y: Double) -> some View {
         Image(decorative: image, scale: 1)
             .resizable()
             .interpolation(.high)
             .frame(width: side, height: side)
-            // A soft round edge, so no corner of the turning copy shows.
+            // A soft round edge: each copy is a bubble without corners.
             .mask(RadialGradient(colors: [.black, .black, .clear], center: .center,
                                  startRadius: 0, endRadius: side * 0.5))
             .rotationEffect(.degrees(angle))
             .position(x: size.width * x, y: size.height * y)
-            .opacity(opacity)
     }
 }
 
@@ -605,7 +615,7 @@ private struct SpicyLyrics: View {
                 // Which line is current changes a few times a second at most;
                 // the letters of that line animate on their own (SpicyActiveLine).
                 TimelineView(.periodic(from: .now, by: info.isPlaying ? 0.1 : 3600)) { context in
-                    let position = info.elapsed(at: context.date) + settings.lyricsOffset + lyrics.trackOffset
+                    let position = info.elapsed(at: context.date) + settings.lyricsOffset
                     SpicyScroller(lyrics: lyrics, current: lyrics.index(at: position), info: info,
                                   fontSize: fontSize, onSeek: onSeek)
                 }
@@ -741,7 +751,7 @@ private struct SpicyActiveLine: View {
         let words = LyricWords(lyrics.lines.indices.contains(index) ? lyrics.lines[index]
                                : LyricsService.Line(time: 0, text: ""))
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !info.isPlaying)) { context in
-            let position = info.elapsed(at: context.date) + AppSettings.shared.lyricsOffset + lyrics.trackOffset
+            let position = info.elapsed(at: context.date) + AppSettings.shared.lyricsOffset
             let sung = lyrics.lines.indices.contains(index) ? lyrics.sungCharacters(in: index, at: position) : 0
             VStack(alignment: .leading, spacing: fontSize * 0.1) {
                 WordFlow(spacing: fontSize * 0.27, lineSpacing: fontSize * 0.06) {

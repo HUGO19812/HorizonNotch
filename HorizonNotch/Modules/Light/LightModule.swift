@@ -69,8 +69,7 @@ final class LightMoods: ObservableObject {
     }
 }
 
-/// The Hue light strip on its own page, like a light in Apple's Home app
-/// (see LightPage).
+/// The Hue light strip on its own page (see LightPage).
 final class LightModule: NotchModule {
     let id = "light"
     var title: String { L("Licht", "Light") }
@@ -238,9 +237,9 @@ extension NSColor {
 
 // MARK: - Page
 
-/// Like a light in Apple's Home app: the light with its state and a switch
-/// on top, a wide brightness slider, and the scenes as tiles in one row –
-/// the active one white – with "Colour" at the end.
+/// A tall brightness tile on the left, filled from below in the light's
+/// colour; on the right the light with its scene and a switch, and the
+/// scenes as a list in two columns – the active one marked.
 private struct LightPage: View {
     @ObservedObject var module: LightModule
     @ObservedObject var light: HueBluetoothLight
@@ -252,22 +251,27 @@ private struct LightPage: View {
             if !light.isPaired {
                 SetupView(light: light)
             } else {
-                VStack(spacing: 10) {
-                    LightHeader(module: module, light: light, moods: moods)
-                    Group {
-                        if pickingColor {
-                            ColorPane(module: module, light: light) {
-                                withAnimation(.easeInOut(duration: 0.2)) { pickingColor = false }
-                            }
-                        } else {
-                            BrightnessSlider(light: light)
-                            SceneRow(module: module, moods: moods) {
-                                withAnimation(.easeInOut(duration: 0.2)) { pickingColor = true }
+                HStack(spacing: 16) {
+                    BrightnessTile(light: light)
+                        .disabled(!light.reachable)
+                        .opacity(light.reachable ? 1 : 0.4)
+                    VStack(alignment: .leading, spacing: 8) {
+                        LightHeader(module: module, light: light, moods: moods)
+                        Rectangle().fill(Color.white.opacity(0.12)).frame(height: 1)
+                        Group {
+                            if pickingColor {
+                                ColorPane(module: module, light: light) {
+                                    withAnimation(.easeInOut(duration: 0.2)) { pickingColor = false }
+                                }
+                            } else {
+                                SceneList(module: module, moods: moods) {
+                                    withAnimation(.easeInOut(duration: 0.2)) { pickingColor = true }
+                                }
                             }
                         }
+                        .disabled(!light.reachable)
+                        .opacity(light.reachable ? 1 : 0.35)
                     }
-                    .disabled(!light.reachable)
-                    .opacity(light.reachable ? 1 : 0.35)
                 }
             }
         }
@@ -275,47 +279,35 @@ private struct LightPage: View {
     }
 }
 
-/// The light's icon (glowing in its colour while on), name, what it shows
-/// and a switch – or "Connect" while it can't be reached.
+/// The light's name, its scene (or state) and a switch – or "Connect"
+/// while it can't be reached.
 private struct LightHeader: View {
     @ObservedObject var module: LightModule
     @ObservedObject var light: HueBluetoothLight
     @ObservedObject var moods: LightMoods
 
     private var connecting: Bool { light.phase == .connecting && !light.reachable }
-    private var on: Bool { light.reachable && light.isOn }
 
     var body: some View {
         HStack(spacing: 10) {
-            ZStack {
-                Circle().fill(on ? AnyShapeStyle(light.color) : AnyShapeStyle(Color.white.opacity(0.12)))
-                if connecting {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Image(systemName: light.reachable ? "lightbulb.led.wide.fill" : "antenna.radiowaves.left.and.right.slash")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(on ? Color.white : .white.opacity(0.6))
-                        .shadow(color: .black.opacity(on ? 0.25 : 0), radius: 1.5, y: 0.5)
-                }
-            }
-            .frame(width: 30, height: 30)
-            .shadow(color: on ? light.color.opacity(0.7) : .clear, radius: 9)
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(light.name)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .lineLimit(1)
                 Text(status)
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.5))
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
-            if light.reachable {
+            if connecting {
+                ProgressView().controlSize(.small)
+            } else if light.reachable {
                 Toggle("", isOn: Binding(get: { light.isOn }, set: { light.setOn($0) }))
                     .toggleStyle(.switch)
                     .tint(.green)
                     .labelsHidden()
-            } else if !connecting {
+            } else {
                 Button { light.refresh() } label: {
                     Text(L("Verbinden", "Connect"))
                         .font(.system(size: 11.5, weight: .semibold))
@@ -327,7 +319,6 @@ private struct LightHeader: View {
                 .buttonStyle(PressScaleStyle())
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: on)
     }
 
     private var status: String {
@@ -340,16 +331,18 @@ private struct LightHeader: View {
             }
         }
         guard light.isOn else { return L("Aus", "Off") }
-        let percent = "\(Int((light.brightness * 100).rounded())) %"
-        let scene = module.activeMoodID == "free" ? L("Eigene Farbe", "Own colour")
-            : moods.all.first { $0.id.uuidString == module.activeMoodID }?.name
-        return scene.map { "\($0) · \(percent)" } ?? percent
+        if module.activeMoodID == "free" { return L("Eigene Farbe", "Own colour") }
+        if let scene = moods.all.first(where: { $0.id.uuidString == module.activeMoodID }) {
+            return L("Szene: \(scene.name)", "Scene: \(scene.name)")
+        }
+        return L("An", "On")
     }
 }
 
-/// Wide brightness slider: drag left and right; all the way left switches
-/// the light off.
-private struct BrightnessSlider: View {
+/// Tall tile: the brightness in per cent on top, the bulb at the bottom,
+/// filled from below in the light's colour with a soft glow above. Drag up
+/// and down; all the way down switches the light off.
+private struct BrightnessTile: View {
     @ObservedObject var light: HueBluetoothLight
     @State private var dragValue: Double?
     @State private var lastSent = Date.distantPast
@@ -364,28 +357,40 @@ private struct BrightnessSlider: View {
 
     var body: some View {
         let value = dragValue ?? (light.isOn ? light.brightness : 0)
+        let shape = RoundedRectangle(cornerRadius: 30, style: .continuous)
         GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.1))
-                Capsule()
-                    .fill(LinearGradient(colors: [light.color.opacity(0.85), Color.white.opacity(0.92)],
-                                         startPoint: .leading, endPoint: .trailing))
-                    .frame(width: max(proxy.size.height, proxy.size.width * value))
+            let fill = proxy.size.height * value
+            ZStack(alignment: .bottom) {
+                shape.fill(Color.white.opacity(0.08))
+                // The light's colour rising above the fill.
+                LinearGradient(colors: [light.color.opacity(0), light.color.opacity(0.35)],
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(height: min(proxy.size.height, fill + proxy.size.height * 0.45))
                     .opacity(value > 0.001 ? 1 : 0)
-                HStack {
-                    Image(systemName: "sun.min.fill")
-                        .foregroundStyle(value > 0.06 ? Color.black.opacity(0.5) : .white.opacity(0.5))
+                Rectangle().fill(light.color.opacity(0.95))
+                    .frame(height: fill)
+                VStack {
+                    HStack(alignment: .firstTextBaseline, spacing: 1) {
+                        Text("\(Int((value * 100).rounded()))")
+                            .font(.system(size: 26, weight: .semibold).monospacedDigit())
+                        Text("%")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
+                    .padding(.top, 14)
                     Spacer()
-                    Image(systemName: "sun.max.fill")
-                        .foregroundStyle(value > 0.94 ? Color.black.opacity(0.5) : .white.opacity(0.5))
+                    Image(systemName: light.isOn ? "lightbulb" : "lightbulb.slash")
+                        .font(.system(size: 18, weight: .medium))
+                        .padding(.bottom, 14)
                 }
-                .font(.system(size: 12, weight: .semibold))
-                .padding(.horizontal, 11)
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
             }
-            .contentShape(Capsule())
+            .clipShape(shape)
+            .contentShape(shape)
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { drag in
-                    let new = min(max(drag.location.x / proxy.size.width, 0), 1)
+                    let new = min(max(1 - drag.location.y / proxy.size.height, 0), 1)
                     dragValue = new
                     // A Bluetooth write each ~80 ms is plenty.
                     if Date().timeIntervalSince(lastSent) > 0.08 {
@@ -398,15 +403,14 @@ private struct BrightnessSlider: View {
                     dragValue = nil
                 })
         }
-        .frame(height: 28)
+        .frame(width: 104)
         .help(L("Helligkeit", "Brightness"))
     }
 }
 
-/// The scenes as tiles like Home's: a round icon in the scene's colours
-/// above its name, the active one white. Up to six fit; more scroll
-/// sideways. "Colour" (the free colour) is the last tile.
-private struct SceneRow: View {
+/// The scenes as rows in two columns: symbol, name, a check on the active
+/// one; "Own colour" last. More than six scroll.
+private struct SceneList: View {
     @ObservedObject var module: LightModule
     @ObservedObject var moods: LightMoods
     let pickColor: () -> Void
@@ -418,71 +422,67 @@ private struct SceneRow: View {
 
     var body: some View {
         let entries = moods.all.map(Entry.mood) + [.free]
-        GeometryReader { proxy in
-            // Six fit side by side; with more, a part of the seventh peeks
-            // out so it's clear the row scrolls.
-            let visible = entries.count <= 6 ? CGFloat(entries.count) : 5.5
-            let width = (proxy.size.width - 8 * (ceil(visible) - 1)) / visible
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(entries) { entry in
-                        tile(entry).frame(width: width, height: proxy.size.height)
+        let rows = (entries.count + 1) / 2
+        // Down the first column, then the second.
+        let columns = [Array(entries.prefix(max(rows, 3))), Array(entries.dropFirst(max(rows, 3)))]
+        ScrollView(.vertical, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 8) {
+                ForEach(0..<2, id: \.self) { column in
+                    VStack(spacing: 2) {
+                        ForEach(columns[column]) { entry in row(entry) }
                     }
+                    .frame(maxWidth: .infinity, alignment: .top)
                 }
             }
-            .scrollDisabled(entries.count <= 6)
         }
-        .frame(maxHeight: .infinity)
+        .scrollDisabled(entries.count <= 6)
     }
 
     @ViewBuilder
-    private func tile(_ entry: Entry) -> some View {
+    private func row(_ entry: Entry) -> some View {
         switch entry {
         case .mood(let mood):
+            let active = module.activeMoodID == mood.id.uuidString
             Button { module.apply(mood) } label: {
-                content(active: module.activeMoodID == mood.id.uuidString, name: mood.name) {
-                    Circle()
-                        .fill(LinearGradient(colors: mood.colors, startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .overlay(Image(systemName: mood.symbol)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Self.isLight(mood) ? Color.black.opacity(0.6) : .white))
+                content(active: active, name: mood.name) {
+                    Image(systemName: mood.symbol.replacingOccurrences(of: ".fill", with: ""))
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(active ? (mood.colors.last ?? .white) : .white.opacity(0.55))
                 }
             }
             .buttonStyle(PressScaleStyle())
-            .help(mood.name)
         case .free:
             Button(action: pickColor) {
-                content(active: module.activeMoodID == "free", name: L("Farbe", "Colour")) {
-                    Circle().fill(AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
-                                                  center: .center))
+                content(active: module.activeMoodID == "free", name: L("Eigene Farbe", "Own colour")) {
+                    Circle()
+                        .strokeBorder(AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
+                                                      center: .center), lineWidth: 4)
+                        .frame(width: 17, height: 17)
                 }
             }
             .buttonStyle(PressScaleStyle())
-            .help(L("Eigene Farbe", "Own colour"))
         }
     }
 
     private func content<Icon: View>(active: Bool, name: String, @ViewBuilder icon: () -> Icon) -> some View {
-        VStack(spacing: 6) {
-            icon().frame(width: 36, height: 36)
+        HStack(spacing: 10) {
+            icon().frame(width: 20)
             Text(name)
-                .font(.system(size: 11.5, weight: .semibold))
-                .foregroundStyle(active ? Color.black : .white)
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundStyle(.white)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .padding(.horizontal, 4)
+            Spacer(minLength: 4)
+            if active {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(active ? Color.white : Color.white.opacity(0.1)))
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .animation(.easeInOut(duration: 0.2), value: active)
-    }
-
-    /// Bright scenes (whites) get a dark symbol.
-    private static func isLight(_ mood: LightMood) -> Bool {
-        if case .white = mood.kind { return true }
-        return false
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
+            .fill(Color.white.opacity(active ? 0.1 : 0)))
+        .contentShape(Rectangle())
     }
 }
 
