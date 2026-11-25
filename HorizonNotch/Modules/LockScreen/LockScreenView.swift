@@ -766,7 +766,10 @@ struct LockButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        // The action runs a moment later: a change made right inside a
+        // button's action moves the clicked button straight to its end
+        // position instead of along with the others.
+        Button(action: { DispatchQueue.main.async(execute: action) }) {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
                 .contentTransition(.symbolEffect(.replace))
