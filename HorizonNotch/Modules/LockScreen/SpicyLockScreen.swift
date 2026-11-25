@@ -23,13 +23,19 @@ struct SpicyLockScreen: View {
     /// A sharper copy of the cover, if one was found.
     var artwork: NSImage?
     let showLyrics: Bool
+    /// False when the song has no synced lyrics (the button is greyed out).
+    let lyricsAvailable: Bool
     /// Shared with the small player, so the cover flies between them.
     let namespace: Namespace.ID
     let toggleLyrics: () -> Void
     /// Back to the small player.
     let minimize: () -> Void
 
-    @State private var motionReady = false
+    /// The layout for a moving cover; follows `motion.ready`, animated.
+    @State private var moving = false
+    /// The video over the still cover; fades in once the still cover has
+    /// grown to the video's size, so the video never shows inside the card.
+    @State private var videoVisible = false
     @State private var palette: [Color] = []
     @State private var controlsVisible = true
     @State private var lastMouse = NSEvent.mouseLocation
@@ -45,7 +51,6 @@ struct SpicyLockScreen: View {
     private var top: CGFloat { size.height * 0.27 }
     private var lineSize: CGFloat { max(28, size.height * 0.045) }
     private var image: NSImage? { artwork ?? nowPlaying.artwork }
-    private var moving: Bool { motion.url != nil && motionReady }
     private var mode: Mode {
         switch (moving, showLyrics) {
         case (false, false): return .card
@@ -123,22 +128,31 @@ struct SpicyLockScreen: View {
                                             removal: .opacity.combined(with: .offset(x: 24))))
             }
             LockPlayerBlock(nowPlaying: nowPlaying, info: current, centered: !moving, lyricsOn: showLyrics,
-                            controlsVisible: controlsVisible, toggleLyrics: toggleLyrics)
+                            lyricsAvailable: lyricsAvailable, controlsVisible: controlsVisible,
+                            toggleLyrics: toggleLyrics)
                 .frame(width: player.width, height: player.height, alignment: moving ? .bottomLeading : .top)
                 .position(x: player.midX, y: player.midY)
         }
         .frame(width: size.width, height: size.height)
         .onAppear {
-            // Lyrics are fetched only when they are shown.
-            if showLyrics { lyrics.load(for: current) }
+            // A video already buffered (back from the small player): large
+            // straight away.
+            moving = motion.ready
+            videoVisible = motion.ready
             updatePalette()
             scheduleHide()
         }
-        .onChange(of: showLyrics) { _, on in if on { lyrics.load(for: nowPlaying.info ?? info) } }
-        .onChange(of: info.title + info.artist) { _, _ in if showLyrics { lyrics.load(for: info) } }
         .onChange(of: image) { _, _ in updatePalette() }
-        .onChange(of: motion.url) { _, _ in
-            withAnimation(.spring(response: 0.8, dampingFraction: 0.9)) { motionReady = false }
+        .onChange(of: motion.ready) { _, ready in
+            if ready {
+                // First the still cover grows from its card to the video's
+                // size, then the video fades in over it.
+                withAnimation(.spring(response: 0.85, dampingFraction: 0.9)) { moving = true }
+                withAnimation(.easeInOut(duration: 0.6).delay(0.55)) { videoVisible = true }
+            } else {
+                withAnimation(.easeOut(duration: 0.25)) { videoVisible = false }
+                withAnimation(.spring(response: 0.8, dampingFraction: 0.9)) { moving = false }
+            }
         }
         .onReceive(mouseTick) { _ in
             let mouse = NSEvent.mouseLocation
@@ -155,9 +169,10 @@ struct SpicyLockScreen: View {
         let shape = RoundedRectangle(cornerRadius: moving ? 0 : 16, style: .continuous)
         return ZStack {
             CoverArt(image: image, cornerRadius: 0)
-            if let url = motion.url {
-                LoopingVideo(url: url, ready: $motionReady.animation(.spring(response: 0.9, dampingFraction: 0.9)))
-                    .opacity(motionReady ? 1 : 0)
+            // Only in the large layouts: never inside the card.
+            if moving, let video = motion.player {
+                LoopingVideo(player: video)
+                    .opacity(videoVisible ? 1 : 0)
             }
         }
         .matchedGeometryEffect(id: "cover", in: namespace)
@@ -210,19 +225,18 @@ private struct LockPlayerBlock: View {
     let info: NowPlayingInfo
     let centered: Bool
     let lyricsOn: Bool
+    /// False when the song has no synced lyrics: the button is greyed out.
+    let lyricsAvailable: Bool
     let controlsVisible: Bool
     let toggleLyrics: () -> Void
 
     var body: some View {
-        VStack(alignment: centered ? .center : .leading, spacing: 0) {
-            if centered {
-                LockProgress(service: nowPlaying, info: info)
-                titles.padding(.top, 14)
-            } else {
-                titles
-                LockProgress(service: nowPlaying, info: info).padding(.top, 12)
-            }
-            controls.padding(.top, 8)
+        // Always the same three views in the same order – only their places
+        // change – so the whole block glides as one between the layouts.
+        PlayerStack(progressFirst: centered) {
+            LockProgress(service: nowPlaying, info: info)
+            titles
+            controls
         }
         .foregroundStyle(.white)
         .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
@@ -244,21 +258,79 @@ private struct LockPlayerBlock: View {
     private var controls: some View {
         HStack(spacing: 2) {
             if nowPlaying.canLike {
-                LockButton(symbol: nowPlaying.liked ? "heart.fill" : "heart", size: 15) { nowPlaying.toggleLike() }
-                    .foregroundStyle(nowPlaying.liked ? Color(red: 0.98, green: 0.33, blue: 0.47) : .white)
+                let pending = nowPlaying.likePending
+                LockButton(symbol: nowPlaying.liked || pending ? "heart.fill" : "heart", size: 15) { nowPlaying.toggleLike() }
+                    .foregroundStyle(nowPlaying.liked || pending ? Color(red: 0.98, green: 0.33, blue: 0.47) : .white)
+                    .opacity(pending ? 0.6 : 1)
                     .symbolEffect(.bounce, value: nowPlaying.likePulse)
+                    .help(nowPlaying.likeDeferred
+                          ? L("Wird nach dem Entsperren an Spotify gesendet", "Sent to Spotify once you unlock")
+                          : L("Lieblingssong", "Favourite"))
             }
             LockButton(symbol: "backward.fill", size: 17) { nowPlaying.send(.previous) }
             LockButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: 24) {
                 nowPlaying.send(.togglePlayPause)
             }
             LockButton(symbol: "forward.fill", size: 17) { nowPlaying.send(.next) }
-            LockButton(symbol: lyricsOn ? "quote.bubble.fill" : "quote.bubble", size: 15, action: toggleLyrics)
-                .opacity(lyricsOn ? 1 : 0.75)
-                .help(lyricsOn ? L("Songtext ausblenden", "Hide lyrics") : L("Songtext", "Lyrics"))
+            // Both symbols are always there and only fade: swapping the
+            // symbol would drop the new one at the end of a move at once.
+            Button(action: toggleLyrics) {
+                ZStack {
+                    Image(systemName: "quote.bubble").opacity(lyricsOn ? 0 : 1)
+                    Image(systemName: "quote.bubble.fill").opacity(lyricsOn ? 1 : 0)
+                }
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 44, height: 34)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PressScaleStyle())
+            .opacity(lyricsAvailable ? (lyricsOn ? 1 : 0.75) : 0.3)
+            .disabled(!lyricsAvailable)
+            .help(!lyricsAvailable ? L("Kein synchronisierter Songtext", "No synced lyrics")
+                  : (lyricsOn ? L("Songtext ausblenden", "Hide lyrics") : L("Songtext", "Lyrics")))
         }
         .opacity(controlsVisible ? 1 : 0)
         .allowsHitTesting(controlsVisible)
+    }
+}
+
+/// Progress, titles and buttons, top to bottom – or titles before progress
+/// (over a moving cover). One layout for both orders, so switching moves
+/// the views instead of replacing them.
+private struct PlayerStack: Layout {
+    var progressFirst: Bool
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+        let frames = arrange(width: width, subviews: subviews)
+        return CGSize(width: width, height: frames.map(\.maxY).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (index, frame) in arrange(width: bounds.width, subviews: subviews).enumerated() {
+            subviews[index].place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                                  proposal: ProposedViewSize(frame.size))
+        }
+    }
+
+    /// Frames of progress, titles and buttons (in that subview order).
+    private func arrange(width: CGFloat, subviews: Subviews) -> [CGRect] {
+        guard subviews.count == 3 else { return subviews.map { _ in .zero } }
+        let progress = subviews[0].sizeThatFits(ProposedViewSize(width: width, height: nil))
+        let titles = subviews[1].sizeThatFits(ProposedViewSize(width: width, height: nil))
+        let buttons = subviews[2].sizeThatFits(.unspecified)
+        func x(_ w: CGFloat) -> CGFloat { progressFirst ? (width - w) / 2 : 0 }
+        let first = progressFirst ? progress : titles
+        let second = progressFirst ? titles : progress
+        let secondY = first.height + (progressFirst ? 14 : 12)
+        let buttonsY = secondY + second.height + 8
+        let firstRect = CGRect(x: 0, y: 0, width: width, height: first.height)
+        let secondRect = CGRect(x: 0, y: secondY, width: width, height: second.height)
+        let progressRect = progressFirst ? firstRect : secondRect
+        let titlesRect = progressFirst ? secondRect : firstRect
+        return [progressRect,
+                CGRect(x: x(min(titles.width, width)), y: titlesRect.minY, width: min(titles.width, width), height: titles.height),
+                CGRect(x: x(buttons.width), y: buttonsY, width: buttons.width, height: buttons.height)]
     }
 }
 
