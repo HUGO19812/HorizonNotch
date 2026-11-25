@@ -9,15 +9,17 @@ import Security
 /// the heart falls back to Spotify's shortcut (see SpotifyLikes).
 ///
 /// Spotify gives no app-wide key: everyone registers their own app on
-/// developer.spotify.com (needs Premium) with the redirect URI
-/// `http://127.0.0.1/callback` and enters its Client ID here. Login uses
-/// PKCE (no secret) with a short-lived listener on a free local port.
+/// developer.spotify.com (needs Premium) with the redirect URI below and
+/// enters its Client ID here. Login uses PKCE (no secret) with a
+/// short-lived listener on that local port (Spotify's dashboard only takes
+/// a loopback URI with a fixed port).
 /// The refresh token stays in the keychain.
 @MainActor
 final class SpotifyAccount: ObservableObject {
     static let shared = SpotifyAccount()
 
-    static let redirectURI = "http://127.0.0.1/callback"
+    private static let port: UInt16 = 43827
+    static let redirectURI = "http://127.0.0.1:\(port)/callback"
     private static let scopes = "user-library-modify user-library-read"
     private static let keychainService = "HorizonNotch.Spotify"
 
@@ -54,7 +56,9 @@ final class SpotifyAccount: ObservableObject {
         let state = Self.randomString(16)
         do {
             let parameters = NWParameters.tcp
-            parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
+            // A second try right after the first must get the port again.
+            parameters.allowLocalEndpointReuse = true
+            parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: NWEndpoint.Port(rawValue: Self.port)!)
             let listener = try NWListener(using: parameters)
             listener.newConnectionHandler = { [weak self] connection in
                 Task { @MainActor in self?.receive(connection, verifier: verifier, state: state, clientID: id) }
@@ -64,10 +68,10 @@ final class SpotifyAccount: ObservableObject {
                     guard let self else { return }
                     switch update {
                     case .ready:
-                        guard let port = self.listener?.port?.rawValue else { return }
-                        self.openAuthorization(clientID: id, port: port, challenge: challenge, state: state)
-                    case .failed(let error):
-                        self.finishLogin(problem: error.localizedDescription)
+                        self.openAuthorization(clientID: id, challenge: challenge, state: state)
+                    case .failed:
+                        self.finishLogin(problem: L("Port \(Self.port) ist belegt – bitte später erneut versuchen.",
+                                                    "Port \(Self.port) is in use – please try again later."))
                     default: break
                     }
                 }
@@ -92,13 +96,11 @@ final class SpotifyAccount: ObservableObject {
         problem = nil
     }
 
-    private static func redirect(port: UInt16) -> String { "http://127.0.0.1:\(port)/callback" }
-
-    private func openAuthorization(clientID: String, port: UInt16, challenge: String, state: String) {
+    private func openAuthorization(clientID: String, challenge: String, state: String) {
         var components = URLComponents(string: "https://accounts.spotify.com/authorize")!
         components.queryItems = [URLQueryItem(name: "client_id", value: clientID),
                                  URLQueryItem(name: "response_type", value: "code"),
-                                 URLQueryItem(name: "redirect_uri", value: Self.redirect(port: port)),
+                                 URLQueryItem(name: "redirect_uri", value: Self.redirectURI),
                                  URLQueryItem(name: "code_challenge_method", value: "S256"),
                                  URLQueryItem(name: "code_challenge", value: challenge),
                                  URLQueryItem(name: "state", value: state),
@@ -124,13 +126,13 @@ final class SpotifyAccount: ObservableObject {
             // Requests for other paths (a favicon) are ignored.
             guard target.hasPrefix("/callback") else { return }
             Task { @MainActor in
-                guard let self, let port = self.listener?.port?.rawValue else { return }
+                guard let self, self.listener != nil else { return }
                 guard valid, let code else {
                     self.finishLogin(problem: query.first { $0.name == "error" }?.value ?? L("Anmeldung fehlgeschlagen.", "Login failed."))
                     return
                 }
                 let ok = await self.requestToken(["grant_type": "authorization_code", "code": code,
-                                                  "redirect_uri": Self.redirect(port: port),
+                                                  "redirect_uri": Self.redirectURI,
                                                   "client_id": clientID, "code_verifier": verifier])
                 self.finishLogin(problem: ok ? nil : L("Token nicht erhalten.", "No token received."))
             }

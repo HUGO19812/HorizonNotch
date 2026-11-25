@@ -1219,8 +1219,8 @@ private struct SpotifyAccountSection: View {
         } header: {
             Text(L("Spotify-Konto (optional)", "Spotify account (optional)"))
         } footer: {
-            note("Damit speichert das Herz Songs direkt in „Lieblingssongs“ – auch im Sperrbildschirm – und zeigt, ob ein Song schon gespeichert ist. Ohne Anmeldung nutzt es Spotifys Tastenkürzel. Einrichten: auf developer.spotify.com eine App anlegen (Web API, Redirect-URI http://127.0.0.1/callback), Client ID hier einfügen. Spotify verlangt dafür Premium.",
-                 "Lets the heart save songs straight to “Liked Songs” – also on the lock screen – and show whether a song is saved. Without a login it uses Spotify's shortcut. Setup: create an app on developer.spotify.com (Web API, redirect URI http://127.0.0.1/callback), paste its Client ID here. Spotify requires Premium for this.")
+            note("Damit speichert das Herz Songs direkt in „Lieblingssongs“ – auch im Sperrbildschirm – und zeigt, ob ein Song schon gespeichert ist. Ohne Anmeldung nutzt es Spotifys Tastenkürzel. Einrichten: auf developer.spotify.com eine App anlegen (Web API, Redirect-URI http://127.0.0.1:43827/callback), Client ID hier einfügen. Spotify verlangt dafür Premium.",
+                 "Lets the heart save songs straight to “Liked Songs” – also on the lock screen – and show whether a song is saved. Without a login it uses Spotify's shortcut. Setup: create an app on developer.spotify.com (Web API, redirect URI http://127.0.0.1:43827/callback), paste its Client ID here. Spotify requires Premium for this.")
         }
     }
 }
