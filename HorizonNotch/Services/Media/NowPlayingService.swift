@@ -19,6 +19,14 @@ final class NowPlayingService: ObservableObject {
     @Published private(set) var likeKnown = true
     /// Counts presses whose result isn't known, for a small animation.
     @Published private(set) var likePulse = 0
+    /// A Spotify press on the lock screen, waiting for the unlock (the
+    /// song's title): keys posted to Spotify while the Mac is locked get
+    /// lost, so the shortcut is sent once it is unlocked.
+    @Published private(set) var pendingLikeTitle: String?
+    /// The heart was pressed for this song while locked.
+    var likePending: Bool { pendingLikeTitle != nil && pendingLikeTitle == info?.title }
+    /// Presses can't reach the player right now; they wait for the unlock.
+    var likeDeferred: Bool { info?.bundleID == SpotifyLikes.bundleID && SpotifyLikes.screenIsLocked }
     private var likedTitle = ""
     var canLike: Bool { info?.bundleID == "com.apple.Music" || info?.bundleID == SpotifyLikes.bundleID }
     private let likeQueue = DispatchQueue(label: "horizon.like", qos: .userInitiated)
@@ -169,6 +177,11 @@ final class NowPlayingService: ObservableObject {
         guard canLike, let bundle = info?.bundleID else { return }
         if bundle == SpotifyLikes.bundleID {
             likePulse += 1
+            if SpotifyLikes.screenIsLocked {
+                // A second press takes the first back.
+                pendingLikeTitle = likePending ? nil : info?.title
+                return
+            }
             likeQueue.async { SpotifyLikes.toggle() }
             return
         }
@@ -178,6 +191,16 @@ final class NowPlayingService: ObservableObject {
             let confirmed = Self.setMusicFavourite(new)
             DispatchQueue.main.async { self?.liked = confirmed ?? !new }
         }
+    }
+
+    /// After unlocking: sends a heart pressed on the lock screen, if the
+    /// same song is still playing.
+    func sendPendingLike() {
+        guard let title = pendingLikeTitle else { return }
+        pendingLikeTitle = nil
+        guard info?.bundleID == SpotifyLikes.bundleID, info?.title == title else { return }
+        // Give the session a moment to become active again.
+        likeQueue.asyncAfter(deadline: .now() + 0.8) { SpotifyLikes.toggle() }
     }
 
     /// Reads the heart for a new song in the background.

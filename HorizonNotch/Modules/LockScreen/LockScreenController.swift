@@ -38,6 +38,7 @@ final class LockScreenController {
     private func unlocked() {
         onLockChange?(false)
         hide()
+        nowPlaying.sendPendingLike()
     }
 
     func show() {

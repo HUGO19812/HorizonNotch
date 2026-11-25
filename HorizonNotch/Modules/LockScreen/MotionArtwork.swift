@@ -9,7 +9,15 @@ import SwiftUI
 /// stream. Only taken when artist and title match.
 @MainActor
 final class MotionArtwork: ObservableObject {
-    @Published private(set) var url: URL?
+    @Published private(set) var url: URL? {
+        didSet { if url != oldValue { discardPlayer() } }
+    }
+    /// The video is buffered and playing: it can be shown at once.
+    @Published private(set) var ready = false
+    /// Prepared before it is shown (see `prepare`), muted, looping.
+    private(set) var player: AVQueuePlayer?
+    private var looper: AVPlayerLooper?
+    private var statusObservation: NSKeyValueObservation?
     private var key = ""
     private static var cache: [String: URL?] = [:]
 
@@ -24,6 +32,42 @@ final class MotionArtwork: ObservableObject {
         guard key == self.key else { return }
         Self.cache[key] = found
         url = found
+    }
+
+    /// Starts buffering the video in the background, so the large player
+    /// can switch to it in one smooth step once `ready`. Starts on a low
+    /// bitrate (quicker first frames), then lets the stream pick the best.
+    func prepare() {
+        guard let url, player == nil else { return }
+        let player = AVQueuePlayer()
+        player.isMuted = true
+        player.preventsDisplaySleepDuringVideoPlayback = false
+        let template = AVPlayerItem(url: url)
+        template.preferredForwardBufferDuration = 2
+        let looper = AVPlayerLooper(player: player, templateItem: template)
+        for item in looper.loopingPlayerItems { item.preferredPeakBitRate = 2_500_000 }
+        statusObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+            guard player.timeControlStatus == .playing else { return }
+            DispatchQueue.main.async {
+                guard let self, self.player === player, !self.ready else { return }
+                self.ready = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                    guard let self, self.player === player else { return }
+                    for item in self.looper?.loopingPlayerItems ?? [] { item.preferredPeakBitRate = 0 }
+                }
+            }
+        }
+        self.player = player
+        self.looper = looper
+        player.play()
+    }
+
+    private func discardPlayer() {
+        statusObservation = nil
+        player?.pause()
+        looper = nil
+        player = nil
+        if ready { ready = false }
     }
 
     private static func find(artist: String, title: String) async -> URL? {
@@ -65,73 +109,49 @@ final class MotionArtwork: ObservableObject {
     }
 }
 
-/// A muted video playing in an endless loop, filling its frame; reports
-/// when the first frame is ready so the still cover can fade over to it.
+/// A muted video playing in an endless loop, filling its frame. The player
+/// comes buffered from MotionArtwork, so the first frame is there at once.
 struct LoopingVideo: NSViewRepresentable {
-    let url: URL
-    @Binding var ready: Bool
+    let player: AVPlayer
 
     func makeNSView(context: Context) -> PlayerView {
         let view = PlayerView()
-        view.play(url) { ready = true }
+        view.playerLayer?.player = player
+        player.play()
         return view
     }
 
     func updateNSView(_ view: PlayerView, context: Context) {
-        if view.url != url {
-            ready = false
-            view.play(url) { ready = true }
-        }
+        guard view.playerLayer?.player !== player else { return }
+        view.playerLayer?.player = player
+        player.play()
     }
 
+    /// Not shown (back to the small player): no need to keep decoding.
     static func dismantleNSView(_ view: PlayerView, coordinator: ()) {
-        view.stop()
+        view.playerLayer?.player?.pause()
+        view.playerLayer?.player = nil
     }
 
     final class PlayerView: NSView {
-        private(set) var url: URL?
-        private var player: AVQueuePlayer?
-        private var looper: AVPlayerLooper?
-        private var observation: NSKeyValueObservation?
-        private let playerLayer = AVPlayerLayer()
+        var playerLayer: AVPlayerLayer? { layer as? AVPlayerLayer }
 
         override init(frame: NSRect) {
             super.init(frame: frame)
             wantsLayer = true
-            playerLayer.videoGravity = .resizeAspectFill
-            layer?.addSublayer(playerLayer)
         }
 
         required init?(coder: NSCoder) { nil }
 
-        override func layout() {
-            super.layout()
-            playerLayer.frame = bounds
+        /// The video layer is the view's own layer, so it always has the
+        /// view's frame – a sublayer would follow a resize with its own
+        /// implicit animation, growing out of the lower left corner.
+        override func makeBackingLayer() -> CALayer {
+            let layer = AVPlayerLayer()
+            layer.videoGravity = .resizeAspectFill
+            return layer
         }
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-        func play(_ url: URL, ready: @escaping () -> Void) {
-            stop()
-            self.url = url
-            let player = AVQueuePlayer()
-            player.isMuted = true
-            player.preventsDisplaySleepDuringVideoPlayback = false
-            looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
-            playerLayer.player = player
-            observation = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { layer, _ in
-                if layer.isReadyForDisplay { DispatchQueue.main.async(execute: ready) }
-            }
-            player.play()
-            self.player = player
-        }
-
-        func stop() {
-            observation = nil
-            player?.pause()
-            looper = nil
-            player = nil
-            playerLayer.player = nil
-        }
     }
 }

@@ -57,8 +57,9 @@ struct LockScreenView: View {
                     // lyrics slide in instead of the screen being swapped.
                     SpicyLockScreen(nowPlaying: nowPlaying, lyrics: lyrics, motion: motion, info: info, size: size,
                                     artwork: settings.lockScreenBackdrop == .tinted ? nil : hiRes.image,
-                                    showLyrics: state.lyrics, namespace: player,
-                                    toggleLyrics: { state.lyrics.toggle() },
+                                    showLyrics: state.lyrics && lyricsAvailable, lyricsAvailable: lyricsAvailable,
+                                    namespace: player,
+                                    toggleLyrics: { state.lyrics = !(state.lyrics && lyricsAvailable) },
                                     minimize: { state.large = false; state.lyrics = false })
                     .transition(.opacity)
                     LockClock(size: size, tint: settings.lockClockTint && nowPlaying.artwork != nil ? nowPlaying.accent : nil)
@@ -109,6 +110,7 @@ struct LockScreenView: View {
         .animation(spring, value: nowPlaying.info == nil)
         .animation(spring, value: state.large)
         .animation(spring, value: state.lyrics)
+        .animation(spring, value: lyricsAvailable)
         .animation(spring, value: state.miniLyrics)
         .animation(.easeInOut(duration: 0.4), value: settings.lockScreenBackdrop)
         .task(id: (nowPlaying.info?.artist ?? "") + "|" + (nowPlaying.info?.title ?? "") + "|"
@@ -118,13 +120,25 @@ struct LockScreenView: View {
             if nowPlaying.info?.artworkID != 0 && nowPlaying.artwork == nil { return }
             await hiRes.load(for: nowPlaying.info, artwork: nowPlaying.artwork)
         }
-        // The moving cover is looked up once the player is large (then
-        // remembered for the session), not for every song in the background.
+        // While locked: the lyrics (LRCLIB, cached), so the large player
+        // knows whether there are any – without them it shows only the
+        // cover, even when "cover and lyrics" is the start view.
+        .task(id: (nowPlaying.info?.artist ?? "") + "|" + (nowPlaying.info?.title ?? "")) {
+            guard settings.lockScreenSpicyLyrics, let info = nowPlaying.info else { return }
+            lyrics.load(for: info)
+        }
+        // The moving cover is looked up as soon as the lock screen shows
+        // (then remembered for the session) and buffered once the player is
+        // large, so it is ready when it is needed.
         .task(id: (nowPlaying.info?.artist ?? "") + "|" + (nowPlaying.info?.title ?? "") + (state.large ? "|large" : "")) {
-            guard settings.lockScreenSpicyLyrics, state.large else { return }
+            guard settings.lockScreenSpicyLyrics else { return }
             await motion.load(for: nowPlaying.info)
+            if state.large { motion.prepare() }
         }
     }
+
+    /// Not known to be without lyrics (still loading counts as available).
+    private var lyricsAvailable: Bool { lyrics.state != .unavailable }
 
     /// Small glass card above "Touch ID or Enter Password".
     private func compact(info: NowPlayingInfo) -> some View {

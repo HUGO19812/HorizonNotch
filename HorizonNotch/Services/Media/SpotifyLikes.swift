@@ -9,6 +9,11 @@ import AppKit
 enum SpotifyLikes {
     static let bundleID = "com.spotify.client"
 
+    /// Whether the Mac is locked: keys posted to Spotify then get lost.
+    static var screenIsLocked: Bool {
+        (CGSessionCopyCurrentDictionary() as NSDictionary?)?["CGSSessionScreenIsLocked"] as? Bool ?? false
+    }
+
     /// Sends ⌥⇧B to Spotify. Needs the Accessibility permission.
     @discardableResult
     static func toggle() -> Bool {
