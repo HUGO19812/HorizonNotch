@@ -192,87 +192,83 @@ struct MediaExpandedView: View {
     @Namespace private var player
     /// The output picker lies over the player.
     @State private var showOutputs = false
+    @State private var hoveringLyrics = false
+    private let positionTick = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
 
     var body: some View {
         content
             .environment(\.coverTint, service.artwork != nil ? service.accent : .white)
-            .animation(.spring(response: 0.46, dampingFraction: 0.86), value: settings.showLyrics)
+            .animation(.spring(response: 0.46, dampingFraction: 0.86), value: lyricsOn)
     }
+
+    /// Lyrics beside the player – only for songs that have some.
+    private var lyricsOn: Bool { settings.showLyrics && lyrics.state != .unavailable }
 
     @ViewBuilder
     private var content: some View {
         if let info = service.info {
             HStack(spacing: 14) {
-                if settings.showLyrics {
-                    // Smaller player on the left, lyrics in their own field.
-                    VStack(alignment: .leading, spacing: 7) {
-                        HStack(spacing: 10) {
-                            cover(info, size: 50, radius: 10)
-                            VStack(alignment: .leading, spacing: 3) {
-                                TitleBlock(info: info, titleSize: 13)
-                                    .matchedGeometryEffect(id: "title", in: player, properties: .position, anchor: .topLeading)
-                                if settings.showSource { SourceLabel(info: info).transition(.opacity) }
+                // One player for both layouts, only smaller beside the
+                // lyrics: cover, title and artist, the lyrics button and the
+                // playing app top right, the progress bar, and heart – back
+                // – play – forward – output.
+                VStack(alignment: .leading, spacing: lyricsOn ? 7 : 10) {
+                    HStack(alignment: .center, spacing: lyricsOn ? 10 : 14) {
+                        cover(info, size: lyricsOn ? 50 : 58, radius: lyricsOn ? 10 : 13)
+                        TitleBlock(info: info, titleSize: lyricsOn ? 13 : 17)
+                        Spacer(minLength: lyricsOn ? 4 : 8)
+                        HStack(spacing: lyricsOn ? 4 : 10) {
+                            ControlButton(symbol: "quote.bubble", size: 13, active: lyricsOn) {
+                                settings.showLyrics = !lyricsOn
                             }
+                            .disabled(lyrics.state == .unavailable)
+                            .opacity(lyrics.state == .unavailable ? 0.3 : 1)
+                            .help(lyrics.state == .unavailable ? L("Kein synchronisierter Songtext", "No synced lyrics")
+                                  : L("Songtext", "Lyrics"))
+                            if settings.showSource { SourceIcon(info: info) }
                         }
-                        ProgressScrubber(service: service, info: info)
-                            .matchedGeometryEffect(id: "progress", in: player)
-                        MediaControls(service: service, info: info, compact: true)
-                            .matchedGeometryEffect(id: "controls", in: player)
+                        .frame(maxHeight: .infinity, alignment: .top)
                     }
-                    .frame(width: 232)
-                    .transition(.opacity)
-                } else {
-                    // Like Canopy: cover, title and artist, the visualizer
-                    // top right (a click shows the lyrics), the progress bar
-                    // with both times beside it, and heart – back – play –
-                    // forward – output spread across the width.
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .center, spacing: 14) {
-                            cover(info, size: 58, radius: 13)
-                            TitleBlock(info: info, titleSize: 17)
-                                .matchedGeometryEffect(id: "title", in: player, properties: .position, anchor: .topLeading)
-                            Spacer(minLength: 8)
-                            // Lyrics button and the playing app.
-                            HStack(spacing: 10) {
-                                ControlButton(symbol: "quote.bubble", size: 13, active: settings.showLyrics) {
-                                    settings.showLyrics.toggle()
-                                }
-                                .help(L("Songtext", "Lyrics"))
-                                if settings.showSource { SourceIcon(info: info) }
-                            }
-                            .frame(maxHeight: .infinity, alignment: .top)
-                        }
-                        .fixedSize(horizontal: false, vertical: true)
-                        ProgressScrubber(service: service, info: info, inline: true)
-                            .matchedGeometryEffect(id: "progress", in: player)
-                        CanopyControls(service: service, info: info, showOutputs: $showOutputs)
-                            .matchedGeometryEffect(id: "controls", in: player)
-                    }
-                    .overlay(alignment: .bottomTrailing) {
-                        if showOutputs {
-                            let close = {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showOutputs = false }
-                            }
-                            ZStack(alignment: .bottomTrailing) {
-                                // A click beside the popup closes it.
-                                Color.clear.contentShape(Rectangle()).onTapGesture(perform: close)
-                                OutputPicker(service: service, close: close)
-                                    .padding(.bottom, 34)
-                                    .transition(.scale(scale: 0.85, anchor: .bottomTrailing).combined(with: .opacity))
-                            }
-                        }
-                    }
-                    .padding(.top, 2)
-                    // Room between the buttons and the island's edge.
-                    .padding(.bottom, 8)
-                    .padding(.horizontal, 6)
-                    .transition(.opacity)
+                    .fixedSize(horizontal: false, vertical: true)
+                    ProgressScrubber(service: service, info: info, inline: !lyricsOn)
+                    CanopyControls(service: service, info: info, showOutputs: $showOutputs)
                 }
-                if settings.showLyrics {
+                .overlay(alignment: .bottomTrailing) {
+                    if showOutputs {
+                        let close = {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showOutputs = false }
+                        }
+                        ZStack(alignment: .bottomTrailing) {
+                            // A click beside the popup closes it.
+                            Color.clear.contentShape(Rectangle()).onTapGesture(perform: close)
+                            OutputPicker(service: service, close: close)
+                                .padding(.bottom, 34)
+                                .transition(.scale(scale: 0.85, anchor: .bottomTrailing).combined(with: .opacity))
+                        }
+                    }
+                }
+                .padding(.top, 2)
+                // Room between the buttons and the island's edge.
+                .padding(.bottom, lyricsOn ? 0 : 8)
+                .padding(.horizontal, lyricsOn ? 0 : 6)
+                .frame(width: lyricsOn ? 240 : nil)
+                if lyricsOn {
                     LyricsPanel(lyrics: lyrics, info: info, large: settings.lyricsLarge) { service.seek(to: $0) }
+                        .overlay(alignment: .bottomTrailing) {
+                            if hoveringLyrics && lyrics.state == .loaded {
+                                LyricsOffsetPill(lyrics: lyrics).transition(.opacity)
+                            }
+                        }
+                        .onHover { inside in withAnimation(.easeOut(duration: 0.2)) { hoveringLyrics = inside } }
                         .transition(.lyricsReveal)
                 }
             }
+            // Loaded for every song, so the button knows whether there
+            // are lyrics (LRCLIB, cached).
+            .task(id: info.artist + "|" + info.title) { lyrics.load(for: info) }
+            // The player's exact position now and then, so the lyrics
+            // stay in step.
+            .onReceive(positionTick) { _ in if lyricsOn { service.syncPosition() } }
         } else {
             NothingPlayingView()
         }
@@ -294,28 +290,6 @@ struct MediaExpandedView: View {
             .help(L("Großer Player", "Large player"))
     }
 }
-
-/// Where the music comes from: the player's icon and name.
-private struct SourceLabel: View {
-    let info: NowPlayingInfo
-
-    var body: some View {
-        HStack(spacing: 4) {
-            if let bundle = info.bundleID,
-               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                    .resizable()
-                    .frame(width: 12, height: 12)
-            }
-            Text(info.appName ?? "")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.5))
-                .lineLimit(1)
-        }
-        .help(L("Quelle", "Source"))
-    }
-}
-
 /// The app that plays, as its icon (top right of the player).
 private struct SourceIcon: View {
     let info: NowPlayingInfo
@@ -628,44 +602,46 @@ private struct TitleBlock: View {
         }
     }
 }
-
-private struct MediaControls: View {
-    @ObservedObject var service: NowPlayingService
-    @ObservedObject private var output = AudioOutput.shared
-    @ObservedObject private var settings = AppSettings.shared
-    let info: NowPlayingInfo
-    let compact: Bool
+/// Lyrics like Apple Music: every line in bold, the sung one bright and
+/// sharp, the others dimmed and slightly blurred, gliding upwards.
+/// Moves this song's lyrics later (+) or earlier (−) in quarter seconds;
+/// remembered for the song (see LyricsService.trackOffset).
+struct LyricsOffsetPill: View {
+    @ObservedObject var lyrics: LyricsService
 
     var body: some View {
+        // Shown as a delay: + = the lyrics come later.
+        let delay = -lyrics.trackOffset
         HStack(spacing: 0) {
-            ControlButton(symbol: "shuffle", size: compact ? 11 : 12, active: info.isShuffling) { service.toggleShuffle() }
-                .opacity(service.usingFallback ? 0.3 : 1)
-            Spacer(minLength: 0)
-            ControlButton(symbol: "backward.fill", size: compact ? 14 : 16) { service.send(.previous) }
-            Spacer(minLength: 0)
-            ControlButton(symbol: info.isPlaying ? "pause.fill" : "play.fill", size: compact ? 19 : 22) {
-                service.send(.togglePlayPause)
-            }
-            Spacer(minLength: 0)
-            ControlButton(symbol: "forward.fill", size: compact ? 14 : 16) { service.send(.next) }
-            Spacer(minLength: 0)
-            ControlButton(symbol: "quote.bubble", size: compact ? 11 : 12, active: settings.showLyrics) {
-                settings.showLyrics.toggle()
-            }
-            .help(L("Songtext", "Lyrics"))
-            if !compact {
-                Image(systemName: output.symbol)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .frame(width: 28, height: 28)
-                    .help(output.deviceName)
-            }
+            step("minus", by: 0.25, help: L("Songtext früher", "Lyrics earlier"))
+            Text(abs(delay) < 0.001 ? "0 s" : String(format: "%+.2f s", delay))
+                .monospacedDigit()
+                .frame(minWidth: 50)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { lyrics.nudge(by: -lyrics.trackOffset) }
+                .help(L("Zeit dieses Songtexts – Doppelklick setzt zurück", "This song's lyrics timing – double-click resets"))
+            step("plus", by: -0.25, help: L("Songtext später", "Lyrics later"))
         }
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(.white.opacity(0.85))
+        .padding(.horizontal, 2)
+        .frame(height: 24)
+        .background(Capsule().fill(Color.black.opacity(0.35)))
+        .background(Capsule().fill(.ultraThinMaterial))
+    }
+
+    private func step(_ symbol: String, by delta: Double, help: String) -> some View {
+        Button { lyrics.nudge(by: delta) } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .bold))
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressScaleStyle())
+        .help(help)
     }
 }
 
-/// Lyrics like Apple Music: every line in bold, the sung one bright and
-/// sharp, the others dimmed and slightly blurred, gliding upwards.
 struct LyricsPanel: View {
     @ObservedObject var lyrics: LyricsService
     let info: NowPlayingInfo
@@ -683,7 +659,7 @@ struct LyricsPanel: View {
                 TimelineView(.periodic(from: .now, by: info.isPlaying ? 0.1 : 3600)) { context in
                     // The adjustable offset makes up for lyrics files that
                     // run early or late against this recording.
-                    let position = info.elapsed(at: context.date) + settings.lyricsOffset
+                    let position = info.elapsed(at: context.date) + settings.lyricsOffset + lyrics.trackOffset
                     let current = lyrics.index(at: position)
                     LyricsScroller(lines: lyrics.lines, current: current,
                                    sung: current.map { lyrics.sungWords(in: $0, at: position) } ?? 0,

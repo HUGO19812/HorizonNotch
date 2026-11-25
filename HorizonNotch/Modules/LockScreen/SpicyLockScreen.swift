@@ -48,6 +48,8 @@ struct SpicyLockScreen: View {
     /// The panel above the lock screen gets no mouse-moved events, so the
     /// pointer is looked at a few times a second instead.
     private let mouseTick = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
+    /// Now and then the player's exact position, so the lyrics stay in step.
+    private let positionTick = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
 
     private enum Mode { case card, cardLyrics, motion, motionLyrics }
 
@@ -138,6 +140,14 @@ struct SpicyLockScreen: View {
             if showLyrics {
                 SpicyLyrics(lyrics: lyrics, info: current, fontSize: lineSize) { nowPlaying.seek(to: $0) }
                     .frame(width: words.width, height: words.height)
+                    .overlay(alignment: .bottomTrailing) {
+                        // This song's timing, with the other buttons.
+                        if lyrics.state == .loaded {
+                            LyricsOffsetPill(lyrics: lyrics)
+                                .opacity(controlsVisible ? 0.8 : 0)
+                                .allowsHitTesting(controlsVisible)
+                        }
+                    }
                     .position(x: words.midX, y: words.midY)
                     .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: 48)),
                                             removal: .opacity.combined(with: .offset(x: 24))))
@@ -183,6 +193,7 @@ struct SpicyLockScreen: View {
                 withAnimation(.spring(response: 0.8, dampingFraction: 0.9)) { moving = false }
             }
         }
+        .onReceive(positionTick) { _ in if showLyrics { nowPlaying.syncPosition() } }
         .onReceive(mouseTick) { _ in
             let mouse = NSEvent.mouseLocation
             guard mouse != lastMouse else { return }
@@ -197,7 +208,13 @@ struct SpicyLockScreen: View {
     private func cover(_ rect: CGRect) -> some View {
         let shape = RoundedRectangle(cornerRadius: moving ? 0 : 16, style: .continuous)
         return ZStack {
-            CoverArt(image: image, cornerRadius: 0)
+            // A new song's cover fades in over the old one.
+            ZStack {
+                CoverArt(image: image, cornerRadius: 0)
+                    .id(image.map(ObjectIdentifier.init))
+                    .transition(.opacity)
+            }
+            .animation(.easeInOut(duration: 0.7), value: image.map(ObjectIdentifier.init))
             // Buffering under the still cover, invisible until the cover has
             // grown to the large layout: never seen inside the card.
             if let video = motion.player {
@@ -278,6 +295,16 @@ private struct LockPlayerBlock: View {
     }
 
     private var titles: some View {
+        // A new song's title and artist fade over the old ones.
+        ZStack {
+            titleText
+                .id(info.title + "|" + info.artist)
+                .transition(.opacity)
+        }
+        .animation(.easeInOut(duration: 0.5), value: info.title + "|" + info.artist)
+    }
+
+    private var titleText: some View {
         VStack(alignment: .center, spacing: 2) {
             Text(info.title)
                 .font(.system(size: centered ? 26 : 22, weight: .heavy))
@@ -397,7 +424,7 @@ private struct ReactiveBackdrop: View {
             let live = playing && levels.hasSignal
             let beat = live ? Double(levels.beat) : 0
             ZStack {
-                colors[0].brightness(-0.25)
+                colors[0].brightness(-0.32)
                 ForEach(0..<5, id: \.self) { i in
                     let color = colors[i % colors.count]
                     // Each blob listens a little to its own band too.
@@ -405,9 +432,12 @@ private struct ReactiveBackdrop: View {
                     let speed = playing ? 1.0 : 0.35
                     let x = 0.5 + 0.42 * sin(t * 0.045 * speed * Double(i + 1) + Double(i) * 1.9)
                     let y = 0.5 + 0.42 * cos(t * 0.037 * speed * Double(i + 2) + Double(i) * 2.7)
-                    let radius = max(size.width, size.height) * (0.42 + 0.06 * sin(t * 0.09 + Double(i)))
+                    let radius = max(size.width, size.height) * (0.36 + 0.06 * sin(t * 0.09 + Double(i)))
                         * (1 + 0.16 * beat + 0.05 * band)
-                    RadialGradient(colors: [color.opacity(0.9), color.opacity(0)],
+                    // A fuller core with a soft edge: the blobs stand out more.
+                    RadialGradient(stops: [.init(color: color.opacity(0.95), location: 0),
+                                           .init(color: color.opacity(0.7), location: 0.45),
+                                           .init(color: color.opacity(0), location: 1)],
                                    center: UnitPoint(x: x, y: y), startRadius: 0, endRadius: radius)
                 }
                 // A faint brightening on each beat.
@@ -471,7 +501,10 @@ private struct CoverBackdrop: View {
             if let soft {
                 CoverLayers(image: soft, playing: playing, paused: paused, size: size)
                     .id(softID)
-                    .transition(.opacity)
+                    // The new cover grows in from a little larger while
+                    // the old one fades: it develops rather than switches.
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 1.12)),
+                                            removal: .opacity))
             }
         }
         .frame(width: size.width, height: size.height)
@@ -481,9 +514,14 @@ private struct CoverBackdrop: View {
             soft = image.flatMap(Self.blurred)
         }
         .onDisappear { AudioLevelMeter.shared.release() }
-        .onChange(of: image) { _, new in
+        .onChange(of: image) { old, new in
             let next = new.flatMap(Self.blurred)
-            withAnimation(.easeInOut(duration: 2.5)) {
+            // The same cover in a sharper copy: no second blend.
+            if let old, let new, HiResArtwork.looksAlike(old, new) {
+                soft = next
+                return
+            }
+            withAnimation(.easeInOut(duration: 3.5)) {
                 soft = next
                 softID += 1
             }
@@ -567,7 +605,7 @@ private struct SpicyLyrics: View {
                 // Which line is current changes a few times a second at most;
                 // the letters of that line animate on their own (SpicyActiveLine).
                 TimelineView(.periodic(from: .now, by: info.isPlaying ? 0.1 : 3600)) { context in
-                    let position = info.elapsed(at: context.date) + settings.lyricsOffset
+                    let position = info.elapsed(at: context.date) + settings.lyricsOffset + lyrics.trackOffset
                     SpicyScroller(lyrics: lyrics, current: lyrics.index(at: position), info: info,
                                   fontSize: fontSize, onSeek: onSeek)
                 }
@@ -698,9 +736,12 @@ private struct SpicyActiveLine: View {
     let fontSize: CGFloat
 
     var body: some View {
-        let words = LyricWords(lyrics.lines[index])
+        // On a song change the old index can outlive the old lines for one
+        // update: then there is nothing to draw (reading it crashed).
+        let words = LyricWords(lyrics.lines.indices.contains(index) ? lyrics.lines[index]
+                               : LyricsService.Line(time: 0, text: ""))
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !info.isPlaying)) { context in
-            let position = info.elapsed(at: context.date) + AppSettings.shared.lyricsOffset
+            let position = info.elapsed(at: context.date) + AppSettings.shared.lyricsOffset + lyrics.trackOffset
             let sung = lyrics.lines.indices.contains(index) ? lyrics.sungCharacters(in: index, at: position) : 0
             VStack(alignment: .leading, spacing: fontSize * 0.1) {
                 WordFlow(spacing: fontSize * 0.27, lineSpacing: fontSize * 0.06) {
