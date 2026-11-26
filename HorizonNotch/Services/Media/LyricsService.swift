@@ -14,8 +14,7 @@ final class LyricsService: ObservableObject {
     }
 
     /// How many words of `lines[index]` have been sung at `position`.
-    /// Uses word stamps when present; otherwise the whole line counts as
-    /// sung from its start (see `sungCharacters`).
+    /// Uses word stamps when present; otherwise follows `sungCharacters`.
     func sungWords(in index: Int, at position: Double) -> Int {
         guard lines.indices.contains(index) else { return 0 }
         let line = lines[index]
@@ -24,15 +23,22 @@ final class LyricsService: ObservableObject {
         if let times = line.wordTimes, times.count == words.count {
             return max(1, times.filter { $0 <= position + 0.05 }.count)
         }
-        return words.count
+        let sung = sungCharacters(in: index, at: position)
+        var before = 0.0
+        var count = 0
+        for word in words {
+            if before <= sung { count += 1 } else { break }
+            before += Double(word.count + 1)
+        }
+        return max(1, count)
     }
 
     /// How much of `lines[index]` has been sung at `position`, in characters
     /// (fractional, so a word can light up letter by letter). Spaces count.
     /// With word stamps each word fills in its own time. Most lyrics only
-    /// time the line: guessing each word's moment from it put some words
-    /// early and others late, so such a line lights up as a whole, in a
-    /// short soft sweep at its start (as Spicetify does for them).
+    /// time the line: then the line fills evenly over the time it takes to
+    /// sing (the song's own pace, at most until the next line); the views
+    /// draw a wide soft edge, so no single word looks early or late.
     func sungCharacters(in index: Int, at position: Double) -> Double {
         guard lines.indices.contains(index) else { return 0 }
         let line = lines[index]
@@ -48,12 +54,10 @@ final class LyricsService: ObservableObject {
             let fraction = end > times[current] ? (position - times[current]) / (end - times[current]) : 1
             return min(total, before + length * min(max(fraction, 0), 1))
         }
-        let progress = (position - line.time) / Self.lineSweep
+        let span = min(max(0.4, next - line.time) * 0.9, max(1.0, total * pace))
+        let progress = (position - line.time) / span
         return min(total, max(0, progress) * total)
     }
-
-    /// How long a line without word stamps takes to light up.
-    private static let lineSweep = 0.45
 
     /// Seconds per character this song is sung at, learned from its own
     /// timing: where a line runs straight into the next, the time between

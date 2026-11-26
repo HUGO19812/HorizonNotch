@@ -21,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let calendar = CalendarModule()
     let reminders = RemindersModule()
     private(set) lazy var light = LightModule(nowPlaying: nowPlaying, claude: claude.monitor)
-    let speaker = SpeakerModule()
+    let bluetooth = BluetoothModule()
     let weather = WeatherModule()
     let calculator = CalculatorModule()
     let claude = ClaudeCodeModule()
@@ -62,13 +62,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.register(media)
         // The overview page is gone again; drop it from a saved tab order.
         AppSettings.shared.moduleOrder.removeAll { $0 == "overview" }
+        // The speaker tab became the Bluetooth tab: keep its place.
+        AppSettings.shared.moduleOrder = AppSettings.shared.moduleOrder.map { $0 == "speaker" ? "bluetooth" : $0 }
+        if AppSettings.shared.hiddenTabs.remove("speaker") != nil { AppSettings.shared.hiddenTabs.insert("bluetooth") }
         coordinator.register(timer)
         coordinator.register(shelf)
         coordinator.register(clipboard)
         coordinator.register(calendar)
         coordinator.register(reminders)
         coordinator.register(light)
-        coordinator.register(speaker)
+        coordinator.register(bluetooth)
         coordinator.register(weather)
         coordinator.register(calculator)
         coordinator.register(claude)

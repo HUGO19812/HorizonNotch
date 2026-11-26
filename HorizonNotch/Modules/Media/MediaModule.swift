@@ -22,6 +22,8 @@ final class MediaModule: NotchModule {
     private var subscriptions = Set<AnyCancellable>()
     private var lastInfo: NowPlayingInfo?
     private var peekWork: DispatchWorkItem?
+    /// Waiting for the new song's cover before its peek shows.
+    private var coverWait: AnyCancellable?
     private var launchedAt = Date()
 
     init(service: NowPlayingService) {
@@ -56,14 +58,39 @@ final class MediaModule: NotchModule {
         // No peek for whatever is already playing when the app starts.
         guard settings.sneakPeek, let new, new.isPlaying, Date().timeIntervalSince(launchedAt) > 3 else { return }
         guard let old = lastInfo else {
-            showPeek(.started)
+            showSongPeek(.started, for: new)
             return
         }
         if old.title != new.title || old.artist != new.artist {
-            showPeek(.track)
+            showSongPeek(.track, for: new)
         } else if !old.isPlaying {
             showPeek(.started)
         }
+    }
+
+    /// A new song's peek waits (at most 0.8 s) for its cover, so it shows
+    /// in the cover's colour right away instead of in the last song's.
+    private func showSongPeek(_ kind: Peek, for info: NowPlayingInfo) {
+        coverWait = nil
+        guard settings.albumTint, info.artworkID != 0, service.artworkTitle != info.title else {
+            showPeek(kind)
+            return
+        }
+        coverWait = service.$artwork
+            .dropFirst()
+            .filter { [weak self] _ in self?.service.artworkTitle == info.title }
+            .map { _ in () }
+            .timeout(.milliseconds(800), scheduler: DispatchQueue.main)
+            .first()
+            .receive(on: DispatchQueue.main)
+            .sink(receiveCompletion: { [weak self] _ in
+                guard let self, self.coverWait != nil else { return }
+                self.coverWait = nil
+                self.showPeek(kind)
+            }, receiveValue: { [weak self] in
+                self?.coverWait = nil
+                self?.showPeek(kind)
+            })
     }
 
     private func seeked(by delta: Double) {
