@@ -706,8 +706,7 @@ private struct PageDots: View {
         let open = hovered == i
         return HStack(spacing: 4) {
             if open {
-                Image(systemName: pages[i].symbol)
-                    .font(.system(size: 9, weight: .bold))
+                ModuleSymbol(name: pages[i].symbol, size: 9, weight: .bold)
                 Text(pages[i].title)
                     .font(.system(size: 10.5, weight: .semibold))
                     .lineLimit(1)

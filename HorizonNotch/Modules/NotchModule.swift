@@ -83,3 +83,41 @@ extension NotchModule {
         })
     }
 }
+
+/// A tab's symbol: an SF Symbol by name, or – for the one SF Symbols lacks –
+/// the Bluetooth logo drawn as a shape.
+struct ModuleSymbol: View {
+    let name: String
+    let size: CGFloat
+    var weight: Font.Weight = .semibold
+
+    var body: some View {
+        if name == BluetoothRune.symbolName {
+            BluetoothRune()
+                .stroke(style: StrokeStyle(lineWidth: size * 0.13, lineCap: .round, lineJoin: .round))
+                .frame(width: size * 0.62, height: size * 1.05)
+        } else {
+            Image(systemName: name).font(.system(size: size, weight: weight))
+        }
+    }
+}
+
+/// The Bluetooth logo (the rune ᛒ): a vertical line with two arrowheads
+/// on the right, crossed by two diagonals.
+struct BluetoothRune: Shape {
+    static let symbolName = "horizon.bluetooth"
+
+    func path(in rect: CGRect) -> Path {
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + rect.width * x, y: rect.minY + rect.height * y)
+        }
+        var path = Path()
+        path.move(to: point(0.06, 0.27))
+        path.addLine(to: point(0.94, 0.73))
+        path.addLine(to: point(0.5, 1))
+        path.addLine(to: point(0.5, 0))
+        path.addLine(to: point(0.94, 0.27))
+        path.addLine(to: point(0.06, 0.73))
+        return path
+    }
+}

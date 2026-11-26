@@ -697,7 +697,8 @@ private struct SpicyScroller: View {
         .onHover { inside in
             if inside { hovered = index } else if hovered == index { hovered = nil }
         }
-        .animation(.easeInOut(duration: 0.45), value: isCurrent)
+        // Quick, so the line is bright as its first word is sung.
+        .animation(.easeOut(duration: 0.2), value: isCurrent)
         .animation(.easeOut(duration: 0.15), value: isHovered)
     }
 }
@@ -731,12 +732,10 @@ private struct LyricWords {
         }
     }
 
-    /// How far a word is lit. Without word stamps the edge is soft over
-    /// a few characters on each side, so the light glides through the line
-    /// instead of claiming exact word moments it doesn't know.
-    func fill(_ word: Word, sung: Double, soft: Double = 0) -> Double {
+    /// How far a word is lit (whole lines light up at once).
+    func fill(_ word: Word, sung: Double) -> Double {
         guard word.length > 0 else { return 0 }
-        return min(max((sung - word.offset + soft) / (word.length + 2 * soft), 0), 1)
+        return min(max((sung - word.offset) / word.length, 0), 1)
     }
 }
 
@@ -755,23 +754,17 @@ private struct SpicyActiveLine: View {
                                : LyricsService.Line(time: 0, text: ""))
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !info.isPlaying)) { context in
             let position = info.elapsed(at: context.date) + AppSettings.shared.lyricsOffset
-            let raw = lyrics.lines.indices.contains(index) ? lyrics.sungCharacters(in: index, at: position) : 0
-            // Word-timed lines fill word by word; line-timed ones softly –
-            // stretched so the soft edge starts before the first letter and
-            // ends past the last one (all dark at 0, all lit at the end).
-            let edge = lyrics.lines.indices.contains(index) && lyrics.lines[index].wordTimes == nil ? 4.0 : 0
-            let total = lyrics.lines.indices.contains(index) ? max(Double(lyrics.lines[index].text.count), 1) : 1
-            let sung = edge > 0 ? raw * (total + 2 * edge) / total - edge : raw
+            let sung = lyrics.lines.indices.contains(index) ? lyrics.sungCharacters(in: index, at: position) : 0
             VStack(alignment: .leading, spacing: fontSize * 0.1) {
                 WordFlow(spacing: fontSize * 0.27, lineSpacing: fontSize * 0.06) {
                     ForEach(words.main) { word in
-                        SpicyWord(text: word.text, fill: words.fill(word, sung: sung, soft: edge), size: fontSize)
+                        SpicyWord(text: word.text, fill: words.fill(word, sung: sung), size: fontSize)
                     }
                 }
                 if !words.background.isEmpty {
                     WordFlow(spacing: fontSize * 0.2, lineSpacing: 0) {
                         ForEach(words.background) { word in
-                            SpicyWord(text: word.text, fill: words.fill(word, sung: sung, soft: edge), size: fontSize * 0.55)
+                            SpicyWord(text: word.text, fill: words.fill(word, sung: sung), size: fontSize * 0.55)
                         }
                     }
                 }
