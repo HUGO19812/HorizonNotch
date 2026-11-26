@@ -339,12 +339,17 @@ private struct LightHeader: View {
     }
 }
 
-/// Tall tile: the brightness in per cent on top, the bulb at the bottom,
-/// filled from below in the light's colour with a soft glow above. Drag up
-/// and down; all the way down switches the light off.
+/// Tall tile like Control Center's: the brightness in per cent on top, the
+/// bulb at the bottom, filled from below in the light's colour with a
+/// bright edge and a soft glow above. Dragging moves the level from where
+/// it is (no jump to the pointer); a plain click switches the light on or
+/// off; all the way down switches it off.
 private struct BrightnessTile: View {
     @ObservedObject var light: HueBluetoothLight
+    /// The level while dragging.
     @State private var dragValue: Double?
+    /// The level when the drag began.
+    @State private var startValue = 0.0
     @State private var lastSent = Date.distantPast
 
     private func apply(_ value: Double) {
@@ -357,30 +362,40 @@ private struct BrightnessTile: View {
 
     var body: some View {
         let value = dragValue ?? (light.isOn ? light.brightness : 0)
+        let dragging = dragValue != nil
         let shape = RoundedRectangle(cornerRadius: 30, style: .continuous)
         GeometryReader { proxy in
-            let fill = proxy.size.height * value
+            let height = proxy.size.height
+            let fill = height * value
             ZStack(alignment: .bottom) {
-                shape.fill(Color.white.opacity(0.08))
-                // The light's colour rising above the fill.
-                LinearGradient(colors: [light.color.opacity(0), light.color.opacity(0.35)],
+                shape.fill(Color.white.opacity(dragging ? 0.11 : 0.08))
+                // The light's colour glowing above the fill.
+                LinearGradient(colors: [light.color.opacity(0), light.color.opacity(0.45)],
                                startPoint: .top, endPoint: .bottom)
-                    .frame(height: min(proxy.size.height, fill + proxy.size.height * 0.45))
+                    .frame(height: min(height, fill + height * 0.5))
                     .opacity(value > 0.001 ? 1 : 0)
-                Rectangle().fill(light.color.opacity(0.95))
+                // The fill: lighter towards its top, with a bright edge.
+                light.color
+                    .overlay(LinearGradient(colors: [.white.opacity(0.22), .clear], startPoint: .top, endPoint: .bottom))
                     .frame(height: fill)
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(Color.white.opacity(0.45)).frame(height: 1.5)
+                            .opacity(value > 0.02 && value < 0.98 ? 1 : 0)
+                    }
                 VStack {
                     HStack(alignment: .firstTextBaseline, spacing: 1) {
                         Text("\(Int((value * 100).rounded()))")
                             .font(.system(size: 26, weight: .semibold).monospacedDigit())
+                            .contentTransition(.numericText(value: value))
                         Text("%")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.6))
                     }
                     .padding(.top, 14)
                     Spacer()
-                    Image(systemName: light.isOn ? "lightbulb" : "lightbulb.slash")
+                    Image(systemName: light.isOn ? "lightbulb.fill" : "lightbulb.slash")
                         .font(.system(size: 18, weight: .medium))
+                        .contentTransition(.symbolEffect(.replace))
                         .padding(.bottom, 14)
                 }
                 .foregroundStyle(.white)
@@ -390,7 +405,10 @@ private struct BrightnessTile: View {
             .contentShape(shape)
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { drag in
-                    let new = min(max(1 - drag.location.y / proxy.size.height, 0), 1)
+                    if dragValue == nil { startValue = light.isOn ? light.brightness : 0 }
+                    // Only moved far enough is a drag; up = brighter.
+                    guard abs(drag.translation.height) > 2 || dragValue != nil else { return }
+                    let new = min(max(startValue - drag.translation.height / height, 0), 1)
                     dragValue = new
                     // A Bluetooth write each ~80 ms is plenty.
                     if Date().timeIntervalSince(lastSent) > 0.08 {
@@ -398,13 +416,22 @@ private struct BrightnessTile: View {
                         apply(new)
                     }
                 }
-                .onEnded { _ in
-                    if let value = dragValue { apply(value) }
+                .onEnded { drag in
+                    if let value = dragValue {
+                        apply(value)
+                    } else if abs(drag.translation.height) <= 2 {
+                        light.toggle()
+                    }
                     dragValue = nil
                 })
         }
         .frame(width: 104)
-        .help(L("Helligkeit", "Brightness"))
+        .scaleEffect(dragging ? 1.03 : 1)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dragging)
+        // Changes from elsewhere (a scene, the switch) glide.
+        .animation(dragging ? nil : .spring(response: 0.45, dampingFraction: 0.9), value: value)
+        .help(L("Ziehen für die Helligkeit, klicken zum Ein- und Ausschalten",
+                "Drag for brightness, click to switch on or off"))
     }
 }
 

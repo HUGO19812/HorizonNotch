@@ -7,6 +7,9 @@ import SwiftUI
 final class NowPlayingService: ObservableObject {
     @Published private(set) var info: NowPlayingInfo?
     @Published private(set) var artwork: NSImage?
+    /// The song `artwork` (and `accent`) belong to: players often send a
+    /// new title first and its cover a moment later.
+    private(set) var artworkTitle = ""
     /// Vivid colour taken from the cover, used for the visualizer.
     @Published private(set) var accent: Color = .white
     @Published private(set) var usingFallback = false
@@ -336,10 +339,12 @@ final class NowPlayingService: ObservableObject {
             return
         }
         if let data, let image = NSImage(data: data) {
+            artworkTitle = newInfo?.title ?? ""
             artwork = image
             accent = Color(nsColor: ColorExtractor.vibrantColor(of: image))
             CoverAccent.shared.color = accent
         } else if newInfo?.artworkID == 0, artwork != nil {
+            artworkTitle = newInfo?.title ?? ""
             artwork = nil
             accent = .white
             CoverAccent.shared.color = nil
