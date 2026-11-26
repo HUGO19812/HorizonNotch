@@ -1029,8 +1029,7 @@ private struct TabSettings: View {
         let visible = !settings.hiddenTabs.contains(row.id)
         let always = row.id == "media"
         return VStack(spacing: 8) {
-            Image(systemName: row.symbol)
-                .font(.system(size: 17, weight: .semibold))
+            ModuleSymbol(name: row.symbol, size: 17)
                 .foregroundStyle(.white)
                 .frame(width: 38, height: 38)
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -1098,7 +1097,7 @@ private struct ModuleSettings: View {
             Section {
                 ForEach(coordinator.modules.map { ModuleRow(id: $0.id, title: $0.title, symbol: $0.symbol) }) { row in
                     HStack(spacing: 10) {
-                        Image(systemName: row.symbol)
+                        ModuleSymbol(name: row.symbol, size: 13, weight: .regular)
                             .frame(width: 22)
                             .foregroundStyle(.secondary)
                         Toggle(row.title, isOn: Binding(

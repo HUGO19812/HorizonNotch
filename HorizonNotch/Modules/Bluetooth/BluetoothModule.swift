@@ -6,7 +6,7 @@ import SwiftUI
 final class BluetoothModule: NotchModule {
     let id = "bluetooth"
     var title: String { "Bluetooth" }
-    let symbol = "dot.radiowaves.left.and.right"
+    let symbol = BluetoothRune.symbolName
     let priority = ModulePriority.calendar
     let hasExpandedContent = true
     var isActive: Bool { false }
@@ -46,6 +46,8 @@ private struct BluetoothPage: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 list
+                    .disabled(!hub.isPoweredOn)
+                    .opacity(hub.isPoweredOn ? 1 : 0.35)
             }
         }
         // Bluetooth is asked only once the tab is opened.
@@ -57,21 +59,28 @@ private struct BluetoothPage: View {
         let connected = hub.devices.filter(\.isConnected).count
         return HStack(spacing: 10) {
             ZStack {
-                Circle().fill(connected > 0 ? Color.blue : Color.white.opacity(0.12))
-                Image(systemName: "dot.radiowaves.left.and.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
+                Circle().fill(hub.isPoweredOn ? Color.blue : Color.white.opacity(0.12))
+                BluetoothRune()
+                    .stroke(Color.white, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                    .frame(width: 8, height: 14)
             }
             .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Bluetooth")
                     .font(.system(size: 16, weight: .semibold))
-                Text(connected == 0 ? L("Nichts verbunden", "Nothing connected")
-                     : L("\(connected) verbunden", "\(connected) connected"))
+                Text(!hub.isPoweredOn ? L("Aus", "Off")
+                     : (connected == 0 ? L("Nichts verbunden", "Nothing connected")
+                        : L("\(connected) verbunden", "\(connected) connected")))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.5))
             }
             Spacer()
+            if hub.canSetPower {
+                Toggle("", isOn: Binding(get: { hub.isPoweredOn }, set: { hub.setPower($0) }))
+                    .toggleStyle(.switch)
+                    .tint(.blue)
+                    .labelsHidden()
+            }
         }
     }
 

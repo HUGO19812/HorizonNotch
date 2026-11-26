@@ -25,6 +25,7 @@ final class BluetoothHub: NSObject, ObservableObject {
     @Published private(set) var connecting: Set<String> = []
     /// The address of a device that could not be reached.
     @Published private(set) var unreachable: String?
+    @Published private(set) var isPoweredOn = true
 
     private var connectNotification: IOBluetoothUserNotification?
     private var disconnectNotifications: [String: IOBluetoothUserNotification] = [:]
@@ -45,6 +46,7 @@ final class BluetoothHub: NSObject, ObservableObject {
     }
 
     func refresh() {
+        isPoweredOn = IOBluetoothHostController.default()?.powerState == kBluetoothHCIPowerStateON
         let paired = (IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice]) ?? []
         devices = paired.compactMap { device -> Device? in
             guard let name = device.name, let address = device.addressString else { return nil }
@@ -60,6 +62,29 @@ final class BluetoothHub: NSObject, ObservableObject {
         // Connected first, then by name.
         .sorted { ($0.isConnected ? 0 : 1, $0.name.lowercased()) < ($1.isConnected ? 0 : 1, $1.name.lowercased()) }
     }
+
+    // MARK: Power
+
+    /// Bluetooth can be switched on and off (macOS offers this only
+    /// through an undocumented function, the one blueutil uses).
+    var canSetPower: Bool { Self.setPowerFunction != nil }
+
+    func setPower(_ on: Bool) {
+        guard let set = Self.setPowerFunction else { return }
+        set(on ? 1 : 0)
+        isPoweredOn = on
+        // The controller takes a moment; then the real state and devices.
+        for delay in [1.0, 3.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.refresh() }
+        }
+    }
+
+    private typealias SetPower = @convention(c) (Int32) -> Void
+    private static let setPowerFunction: SetPower? = {
+        guard let handle = dlopen("/System/Library/Frameworks/IOBluetooth.framework/IOBluetooth", RTLD_NOW),
+              let symbol = dlsym(handle, "IOBluetoothPreferenceSetControllerPowerState") else { return nil }
+        return unsafeBitCast(symbol, to: SetPower.self)
+    }()
 
     // MARK: Connect
 

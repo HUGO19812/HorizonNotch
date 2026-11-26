@@ -68,19 +68,21 @@ final class MediaModule: NotchModule {
         }
     }
 
-    /// A new song's peek waits (at most 0.8 s) for its cover, so it shows
-    /// in the cover's colour right away instead of in the last song's.
+    /// A new song's peek waits (at most 1 s) for the next cover, so it
+    /// shows in that cover's colour instead of the last song's. Players
+    /// often send the new title first – sometimes still with the old
+    /// cover – and the new cover a moment later, so any cover that came
+    /// before or with the title doesn't count.
     private func showSongPeek(_ kind: Peek, for info: NowPlayingInfo) {
         coverWait = nil
-        guard settings.albumTint, info.artworkID != 0, service.artworkTitle != info.title else {
+        guard settings.albumTint, info.artworkID != 0 else {
             showPeek(kind)
             return
         }
         coverWait = service.$artwork
             .dropFirst()
-            .filter { [weak self] _ in self?.service.artworkTitle == info.title }
             .map { _ in () }
-            .timeout(.milliseconds(800), scheduler: DispatchQueue.main)
+            .timeout(.seconds(1), scheduler: DispatchQueue.main)
             .first()
             .receive(on: DispatchQueue.main)
             .sink(receiveCompletion: { [weak self] _ in
@@ -89,7 +91,8 @@ final class MediaModule: NotchModule {
                 self.showPeek(kind)
             }, receiveValue: { [weak self] in
                 self?.coverWait = nil
-                self?.showPeek(kind)
+                // The colour is worked out with the cover: a moment later.
+                DispatchQueue.main.async { self?.showPeek(kind) }
             })
     }
 
@@ -166,6 +169,8 @@ private struct MediaPeekView: View {
                         font: .system(size: 11, weight: .medium), color: module.peekColor)
         }
         .padding(.top, 1)
+        // A cover that still arrives late changes the colour softly.
+        .animation(.easeInOut(duration: 0.35), value: module.peekColor)
     }
 
     private var symbol: String {
