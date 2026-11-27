@@ -613,7 +613,7 @@ private struct SpicyLyrics: View {
             switch lyrics.state {
             case .loaded:
                 // Which line is current changes a few times a second at most;
-                // the letters of that line animate on their own (SpicyActiveLine).
+                // its entrance animates on its own (SpicyLine).
                 TimelineView(.periodic(from: .now, by: info.isPlaying ? 0.1 : 3600)) { context in
                     let position = info.elapsed(at: context.date) + settings.lyricsOffset
                     SpicyScroller(lyrics: lyrics, current: lyrics.index(at: position), info: info,
@@ -644,28 +644,13 @@ private struct SpicyScroller: View {
     @State private var hovered: Int?
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: fontSize * 0.3) {
-                    ForEach(Array(lyrics.lines.enumerated()), id: \.offset) { index, line in
-                        row(index, line)
-                            .id(index)
-                    }
-                }
-                .padding(.vertical, fontSize * 8)
-            }
-            .scrollDisabled(true)
-            // Soft edges, wider at the top where the clock is.
-            .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.1),
-                                         .init(color: .black, location: 0.9), .init(color: .clear, location: 1)],
-                                 startPoint: .top, endPoint: .bottom))
-            .onAppear { proxy.scrollTo(current ?? 0, anchor: UnitPoint(x: 0, y: 0.42)) }
-            .onChange(of: current) { _, index in
-                withAnimation(.spring(response: 0.7, dampingFraction: 0.86)) {
-                    proxy.scrollTo(index ?? 0, anchor: UnitPoint(x: 0, y: 0.42))
-                }
-            }
+        CascadingLines(count: lyrics.lines.count, current: current, spacing: fontSize * 0.3, anchor: 0.42) { index in
+            row(index, lyrics.lines[index])
         }
+        // Soft edges, wider at the top where the clock is.
+        .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.1),
+                                     .init(color: .black, location: 0.9), .init(color: .clear, location: 1)],
+                             startPoint: .top, endPoint: .bottom))
     }
 
     @ViewBuilder
@@ -677,13 +662,19 @@ private struct SpicyScroller: View {
         Group {
             if line.text.trimmingCharacters(in: .whitespaces).isEmpty {
                 InterludeDots(size: fontSize, active: isCurrent && info.isPlaying)
-            } else if isCurrent {
-                SpicyActiveLine(lyrics: lyrics, index: index, info: info, fontSize: fontSize)
             } else {
-                SpicyStillLine(line: line, fontSize: fontSize, opacity: isHovered ? 0.85 : (isPast ? 0.38 : 0.45))
+                // One view for the line whether current or not: swapping
+                // views made the new current line jump to its place.
+                SpicyLine(line: line, fontSize: fontSize, isCurrent: isCurrent,
+                          dim: isHovered ? 0.85 : (isPast ? 0.38 : 0.45))
             }
         }
         .blur(radius: isCurrent || isHovered ? 0 : min(3, Double(max(distance - 1, 0)) * 0.6))
+        // The current line stands out a little larger; the others step back.
+        // The spring is only for the size: the place follows the cascade.
+        .animation(.spring(response: 0.42, dampingFraction: 0.72)) {
+            $0.scaleEffect(isCurrent ? 1 : 0.95, anchor: .leading)
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, fontSize * 0.35)
         .padding(.vertical, fontSize * 0.15)
@@ -697,8 +688,6 @@ private struct SpicyScroller: View {
         .onHover { inside in
             if inside { hovered = index } else if hovered == index { hovered = nil }
         }
-        // Quick, so the line is bright as its first word is sung.
-        .animation(.easeOut(duration: 0.2), value: isCurrent)
         .animation(.easeOut(duration: 0.15), value: isHovered)
     }
 }
@@ -732,84 +721,54 @@ private struct LyricWords {
         }
     }
 
-    /// How far a word is lit (whole lines light up at once).
-    func fill(_ word: Word, sung: Double) -> Double {
-        guard word.length > 0 else { return 0 }
-        return min(max((sung - word.offset) / word.length, 0), 1)
-    }
 }
 
-/// The line being sung: every word fills with white letter by letter, the
-/// word being sung glows and rises a little.
-private struct SpicyActiveLine: View {
-    @ObservedObject var lyrics: LyricsService
-    let index: Int
-    let info: NowPlayingInfo
-    let fontSize: CGFloat
-
-    var body: some View {
-        // On a song change the old index can outlive the old lines for one
-        // update: then there is nothing to draw (reading it crashed).
-        let words = LyricWords(lyrics.lines.indices.contains(index) ? lyrics.lines[index]
-                               : LyricsService.Line(time: 0, text: ""))
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !info.isPlaying)) { context in
-            let position = info.elapsed(at: context.date) + AppSettings.shared.lyricsOffset
-            let sung = lyrics.lines.indices.contains(index) ? lyrics.sungCharacters(in: index, at: position) : 0
-            VStack(alignment: .leading, spacing: fontSize * 0.1) {
-                WordFlow(spacing: fontSize * 0.27, lineSpacing: fontSize * 0.06) {
-                    ForEach(words.main) { word in
-                        SpicyWord(text: word.text, fill: words.fill(word, sung: sung), size: fontSize)
-                    }
-                }
-                if !words.background.isEmpty {
-                    WordFlow(spacing: fontSize * 0.2, lineSpacing: 0) {
-                        ForEach(words.background) { word in
-                            SpicyWord(text: word.text, fill: words.fill(word, sung: sung), size: fontSize * 0.55)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// One word: dim underneath, bright on top up to how far it is sung, with a
-/// soft edge; glowing while it is being sung.
-private struct SpicyWord: View {
-    let text: String
-    /// 0 = not yet, 1 = sung.
-    let fill: Double
-    let size: CGFloat
-
-    var body: some View {
-        let label = Text(text).font(.system(size: size, weight: .bold))
-        // Strongest in the middle of the word, gone once it is sung.
-        let glow = fill > 0 && fill < 1 ? sin(fill * .pi) : 0
-        let soft = 0.25
-        label
-            .foregroundStyle(.white.opacity(0.3))
-            .overlay(alignment: .leading) {
-                label
-                    .foregroundStyle(.white)
-                    .mask(LinearGradient(stops: [.init(color: .black, location: 0),
-                                                 .init(color: .black, location: min(max(fill * (1 + soft) - soft, 0), 1)),
-                                                 .init(color: .clear, location: min(max(fill * (1 + soft), 0.0001), 1))],
-                                         startPoint: .leading, endPoint: .trailing))
-                    .shadow(color: .white.opacity(0.75 * glow), radius: size * 0.28)
-            }
-            .offset(y: -size * 0.045 * min(fill * 1.6, 1))
-    }
-}
-
-/// A line that isn't being sung: plain, dim, background vocals small below.
-private struct SpicyStillLine: View {
+/// A line of the lyrics, dim – or, while it is sung, white as a whole. As
+/// it becomes current it lights up with a soft glow that settles, and a
+/// band of light sweeps once across it from left to right.
+private struct SpicyLine: View {
     let line: LyricsService.Line
     let fontSize: CGFloat
-    let opacity: Double
+    let isCurrent: Bool
+    /// Brightness while not current.
+    let dim: Double
+    @State private var glow = false
+    /// 0…1 while the band runs across; 1 = gone past the end.
+    @State private var sweep: CGFloat = 1
 
     var body: some View {
+        let text = lineText
+        text
+            .foregroundStyle(.white)
+            .overlay {
+                GeometryReader { proxy in
+                    LinearGradient(colors: [.clear, .white.opacity(0.9), .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: proxy.size.width * 0.35)
+                        .offset(x: -proxy.size.width * 0.35 + sweep * proxy.size.width * 1.35)
+                        .blendMode(.plusLighter)
+                }
+                .mask(text)
+                .opacity(isCurrent ? 1 : 0)
+                .allowsHitTesting(false)
+            }
+            .shadow(color: .white.opacity(isCurrent ? (glow ? 0.55 : 0.16) : 0),
+                    radius: fontSize * (glow ? 0.45 : 0.25))
+            // Quick, so the line is bright as its first word is sung.
+            .animation(.easeOut(duration: 0.25)) { $0.opacity(isCurrent ? 1 : dim) }
+            .onChange(of: isCurrent) { _, now in if now { enter() } }
+            .onAppear { if isCurrent { enter() } }
+    }
+
+    private func enter() {
+        glow = true
+        sweep = 0
+        withAnimation(.easeOut(duration: 0.9)) { sweep = 1 }
+        withAnimation(.easeOut(duration: 0.8).delay(0.15)) { glow = false }
+    }
+
+    private var lineText: some View {
         let words = LyricWords(line)
-        VStack(alignment: .leading, spacing: fontSize * 0.1) {
+        return VStack(alignment: .leading, spacing: fontSize * 0.1) {
             if !words.main.isEmpty {
                 Text(words.main.map(\.text).joined(separator: " "))
                     .font(.system(size: fontSize, weight: .bold))
@@ -819,7 +778,6 @@ private struct SpicyStillLine: View {
                     .font(.system(size: fontSize * 0.55, weight: .bold))
             }
         }
-        .foregroundStyle(.white.opacity(opacity))
         .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -844,55 +802,5 @@ private struct InterludeDots: View {
             }
             .frame(height: size)
         }
-    }
-}
-
-/// Lays words out left to right and wraps them like text.
-private struct WordFlow: Layout {
-    var spacing: CGFloat
-    var lineSpacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
-        let width = rows.map(\.width).max() ?? 0
-        let height = rows.map(\.height).reduce(0, +) + lineSpacing * CGFloat(max(rows.count - 1, 0))
-        return CGSize(width: proposal.width.map { min($0, width) } ?? width, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var y = bounds.minY
-        for row in arrange(width: bounds.width, subviews: subviews) {
-            var x = bounds.minX
-            for index in row.items {
-                let size = subviews[index].sizeThatFits(.unspecified)
-                subviews[index].place(at: CGPoint(x: x, y: y + (row.height - size.height)), proposal: .unspecified)
-                x += size.width + spacing
-            }
-            y += row.height + lineSpacing
-        }
-    }
-
-    private struct Row {
-        var items: [Int] = []
-        var width: CGFloat = 0
-        var height: CGFloat = 0
-    }
-
-    private func arrange(width: CGFloat, subviews: Subviews) -> [Row] {
-        var rows: [Row] = []
-        var row = Row()
-        for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            let needed = row.items.isEmpty ? size.width : row.width + spacing + size.width
-            if needed > width, !row.items.isEmpty {
-                rows.append(row)
-                row = Row()
-            }
-            row.width = row.items.isEmpty ? size.width : row.width + spacing + size.width
-            row.height = max(row.height, size.height)
-            row.items.append(index)
-        }
-        if !row.items.isEmpty { rows.append(row) }
-        return rows
     }
 }
