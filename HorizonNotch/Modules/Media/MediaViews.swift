@@ -639,6 +639,60 @@ struct LyricsPanel: View {
     }
 }
 
+/// Lyrics lines stacked top to bottom and shifted so the current one sits
+/// at `anchor` (a share of the height). Each line moves on its own spring,
+/// a little later the further below the current line it is: the lines
+/// follow one another like a wave instead of sliding as one block.
+struct CascadingLines<Row: View>: View {
+    let count: Int
+    let current: Int?
+    let spacing: CGFloat
+    var anchor: CGFloat = 0.42
+    @ViewBuilder let row: (Int) -> Row
+    @State private var heights: [Int: CGFloat] = [:]
+    /// No animation until the lines are measured (no slide-in on appear).
+    @State private var measured = false
+
+    var body: some View {
+        GeometryReader { proxy in
+            let focus = min(current ?? 0, max(count - 1, 0))
+            let above = (0..<focus).reduce(CGFloat(0)) { $0 + (heights[$1] ?? 0) + spacing }
+            let shift = proxy.size.height * anchor - above - (heights[focus] ?? 0) / 2
+            VStack(alignment: .leading, spacing: spacing) {
+                ForEach(0..<count, id: \.self) { index in
+                    row(index)
+                        .background(GeometryReader { line in
+                            Color.clear.preference(key: LineHeights.self, value: [index: line.size.height])
+                        })
+                        .offset(y: shift)
+                        .animation(measured ? .spring(response: 0.62, dampingFraction: 0.8)
+                                    .delay(Self.delay(index, focus)) : nil, value: shift)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            .onPreferenceChange(LineHeights.self) { new in
+                heights = new
+                if !measured { DispatchQueue.main.async { measured = true } }
+            }
+        }
+        .clipped()
+    }
+
+    /// The line before the current one and all above move at once; below
+    /// it, each line 35 ms after the one above (at most 10 steps).
+    private static func delay(_ index: Int, _ focus: Int) -> Double {
+        Double(min(max(index - focus + 1, 0), 10)) * 0.035
+    }
+}
+
+private struct LineHeights: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] = [:]
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
 private struct LyricsScroller: View {
     let lines: [LyricsService.Line]
     let current: Int?
@@ -651,52 +705,39 @@ private struct LyricsScroller: View {
     @Environment(\.coverTint) private var tint
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: fontSize.map { $0 * 0.55 } ?? (large ? 10 : 8)) {
-                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                        let isCurrent = index == current
-                        let isPast = current.map { index < $0 } ?? false
-                        let isHovered = hovered == index && !isCurrent
-                        Group {
-                            if isCurrent && !line.text.isEmpty {
-                                highlighted(line)
-                            } else {
-                                Text(line.text.isEmpty ? "♪" : line.text)
-                                    .foregroundStyle(.white.opacity(isCurrent ? 1 : (isHovered ? 0.65 : (isPast ? 0.22 : 0.34))))
-                            }
-                        }
-                            .font(.system(size: fontSize ?? (large ? 19 : 16), weight: .bold))
-                            .blur(radius: isCurrent || isHovered ? 0 : 1.1)
-                            .scaleEffect(isCurrent ? 1 : 0.96, anchor: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                            // Click a line to jump there.
-                            .onTapGesture { onSeek(line.time) }
-                            .onHover { inside in
-                                if inside { hovered = index } else if hovered == index { hovered = nil }
-                            }
-                            .animation(.easeOut(duration: 0.15), value: isHovered)
-                            .id(index)
-                    }
-                }
-                // Room so the first and last lines can reach the focus point.
-                .padding(.vertical, 40)
+        CascadingLines(count: lines.count, current: current,
+                       spacing: fontSize.map { $0 * 0.55 } ?? (large ? 10 : 8), anchor: 0.36) { index in
+            let line = lines[index]
+            let isCurrent = index == current
+            let isPast = current.map { index < $0 } ?? false
+            let isHovered = hovered == index && !isCurrent
+            // One Text whether current or not: swapping views made the new
+            // current line jump to its place instead of gliding.
+            (isCurrent && !line.text.isEmpty ? highlighted(line)
+                : Text(line.text.isEmpty ? "♪" : line.text)
+                    .foregroundStyle(.white.opacity(isHovered ? 0.65 : (isPast ? 0.22 : 0.34))))
+            .font(.system(size: fontSize ?? (large ? 19 : 16), weight: .bold))
+            // The new line grows in with a short soft glow; only these
+            // spring, the place follows the cascade.
+            .animation(.spring(response: 0.45, dampingFraction: 0.72)) {
+                $0.blur(radius: isCurrent || isHovered ? 0 : 1.1)
+                    .scaleEffect(isCurrent ? 1 : 0.94, anchor: .leading)
+                    .shadow(color: .white.opacity(isCurrent ? 0.25 : 0), radius: 6)
             }
-            .scrollDisabled(true)
-            .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.18),
-                                         .init(color: .black, location: 0.8), .init(color: .clear, location: 1)],
-                                 startPoint: .top, endPoint: .bottom))
-            .onAppear { proxy.scrollTo(current ?? 0, anchor: UnitPoint(x: 0, y: 0.32)) }
-            .onChange(of: current) { _, index in
-                withAnimation(.spring(response: 0.55, dampingFraction: 0.88)) {
-                    proxy.scrollTo(index ?? 0, anchor: UnitPoint(x: 0, y: 0.32))
-                }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            // Click a line to jump there.
+            .onTapGesture { onSeek(line.time) }
+            .onHover { inside in
+                if inside { hovered = index } else if hovered == index { hovered = nil }
             }
-            .animation(.easeInOut(duration: 0.35), value: current)
-            .animation(.easeOut(duration: 0.18), value: sung)
+            .animation(.easeOut(duration: 0.15), value: isHovered)
         }
+        .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.18),
+                                     .init(color: .black, location: 0.8), .init(color: .clear, location: 1)],
+                             startPoint: .top, endPoint: .bottom))
+        .animation(.easeOut(duration: 0.18), value: sung)
     }
 
     private var sungColor: Color {

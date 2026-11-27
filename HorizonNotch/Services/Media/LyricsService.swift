@@ -21,13 +21,6 @@ final class LyricsService: ObservableObject {
         return lines[index].words.count
     }
 
-    /// How much of `lines[index]` is lit at `position`, in characters: all
-    /// of it from the line's start (see `sungWords`).
-    func sungCharacters(in index: Int, at position: Double) -> Double {
-        guard lines.indices.contains(index), position >= lines[index].time - Self.lead else { return 0 }
-        return Double(lines[index].text.count)
-    }
-
     /// A line counts from a tenth of a second before its stamp: by the time
     /// it is drawn and faded in, the first word is being sung.
     static let lead = 0.1
